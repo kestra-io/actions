@@ -1,0 +1,161 @@
+name: 'Main plugins'
+description: 'Main actions to build, publish a plugin'
+
+inputs:
+  GITHUB_TOKEN:
+    description: "a GitHub Token"
+    required: true
+  SLACK_WEBHOOK_URL:
+    description: "a Slack Webhook url"
+    required: false
+  GOOGLE_SERVICE_ACCOUNT:
+    description: "a Google Cloud service account key as json"
+    required: false
+  SONATYPE_USER:
+    description: "a Sonatype user"
+    required: false
+  SONATYPE_PASSWORD:
+    description: "a Sonatype password"
+    required: false
+  SONATYPE_GPG_KEYID:
+    description: "a Sonatype GPG key id"
+    required: false
+  SONATYPE_GPG_PASSWORD:
+    description: "a Sonatype GPG password"
+    required: false
+  SONATYPE_GPG_FILE:
+    description: "a Sonatype GPG file"
+    required: false
+  skip-test:
+    description: "Does we need to skip test"
+    required: false
+
+outputs:
+  random-number:
+    description: "Random number"
+    value: ${{ steps.random-number-generator.outputs.random-number }}
+runs:
+  using: "composite"
+  steps:
+    # Caches
+    - name: Gradle cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle*.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    # JDK
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: 21
+
+    - name: Validate Gradle wrapper
+      uses: gradle/actions/wrapper-validation@v3
+
+
+    # Gradle check
+    - name: Build with Gradle
+      if: ${{ inputs.skip-test == 'false' || inputs.skip-test == '' }}
+      shell: bash
+      run: ./gradlew check
+
+    # Allure check
+    - name: Auth to Google Cloud
+      id: auth
+      if: ${{ always() && inputs.GOOGLE_SERVICE_ACCOUNT != '' }}
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ inputs.GOOGLE_SERVICE_ACCOUNT }}'
+
+    - uses: rlespinasse/github-slug-action@v4
+
+    - name: Publish allure report
+      uses: andrcuns/allure-publish-action@v2.6.0
+      if: ${{ always() && inputs.GOOGLE_SERVICE_ACCOUNT != '' && (inputs.skip-test == 'false' || inputs.skip-test == '') }}
+      env:
+        GITHUB_AUTH_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        JAVA_HOME: /usr/lib/jvm/default-jvm/
+      with:
+        storageType: gcs
+        resultsGlob: build/allure-results
+        bucket: internal-kestra-host
+        baseUrl: "https://internal.kestra.io"
+        prefix: ${{ format('{0}/{1}/{2}', github.repository, env.GITHUB_HEAD_REF_SLUG != '' && env.GITHUB_HEAD_REF_SLUG || github.ref_name, 'allure/java') }}
+        copyLatest: true
+        ignoreMissingResults: true
+
+    # Jacoco
+    - name: 'Set up Cloud SDK'
+      if: ${{ inputs.GOOGLE_SERVICE_ACCOUNT != '' && (inputs.skip-test == 'false' || inputs.skip-test == '') }}
+      uses: 'google-github-actions/setup-gcloud@v2'
+
+    - name: 'Copy jacoco files'
+      if: ${{ inputs.GOOGLE_SERVICE_ACCOUNT != '' && (inputs.skip-test == 'false' || inputs.skip-test == '') }}
+      shell: bash
+      run: |
+        gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}/{2}', github.repository, env.GITHUB_HEAD_REF_SLUG != '' && env.GITHUB_HEAD_REF_SLUG || github.ref_name, 'jacoco') }}
+
+    # Publish
+    - name: Publish package to Sonatype
+      if: github.ref == 'refs/heads/master'
+      shell: bash
+      env:
+        ORG_GRADLE_PROJECT_sonatypeUsername: ${{ inputs.SONATYPE_USER }}
+        ORG_GRADLE_PROJECT_sonatypePassword: ${{ inputs.SONATYPE_PASSWORD }}
+        SONATYPE_GPG_KEYID: ${{ inputs.SONATYPE_GPG_KEYID }}
+        SONATYPE_GPG_PASSWORD: ${{ inputs.SONATYPE_GPG_PASSWORD }}
+        SONATYPE_GPG_FILE: ${{ inputs.SONATYPE_GPG_FILE }}
+      run: |
+        echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+        echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+        echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+        echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+        ./gradlew publishToSonatype
+
+    # Release
+    - name: Release package to Maven Central
+      if: startsWith(github.ref, 'refs/tags/v')
+      shell: bash
+      env:
+        ORG_GRADLE_PROJECT_sonatypeUsername: ${{ inputs.SONATYPE_USER }}
+        ORG_GRADLE_PROJECT_sonatypePassword: ${{ inputs.SONATYPE_PASSWORD }}
+        SONATYPE_GPG_KEYID: ${{ inputs.SONATYPE_GPG_KEYID }}
+        SONATYPE_GPG_PASSWORD: ${{ inputs.SONATYPE_GPG_PASSWORD }}
+        SONATYPE_GPG_FILE: ${{ inputs.SONATYPE_GPG_FILE }}
+      run: |
+        echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+        echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+        echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+        echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+        ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+    # GitHub Release
+    - name: Create GitHub release
+      uses: "marvinpinto/action-automatic-releases@latest"
+      if: ${{ startsWith(github.ref, 'refs/tags/v') && inputs.GITHUB_TOKEN != '' }}
+      with:
+        repo_token: "${{ inputs.GITHUB_TOKEN }}"
+        prerelease: false
+        files: |
+          build/libs/*.jar
+
+    # Slack
+    - name: Slack notification
+      uses: 8398a7/action-slack@v3
+      if: ${{ always() && inputs.SLACK_WEBHOOK_URL != '' && inputs.GITHUB_TOKEN != '' }}
+      with:
+        status: ${{ job.status }}
+        job_name: Check & Publish
+        fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        username: GitHub Actions
+        icon_emoji: ':github-actions:'
+        channel: 'C02DQ1A7JLR'
+      env:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        SLACK_WEBHOOK_URL: ${{ inputs.SLACK_WEBHOOK_URL }}
