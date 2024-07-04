@@ -23,26 +23,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Caches
-      - name: Gradle cache
-        uses: actions/cache@v4
+      # Setup build
+      - uses: ./.github/actions/setup-build
+        id: build
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle*.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      
-      # JDK
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: 21
-
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v3
+          java-enabled: true
+          caches-enabled: true
 
       # Setup for unit test
       - name: Setup for unit test
