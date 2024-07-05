@@ -24,7 +24,8 @@ jobs:
         uses: actions/checkout@v4
 
       # Checkout GitHub Actions
-      - uses: actions/checkout@v4
+      - name: Checkout actions
+        uses: actions/checkout@v4
         with:
           repository: kestra-io/actions
           sparse-checkout-cone-mode: true
@@ -34,7 +35,8 @@ jobs:
           ref: main
 
       # Setup build
-      - uses: ./actions/.github/actions/setup-build
+      - name: Setup build
+        uses: ./actions/.github/actions/setup-build
         id: build
         with:
           java-enabled: true
