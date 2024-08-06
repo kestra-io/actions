@@ -164,3 +164,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify failed CI
+        id: send-ci-failed
+        if: always() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status != 'success'
+        uses: ./actions/.github/actions/send-ci-failed@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
