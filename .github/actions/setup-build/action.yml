@@ -96,6 +96,6 @@ runs:
       if: inputs.java-enabled == 'true'
       uses: gradle/actions/setup-gradle@v4
 
-    - name: Generate and submit gradle dependency graph
-      if: inputs.java-enabled == 'true' && github.repository_owner == 'kestra-io'
-      uses: gradle/actions/dependency-submission@v4
+    # - name: Generate and submit gradle dependency graph
+    #  if: inputs.java-enabled == 'true' && github.repository_owner == 'kestra-io'
+    #  uses: gradle/actions/dependency-submission@v4
