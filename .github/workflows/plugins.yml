@@ -7,24 +7,32 @@ on:
         description: "Does we need to skip test"
         required: true
         type: boolean
-      gradle-publish:
+      sonatype-publish:
         description: "Does we use gradle publish or sonatype publish"
-        required: true
+        required: false
         type: boolean
+        default: true
+      runner:
+        description: "The runner to use."
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
+permissions:
+  contents: write
+  checks: write
+  actions: read
 
 jobs:
   main:
-    runs-on: ubuntu-latest
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+    runs-on: ${{ inputs.runner }}
     steps:
       # Check out
-      - name: Checkout repository
+      - name: Checkout - Repository
         uses: actions/checkout@v4
 
       # Checkout GitHub Actions
-      - name: Checkout actions
+      - name: Checkout - Actions
         uses: actions/checkout@v4
         with:
           repository: kestra-io/actions
@@ -35,61 +43,119 @@ jobs:
           ref: main
 
       # Setup build
-      - name: Setup build
+      - name: Setup - Build
         uses: ./actions/.github/actions/setup-build
         id: build
         with:
           java-enabled: true
-          caches-enabled: true
 
       # Setup for unit test
-      - name: Setup for unit test
+      - uses: oNaiPs/secrets-to-env-action@v1
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
+      - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
         run: |
-          if [ -f setup-unit.sh ]; then
-            ./setup-unit.sh
+          if [ -f .github/setup-unit.sh ]; then
+            ./.github/setup-unit.sh 
           fi
 
+      # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
+      - name: GCP - Auth with github service account
+        uses: 'google-github-actions/auth@v2'
+        if: ${{ inputs.sonatype-publish == false }}
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       # Gradle check
-      - name: Build with Gradle
+      - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check
-      
-      # Allure check
-      - name: Auth to Google Cloud
+        run: ./gradlew check --parallel
+
+      # Publish
+      - name: Publish - Release package with Gradle
+        shell: bash
+        if: ${{ inputs.sonatype-publish == false && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        run: ./gradlew publish
+
+      - name: Publish - Release package to Maven Central
+        if: ${{ inputs.sonatype-publish == true && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        env:
+          ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USER }}
+          ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_GPG_KEYID: ${{ secrets.SONATYPE_GPG_KEYID }}
+          SONATYPE_GPG_PASSWORD: ${{ secrets.SONATYPE_GPG_PASSWORD }}
+          SONATYPE_GPG_FILE: ${{ secrets.SONATYPE_GPG_FILE }}
+        run: |
+          echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+          echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+          echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+          echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+          ./gradlew publishToSonatype ${{ startsWith(github.ref, 'refs/tags/v')  && 'closeAndReleaseSonatypeStagingRepository' || '' }} 
+
+      # GitHub Release
+      - name: Github - Create release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            build/libs/*.jar
+            -*/build/libs/*.jar
+
+      # Test results
+      - name: Test - Publish Test Results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Java Tests Report
+          reporter: java-junit
+          path: '**/build/test-results/test/TEST-*.xml'
+          only-summary: 'true'
+          list-suites: 'failed'
+          list-tests: 'failed'
+          fail-on-error: 'false'
+
+      # GCP
+      - name: GCP - Auth with unit test account
         id: auth
         if: ${{ always() && env.GOOGLE_SERVICE_ACCOUNT != '' }}
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: '${{ secrets.GOOGLE_SERVICE_ACCOUNT }}'
 
-      - name: Generate slug variables
+      - name: GCP - Setup Cloud SDK
+        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      # Allure check
+      - name: Allure - Generate slug variables
         uses: rlespinasse/github-slug-action@v4
 
-      - name: Publish allure report
+      - name: Allure - Publish report
         uses: andrcuns/allure-publish-action@v2.6.0
         if: ${{ always() && env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
+        continue-on-error: true
         env:
           GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JAVA_HOME: /usr/lib/jvm/default-jvm/
         with:
           storageType: gcs
-          resultsGlob: build/allure-results
+          resultsGlob: "**/build/allure-results"
           bucket: internal-kestra-host
-          baseUrl: "https://internal.kestra.io"
+          baseUrl: "https://internal.dev.kestra.io"
           prefix: ${{ format('{0}/{1}', github.repository, 'allure/java') }}
           copyLatest: true
           ignoreMissingResults: true
-      
-      # Jacoco
-      - name: Set up Cloud SDK
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
-        uses: 'google-github-actions/setup-gcloud@v2'
 
-      - name: Copy jacoco files
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
+      # Jacoco
+      - name: Jacoco - Copy reports
         shell: bash
+        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
+        continue-on-error: true
         run: |
           if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
             mv build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
@@ -100,58 +166,28 @@ jobs:
             gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
           fi
 
-      # Simple Publish
-      - name: Publish package with Gradle
-        shell: bash
-        if: ${{ inputs.gradle-publish == true && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
-        run: ./gradlew publish
-
-      # Publish on Sonatype
-      - name: Publish package to Sonatype Snapshot
-        if: ${{ inputs.gradle-publish == false && github.ref == 'refs/heads/master' }}
-        shell: bash
-        env:
-          ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USER }}
-          ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.SONATYPE_PASSWORD }}
-          SONATYPE_GPG_KEYID: ${{ secrets.SONATYPE_GPG_KEYID }}
-          SONATYPE_GPG_PASSWORD: ${{ secrets.SONATYPE_GPG_PASSWORD }}
-          SONATYPE_GPG_FILE: ${{ secrets.SONATYPE_GPG_FILE }}
-        run: |
-          echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
-          echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
-          echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
-          echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
-          ./gradlew publishToSonatype
-      
-      # Release
-      - name: Release package to Maven Central
-        if: ${{ inputs.gradle-publish == false && startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        env:
-          ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USER }}
-          ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.SONATYPE_PASSWORD }}
-          SONATYPE_GPG_KEYID: ${{ secrets.SONATYPE_GPG_KEYID }}
-          SONATYPE_GPG_PASSWORD: ${{ secrets.SONATYPE_GPG_PASSWORD }}
-          SONATYPE_GPG_FILE: ${{ secrets.SONATYPE_GPG_FILE }}
-        run: |
-          echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
-          echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
-          echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
-          echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
-          ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
-      
-      # GitHub Release
-      - name: Create GitHub release
-        uses: "marvinpinto/action-automatic-releases@latest"
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      # Codecov
+      - name: Codecov - Upload coverage reports
+        uses: codecov/codecov-action@v5
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        continue-on-error: true
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          files: |
-            build/libs/*.jar
-      
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Codecov - Upload test results
+        uses: codecov/test-results-action@v1
+        if: ${{ !cancelled() && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      # Gradle dependency
+      - name: Java - Gradle dependency graph
+        if: ${{ github.ref == 'refs/heads/master' }}
+        uses: gradle/actions/dependency-submission@v4
+
       # Slack
-      - name: Slack notification
+      - name: Slack - Notification
         uses: 8398a7/action-slack@v3
         if: ${{ always() && env.SLACK_WEBHOOK_URL != '' }}
         with:
@@ -165,10 +201,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-      - name: Notify failed CI
+      - name: Slack - Notify failed CI
         id: send-ci-failed
         if: always() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status != 'success'
-        uses: ./actions/.github/actions/send-ci-failed@main
+        uses: ./actions/.github/actions/send-ci-failed
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

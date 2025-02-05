@@ -29,73 +29,49 @@ inputs:
     description: "Python version"
     default: '3.x'
     required: true
-  caches-enabled:
-    description: "Specify whether to setup caches"
-    default: 'false'
-    required: true
+
 runs:
   using: composite
   steps:
-    # Setup JDK
-    - name: Set up JDK
+    # Setup Java
+    - name: Java - Setup
       uses: actions/setup-java@v4
       if: inputs.java-enabled == 'true'
       with:
         distribution: ${{ inputs.java-distribution }}
         java-version: ${{ inputs.java-version }}
 
-    # Setup Python
-    - uses: actions/setup-python@v5
-      if: inputs.python-enabled == 'true'
-      with:
-        python-version: ${{ inputs.python-version }}
-        architecture: 'x64'
+    - name: Java - Setup gradle
+      if: inputs.java-enabled == 'true'
+      uses: gradle/actions/setup-gradle@v4
 
-    - name: Install virtualenv
-      if: inputs.python-enabled == 'true'
-      shell: bash
-      run: python3 -m pip install virtualenv
-
-    # Setup Node
-    - uses: actions/setup-node@v4
-      if: inputs.node-enabled == 'true'
-      with:
-        node-version: ${{ inputs.node-version }}
-        check-latest: true
-
-    # Caches for Java
-    - name: SonarCloud cache
-      if: inputs.caches-enabled == 'true' && inputs.java-enabled == 'true'
+    - name: Java - SonarCloud cache
+      if: inputs.java-enabled == 'true'
       uses: actions/cache@v4
       with:
         path: ~/.sonar/cache
         key: ${{ runner.os }}-sonar
         restore-keys: ${{ runner.os }}-sonar
 
-    # Caches for Node/Npm
-    - name: Npm cache
-      uses: actions/cache@v4
-      if: inputs.caches-enabled == 'true' && inputs.node-enabled == 'true'
+    # Setup Python
+    - name: Python - Setup
+      uses: actions/setup-python@v5
+      if: inputs.python-enabled == 'true'
       with:
-        path: ~/.npm
-        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-npm-
+        python-version: ${{ inputs.python-version }}
+        architecture: 'x64'
 
-    - name: Node cache
-      uses: actions/cache@v4
-      if: inputs.caches-enabled == 'true' && inputs.node-enabled == 'true'
+    - name: Python - Install virtualenv
+      if: inputs.python-enabled == 'true'
+      shell: bash
+      run: python3 -m pip install virtualenv
+
+    # Setup Node
+    - name: Node - Setup
+      uses: actions/setup-node@v4
+      if: inputs.node-enabled == 'true'
       with:
-        path: node
-        key: ${{ runner.os }}-node-${{ hashFiles('ui/*.gradle') }}
-        restore-keys: |
-          ${{ runner.os }}-node-
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
 
-    # Setup Gradle
-    - name: Validate Gradle wrapper
-      if: inputs.java-enabled == 'true'
-      uses: gradle/actions/setup-gradle@v4
-
-    # - name: Generate and submit gradle dependency graph
-    #  if: inputs.java-enabled == 'true' && github.repository_owner == 'kestra-io'
-    #  uses: gradle/actions/dependency-submission@v4
