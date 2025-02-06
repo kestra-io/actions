@@ -54,19 +54,19 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      - name: Setup - Unit test
-        if: ${{ inputs.skip-test == false }}
-        run: |
-          if [ -f .github/setup-unit.sh ]; then
-            ./.github/setup-unit.sh 
-          fi
-
       # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
       - name: GCP - Auth with github service account
         uses: 'google-github-actions/auth@v2'
         if: ${{ inputs.sonatype-publish == false }}
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup - Unit test
+        if: ${{ inputs.skip-test == false }}
+        run: |
+          if [ -f .github/setup-unit.sh ]; then
+            ./.github/setup-unit.sh 
+          fi
 
       # Gradle check
       - name: Test - Gradle Check
@@ -169,7 +169,7 @@ jobs:
       # Codecov
       - name: Codecov - Upload coverage reports
         uses: codecov/codecov-action@v5
-        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        if: ${{ !cancelled() && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
         continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
