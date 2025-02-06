@@ -77,11 +77,11 @@ jobs:
       # Publish
       - name: Publish - Release package with Gradle
         shell: bash
-        if: ${{ inputs.sonatype-publish == false && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        if: ${{ inputs.sonatype-publish == false && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
         run: ./gradlew publish
 
       - name: Publish - Release package to Maven Central
-        if: ${{ inputs.sonatype-publish == true && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        if: ${{ inputs.sonatype-publish == true && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
         env:
           ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USER }}
           ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.SONATYPE_PASSWORD }}
@@ -183,7 +183,7 @@ jobs:
 
       # Gradle dependency
       - name: Java - Gradle dependency graph
-        if: ${{ github.ref == 'refs/heads/master' }}
+        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
         uses: gradle/actions/dependency-submission@v4
 
       # Slack
