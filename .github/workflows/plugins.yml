@@ -50,7 +50,8 @@ jobs:
           java-enabled: true
 
       # Setup for unit test
-      - uses: oNaiPs/secrets-to-env-action@v1
+      - name: Setup - Secret to Env
+        uses: oNaiPs/secrets-to-env-action@v1
         with:
           secrets: ${{ toJSON(secrets) }}
 
