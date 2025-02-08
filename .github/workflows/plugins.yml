@@ -193,8 +193,8 @@ jobs:
         if: ${{ always() && env.SLACK_WEBHOOK_URL != '' }}
         with:
           status: ${{ job.status }}
-          job_name: Check & Publish
-          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+          job_name: Main
+          fields: repo,ref,commit,author,workflow,took
           username: GitHub Actions
           icon_emoji: ':github-actions:'
           channel: 'C02DQ1A7JLR'
