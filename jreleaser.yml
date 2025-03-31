@@ -1,0 +1,73 @@
+project:
+  description: 'A powerful open-source orchestration platform for data pipelines'
+  copyright: '2019-2025 Kestra Technologies'
+  links:
+    homepage: 'https://kestra.io'
+  license: "Apache"
+  authors:
+    - 'Kestra'
+  snapshot:
+    label: "v{{projectVersion}}"
+
+release:
+  github:
+    username: 'Github Actions'
+    overwrite: true
+    draft: false
+    issues:
+      enabled: false
+    changelog:
+      enabled: true
+      formatted: ALWAYS
+      preset: 'conventional-commits'
+
+      # Defines rules that apply labels to changes.
+      # Matchers are evaluated independently; the label will
+      # be set if at least one of the matchers meets the criteria.
+      #
+      labelers:
+        - label: 'breaking feat'
+          title: 'regex:feat!:'
+        - label: 'breaking fix'
+          title: 'regex:fix!:'
+        - label: 'issue'
+          title: 'regex:fix:'
+        - label: 'feature'
+          title: 'regex:feat:'
+        - label: 'fix'
+          title: 'regex:fix:'
+        - label: 'test'
+          title: 'regex:test:'
+
+      # Groups changes by category.
+      # Defaults are shown.
+      #
+      categories:
+        - title: '📢 Breaking Changes'
+          key: 'breaking'
+          labels:
+            - 'breaking feat'
+            - 'breaking fix'
+          order: 1
+        - title: '🚀 Features'
+          key: 'features'
+          labels:
+            - 'feature'
+          order: 2
+        - title: '🐛 Bug Fixes'
+          key: 'fixes'
+          labels:
+            - 'fix'
+          order: 3
+        - title: '🏭 Tests'
+          key: 'tests'
+          labels:
+            - 'test'
+          order: 4
+files:
+  globs:
+    - pattern: "*/build/libs/*.jar"
+
+announce:
+  slack:
+    active: 'ALWAYS' # TODO: maybe switch to RELEASE only?

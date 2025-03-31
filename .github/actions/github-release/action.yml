@@ -1,0 +1,37 @@
+name: "Create a GitHub Release"
+description: "This action creates a GitHub release and uploads assets to it."
+
+runs:
+  using: composite
+  steps:
+    - name: Setup - Checkout Jreleaser file
+      uses: actions/checkout@v4
+      with:
+        repository: kestra-io/actions
+        path: jreleaser
+
+    - name: Setup - Copy jreleaser.yml
+      shell: bash
+      run: cp jreleaser/jreleaser.yml .
+
+    - name: Setup - Set Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: 21
+
+    - name: JReleaser - Release
+      uses: jreleaser/release-action@v2
+      env:
+        JRELEASER_GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        JRELEASER_PROJECT_VERSION: ${{ github.event.release.tag_name }}
+        JRELEASER_ANNOUNCE_SLACK_WEBHOOK: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+
+    - name: JReleaser - Output properties & logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: jreleaser-release
+        path: |
+          out/jreleaser/trace.log
+          out/jreleaser/output.properties
