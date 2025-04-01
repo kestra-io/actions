@@ -16,11 +16,19 @@ release:
     draft: false
     issues:
       enabled: false
+    milestone:
+      close: false
     changelog:
       enabled: true
       formatted: ALWAYS
       preset: 'conventional-commits'
+      categoryTitleFormat: '### {{categoryTitle}}'
+      extraProperties:
+        categorizeScopes: 'true'
 
+      replacers:
+        - search: 'unscoped'
+          replace: 'global'
       # Defines rules that apply labels to changes.
       # Matchers are evaluated independently; the label will
       # be set if at least one of the matchers meets the criteria.
@@ -37,7 +45,13 @@ release:
         - label: 'fix'
           title: 'regex:fix:'
         - label: 'test'
-          title: 'regex:test:'
+          title: 'regex:^(?:test(?:\(.*\))?!?):\s.*'
+        - label: 'choredeps'
+          title: 'regex:chore\(deps\):'
+        - label: 'deps'
+          title: 'regex:deps:'
+        - label: 'chore'
+          title: 'regex:chore:'
 
       # Groups changes by category.
       # Defaults are shown.
@@ -54,19 +68,31 @@ release:
           labels:
             - 'feature'
           order: 2
+        - title: '📘 Subtasks'
+          key: 'subtasks'
+          labels:
+            - 'chore'
+          order: 3
         - title: '🐛 Bug Fixes'
           key: 'fixes'
           labels:
             - 'fix'
-          order: 3
+          order: 4
         - title: '🏭 Tests'
           key: 'tests'
           labels:
             - 'test'
-          order: 4
+          order: 5
+        - title: '🔗 Dependencies'
+          key: 'deps'
+          labels:
+            - 'choredeps'
+            - 'deps'
+          order: 6
 files:
   globs:
     - pattern: "*/build/libs/*.jar"
+    - pattern: "build/executable/*"
 
 announce:
   slack:
