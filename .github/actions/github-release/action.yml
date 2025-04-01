@@ -1,5 +1,5 @@
 name: "Create a GitHub Release"
-description: "This action creates a GitHub release and uploads assets to it."
+description: "This action creates a GitHub release and uploads assets to it. Expect to be run on a tag following the format vX.Y.Z."
 
 runs:
   using: composite
@@ -8,12 +8,31 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: kestra-io/actions
+        ref: feat/jreleaser
         path: jreleaser
 
     - name: Setup - Copy jreleaser.yml
       shell: bash
-      run: cp jreleaser/jreleaser.yml .
+      run: |
+        cp jreleaser/jreleaser.yml .
 
+    - name: Setup - Generate variables for JReleaser
+      shell: bash
+      run: |
+        # Output tag in correct format
+        echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+        main=$(git ls-remote --heads origin main)
+        master=$(git ls-remote --heads origin master)
+        echo $main
+        if [ ! -z "$main" ]; then
+          echo "BRANCH=main" >> $GITHUB_ENV
+        elif [ ! -z "$master" ]; then
+          echo "BRANCH=master" >> $GITHUB_ENV
+        else
+          echo "BRANCH=none" >> $GITHUB_ENV
+        fi
+        
     - name: Setup - Set Java
       uses: actions/setup-java@v4
       with:
@@ -23,9 +42,10 @@ runs:
     - name: JReleaser - Release
       uses: jreleaser/release-action@v2
       env:
+        JRELEASER_BRANCH: ${{ env.BRANCH}}
         JRELEASER_GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
-        JRELEASER_PROJECT_VERSION: ${{ github.event.release.tag_name }}
-        JRELEASER_ANNOUNCE_SLACK_WEBHOOK: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+        JRELEASER_PROJECT_VERSION: ${{ env.VERSION }}
+        JRELEASER_ANNOUNCE_SLACK_WEBHOOK: ${{ env.SLACK_RELEASES_WEBHOOK_URL }}
 
     - name: JReleaser - Output properties & logs
       if: always()
