@@ -30,6 +30,9 @@ jobs:
       # Check out
       - name: Checkout - Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
 
       # Checkout GitHub Actions
       - name: Checkout - Actions
@@ -40,7 +43,6 @@ jobs:
           path: actions
           sparse-checkout: |
             .github/actions
-          ref: main
 
       # Setup build
       - name: Setup - Build
@@ -75,6 +77,14 @@ jobs:
         shell: bash
         run: ./gradlew check --parallel
 
+      # GitHub Release
+      - name: Create GitHub release
+        uses: ./actions/.github/actions/github-release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+
       # Publish
       - name: Publish - Release package with Gradle
         shell: bash
@@ -95,17 +105,6 @@ jobs:
           echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
           echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
           ./gradlew publishToSonatype ${{ startsWith(github.ref, 'refs/tags/v')  && 'closeAndReleaseSonatypeStagingRepository' || '' }} 
-
-      # GitHub Release
-      - name: Github - Create release
-        uses: "marvinpinto/action-automatic-releases@latest"
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          files: |
-            build/libs/*.jar
-            -*/build/libs/*.jar
 
       # Test results
       - name: Test - Publish Test Results
