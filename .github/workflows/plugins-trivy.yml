@@ -1,0 +1,86 @@
+name: Trivy Scan
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: "The runner to use."
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
+permissions:
+  contents: read
+
+jobs:
+  trivy:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      # Check out
+      - name: Checkout - Repository
+        uses: actions/checkout@v4
+
+      # Checkout GitHub Actions
+      - name: Checkout - Actions
+        uses: actions/checkout@v4
+        with:
+          repository: kestra-io/actions
+          sparse-checkout-cone-mode: true
+          path: actions
+          sparse-checkout: |
+            .github/actions
+          ref: main
+
+      # Setup build
+      - name: Setup - Build
+        uses: ./actions/.github/actions/setup-build
+        id: build
+        with:
+          java-enabled: true
+
+      # Trivy on repository
+      - name: Trivy - Run repository scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: '/tmp/trivy-repo-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy - Upload repository scan
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: '/tmp/trivy-repo-results.sarif'
+          category: repository
+
+      # Gradle build jar
+      - name: Build - Gradle Shadow Jar
+        shell: bash
+        run: |
+          ./gradlew shadowJar
+          mkdir -p /tmp/trivy/jar
+          find -name *.jar | grep /build/ | xargs -I{} cp {} /tmp/trivy/jar/
+
+      # Trivy on jar
+      - name: Trivy - Run jar scanner
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: 'rootfs'
+          scan-ref: '/tmp/trivy/jar/'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: '/tmp/trivy-jar-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          skip-setup-trivy: true
+
+      - name: Trivy - Upload jar scan
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: '/tmp/trivy-jar-results.sarif'
+          category: jar
+
