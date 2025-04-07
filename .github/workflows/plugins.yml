@@ -30,6 +30,9 @@ jobs:
       # Check out
       - name: Checkout - Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
 
       # Checkout GitHub Actions
       - name: Checkout - Actions
@@ -40,7 +43,6 @@ jobs:
           path: actions
           sparse-checkout: |
             .github/actions
-          ref: main
 
       # Setup build
       - name: Setup - Build
@@ -97,15 +99,12 @@ jobs:
           ./gradlew publishToSonatype ${{ startsWith(github.ref, 'refs/tags/v')  && 'closeAndReleaseSonatypeStagingRepository' || '' }} 
 
       # GitHub Release
-      - name: Github - Create release
-        uses: "marvinpinto/action-automatic-releases@latest"
+      - name: Create GitHub release
+        uses: ./actions/.github/actions/github-release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          files: |
-            build/libs/*.jar
-            -*/build/libs/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
 
       # Test results
       - name: Test - Publish Test Results
