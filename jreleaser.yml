@@ -93,6 +93,7 @@ files:
   globs:
     - pattern: "*/build/libs/*.jar"
     - pattern: "build/executable/*"
+    - pattern: "!certs/**"
 
 announce:
   slack:
