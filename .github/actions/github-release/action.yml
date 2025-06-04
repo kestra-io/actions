@@ -30,7 +30,7 @@ runs:
         elif [ ! -z "$master" ]; then
           echo "BRANCH=master" >> $GITHUB_ENV
         else
-          echo "BRANCH=none" >> $GITHUB_ENV
+          echo "BRANCH=develop" >> $GITHUB_ENV
         fi
         
     - name: Setup - Set Java
