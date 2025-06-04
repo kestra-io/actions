@@ -25,7 +25,6 @@ runs:
 
         main=$(git ls-remote --heads origin main)
         master=$(git ls-remote --heads origin master)
-        echo $main
         if [ ! -z "$main" ]; then
           echo "BRANCH=main" >> $GITHUB_ENV
         elif [ ! -z "$master" ]; then
@@ -39,17 +38,6 @@ runs:
       with:
         distribution: 'temurin'
         java-version: 21
-
-    - name: Setup - show folders
-      shell: bash
-      run: |
-        echo "Current directory: $(pwd)"
-        echo "Files in current directory:"
-        ls -la
-        echo "Files in jreleaser directory:"
-        ls -la jreleaser
-        echo "Files in build:"
-        ls -la build
 
     - name: JReleaser - Release
       uses: jreleaser/release-action@v2
