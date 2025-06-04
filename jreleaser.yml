@@ -93,10 +93,13 @@ release:
           order: 6
 files:
   globs:
-    - pattern: "*/build/libs/*.jar"
-    - pattern: "*/build/executable/*"
+    - pattern: "**/build/libs/**"
+    - pattern: "**/build/executable/**"
     - pattern: "!certs/**"
 
 announce:
   slack:
     active: 'ALWAYS' # TODO: maybe switch to RELEASE only?
+
+upload:
+  active: ALWAYS
