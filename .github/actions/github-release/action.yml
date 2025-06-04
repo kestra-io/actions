@@ -8,7 +8,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: kestra-io/actions
-        ref: feat/jreleaser
+        ref: main
         path: jreleaser
 
     - name: Setup - Copy jreleaser.yml
