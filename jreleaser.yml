@@ -93,7 +93,7 @@ release:
 files:
   globs:
     - pattern: "*/build/libs/*.jar"
-    - pattern: "build/executable/*"
+    - pattern: "*/build/executable/*"
     - pattern: "!certs/**"
 
 announce:
