@@ -4,6 +4,7 @@ description: "This action creates a GitHub release and uploads assets to it. Exp
 runs:
   using: composite
   steps:
+
     - name: Setup - Checkout Jreleaser file
       uses: actions/checkout@v4
       with:
@@ -30,7 +31,7 @@ runs:
         elif [ ! -z "$master" ]; then
           echo "BRANCH=master" >> $GITHUB_ENV
         else
-          echo "BRANCH=none" >> $GITHUB_ENV
+          echo "BRANCH=develop" >> $GITHUB_ENV
         fi
         
     - name: Setup - Set Java
