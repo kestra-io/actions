@@ -15,6 +15,7 @@ release:
     overwrite: true
     draft: false
     releaseName: "{{tagName}}"
+    skipTag: true
     issues:
       enabled: false
     milestone:
