@@ -37,9 +37,9 @@ release:
       #
       labelers:
         - label: 'breaking feat'
-          title: 'regex:feat!:'
+          title: 'regex:^(?:feat(?:\(.*\))?!?)!:\s.*'
         - label: 'breaking fix'
-          title: 'regex:fix!:'
+          title: 'regex:^(?:fix(?:\(.*\))?!?)!:\s.*'
         - label: 'issue'
           title: 'regex:fix:'
         - label: 'feature'
