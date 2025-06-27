@@ -214,7 +214,7 @@ jobs:
 
       - name: Slack - Notify failed CI
         id: send-ci-failed
-        if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status != 'success'
+        if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status == 'failure'
         uses: ./actions/.github/actions/send-ci-failed
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
