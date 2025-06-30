@@ -91,9 +91,7 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SONATYPE_GPG_KEYID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SONATYPE_GPG_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SONATYPE_GPG_FILE_ASCII }}
-        run: |
-          echo "${ORG_GRADLE_PROJECT_signingInMemoryKey}"
-          ./gradlew publishToMavenCentral
+        run: ./gradlew publishToMavenCentral
 
       # GitHub Release
       - name: Create GitHub release
