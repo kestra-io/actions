@@ -77,6 +77,16 @@ jobs:
         shell: bash
         run: ./gradlew check --parallel
 
+      # Clean Up - Pre-release
+      - name: Clean Up - Pre-release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          echo "--- Preparing for release ---"
+          echo "Removing test certificate directory..."
+          rm -rf certs
+          echo "---------------------------
+
       # Publish
       - name: Publish - Release package with Gradle
         shell: bash
