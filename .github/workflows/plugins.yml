@@ -85,7 +85,7 @@ jobs:
           echo "--- Preparing for release ---"
           echo "Removing test certificate directory..."
           sudo rm -rf certs
-          echo "---------------------------
+          echo "---------------------------"
 
       # Publish
       - name: Publish - Release package with Gradle
