@@ -84,7 +84,7 @@ jobs:
         run: |
           echo "--- Preparing for release ---"
           echo "Removing test certificate directory..."
-          rm -rf certs
+          sudo rm -rf certs
           echo "---------------------------
 
       # Publish
