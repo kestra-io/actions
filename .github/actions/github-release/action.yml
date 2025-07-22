@@ -1,5 +1,5 @@
 name: "Create a GitHub Release"
-description: "This action creates a GitHub release and uploads assets to it. Expect to be run on a tag following the format vX.Y.Z."
+description: "This action creates a GitHub release and uploads assets to it. Expect to be run on a tag following the format vX.Y.Z. Provide the environment variable `MAKE_LATEST` to `false` to avoid marking this github release as latest."
 
 runs:
   using: composite
@@ -16,6 +16,12 @@ runs:
       shell: bash
       run: |
         cp jreleaser/jreleaser.yml .
+
+    - name: Patch jreleaser.yml if MAKE_LATEST
+      if: env.MAKE_LATEST == 'false'
+      shell: bash
+      run: |
+        sed -i "s/makeLatest: 'TRUE'/makeLatest: 'FALSE'/g" jreleaser.yml
 
     - name: Setup - Generate variables for JReleaser
       shell: bash
