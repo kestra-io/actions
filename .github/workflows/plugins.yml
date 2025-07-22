@@ -64,11 +64,6 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: GCP - Setup Cloud SDK
-        if: ${{ inputs.sonatype-publish == false }}
-        uses: 'google-github-actions/setup-gcloud@v2'
-
-      # Custom setup if needed
       - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
         run: |
@@ -197,6 +192,11 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      # Gradle dependency
+      - name: Java - Gradle dependency graph
+        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+        uses: gradle/actions/dependency-submission@v4
+
       # Sonar
       - name: Sonar - Analyze with Sonar
         if: env.SONAR_TOKEN != ''
@@ -229,22 +229,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  dependency-submission:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-    needs: main
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: GCP - Auth
-        uses: 'google-github-actions/auth@v2'
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: GCP - Setup Cloud SDK
-        uses: 'google-github-actions/setup-gcloud@v2'
-
-      - name: Java - Gradle dependency graph
-        uses: gradle/actions/dependency-submission@v4
