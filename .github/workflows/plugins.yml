@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      pullDockerEE:
+        description: "Does we pull the EE docker image"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -63,6 +68,20 @@ jobs:
         if: ${{ inputs.sonatype-publish == false }}
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      ## Pull EE image
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        if: ${{ inputs.pullDockerEE == true }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build the docker-compose stack
+        if: ${{ inputs.pullDockerEE == true }}
+        run: |
+          docker pull ghcr.io/kestra-io/kestra-ee:develop
 
       - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
