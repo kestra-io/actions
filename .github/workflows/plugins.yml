@@ -95,7 +95,7 @@ jobs:
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check --parallel
+        run: ./gradlew check shadowJar --parallel
 
       # Clean Up - Pre-release
       - name: Clean Up - Pre-release
@@ -127,6 +127,14 @@ jobs:
           echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
           echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
           ./gradlew publishToMavenCentral
+
+      # Upload plugins as artifacts
+      - name: Artifacts - Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: "**/build/libs/*.jar"
+          retention-days: 7
 
       # GitHub Release
       - name: Create GitHub release
