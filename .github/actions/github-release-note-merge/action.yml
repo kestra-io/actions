@@ -1,0 +1,6 @@
+name: 'Kestra Release Notes Merge'
+description: 'Merge Kestra OSS and EE release notes into a single release note for Kestra OSS. Required GITHUB_TOKEN and RELEASE_TAG'
+
+runs:
+  using: 'node20'
+  main: './github-release-note-merge.js'
