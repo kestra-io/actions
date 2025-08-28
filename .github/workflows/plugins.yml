@@ -27,6 +27,7 @@ permissions:
   contents: write
   checks: write
   actions: read
+  pull-requests: write
 
 jobs:
   main:
@@ -135,6 +136,17 @@ jobs:
           name: jar
           path: "**/build/libs/*.jar"
           retention-days: 7
+
+      - name: Artifacts - Comment pull request
+        uses: bitonality/PRtifact@v0.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          comment-mode: 'CreateOrUpdate'
+          handlebars-template: | 
+            {{#each artifacts}}
+            [{{badge "Download" "8405FF"}}]({{../workflowRunUrl}}/artifacts/{{id}}) [{{badge "Logs" "8405FF"}}]({{../workflowRunUrl}}) 
+            **{{pretty-size size_in_bytes}}** (updated: *{{pretty-date updated_at}}*, expiration: *{{pretty-date expires_at}}*) 
+            {{/each}}
 
       # GitHub Release
       - name: Create GitHub release
