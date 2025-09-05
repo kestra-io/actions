@@ -128,7 +128,7 @@ jobs:
 
       - name: Artifacts - Comment pull request
         uses: bitonality/PRtifact@v0.1.0
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
         with:
           comment-mode: 'CreateOrUpdate'
           handlebars-template: | 
