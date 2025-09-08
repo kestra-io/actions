@@ -177,7 +177,6 @@ jobs:
 
       # Test results
       - name: Test - Publish Full Test Results
-        id: junit-report
         uses: mikepenz/action-junit-report@v5
         if: always()
         with:
@@ -206,7 +205,7 @@ jobs:
       # Comment PR with artifacts & Trivy results
       - name: Artifacts - Comment pull request
         uses: bitonality/PRtifact@v0.1.0
-        if: ${{ github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
+        if: ${{ always() && (github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name) }}
         with:
           comment-mode: 'CreateOrUpdate'
           handlebars-template: |
