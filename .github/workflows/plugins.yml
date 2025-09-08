@@ -128,16 +128,32 @@ jobs:
           path: "**/build/libs/*.jar"
           retention-days: 7
 
-      - name: Artifacts - Comment pull request
-        uses: bitonality/PRtifact@v0.1.0
-        if: ${{ github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
+      # Trivy scan
+      - name: Trivy - Copy JAR to temp
+        shell: bash
+        if: inputs.shadowJar == true
+        run: |
+          mkdir -p trivy-scan
+          find -type f -wholename '*/build/libs/*.jar' -exec cp "{}" trivy-scan  \;
+          wget https://raw.githubusercontent.com/kestra-io/actions/refs/heads/main/.github/workflows/trivy.tpl  -O /tmp/trivy.tpl
+
+      - name: Trivy - Run Trivy scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        id: trivy
+        if: inputs.shadowJar == true
         with:
-          comment-mode: 'CreateOrUpdate'
-          handlebars-template: | 
-            {{#each artifacts}}
-            [{{badge "Download" "8405FF"}}]({{../workflowRunUrl}}/artifacts/{{id}}) [{{badge "Logs" "8405FF"}}]({{../workflowRunUrl}}) 
-            **{{pretty-size size_in_bytes}}** (updated: *{{pretty-date updated_at}}*, expiration: *{{pretty-date expires_at}}*) 
-            {{/each}}
+          scan-type: "rootfs"
+          scan-ref: trivy-scan
+          format: 'template'
+          template: "@/tmp/trivy.tpl"
+          output: "trivy-result.md"
+
+      - name: Trivy - Read results
+        id: read_trivy
+        if: inputs.shadowJar == true
+        uses: andstor/file-reader-action@v1
+        with:
+          path: "trivy-result.md"
 
       # GitHub Release
       - name: Create GitHub release
@@ -148,6 +164,31 @@ jobs:
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
 
       # Test results
+      - name: Test - Publish Test Results
+        id: junit-report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+          require_tests: 'false'
+          include_time_in_summary: 'true'
+          check_name: 'Gradle Test Results'
+          comment: 'true'
+
+      # Test results
+      - name: Test - Publish Full Test Results
+        id: junit-report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+          require_tests: 'false'
+          include_time_in_summary: 'true'
+          check_name: 'Gradle Full Test Results'
+          comment: 'false'
+          detailed_summary: 'true'
+          check_annotations: 'false'
+
       - name: Test - Publish Test Results
         uses: dorny/test-reporter@v1
         if: always()
@@ -161,6 +202,25 @@ jobs:
           list-tests: 'failed'
           fail-on-error: 'false'
 
+
+      # Comment PR with artifacts & Trivy results
+      - name: Artifacts - Comment pull request
+        uses: bitonality/PRtifact@v0.1.0
+        if: ${{ github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
+        with:
+          comment-mode: 'CreateOrUpdate'
+          handlebars-template: |
+            ### Artifacts
+            {{#each artifacts}}
+            [{{badge "Download JAR" "8405FF"}}]({{../workflowRunUrl}}/artifacts/{{id}}) 
+            **{{pretty-size size_in_bytes}}** (updated: *{{pretty-date updated_at}}*, expiration: *{{pretty-date expires_at}}*) 
+            {{/each}}
+            --- 
+            ${{ steps.outputs.junit-report.summary }}
+            ---
+            ${{ steps.outputs.junit-report.detailed_summary }}
+            ---
+            ${{ steps.outputs.junit-report.detailed_summary }}
       # GCP
       - name: GCP - Auth with unit test account
         id: auth
