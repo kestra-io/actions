@@ -1,0 +1,30 @@
+name: Comment Update
+description: Create or update a comment in a pull request
+
+runs:
+  using: node20
+  main: dist/index.js
+
+inputs:
+  who-to-greet: # id of input
+    description: Who to greet
+    required: true
+    default: World
+
+  github-token:
+    description: The github token to use
+    required: true
+
+  title:
+    description: The sections title
+    required: true
+
+  template:
+    description: The handlebars template to use for the comment
+    required: true
+
+
+outputs:
+  comment-id:
+    description: The comment id that was created or updated
+

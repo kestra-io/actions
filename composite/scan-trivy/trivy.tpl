@@ -10,13 +10,4 @@
 | [{{ .VulnerabilityID }}]({{ .PrimaryURL }}) | {{ .Severity }} | {{ .PkgName }} | {{ .InstalledVersion }} | {{ .FixedVersion }} |
 {{- end }}
 {{ end }}
-
-
-<details>
-<summary>Full JSON Report</summary>
-
-```json
-{{ . | toPrettyJson }}
-```
-</details>
-{{end}}
+{{ end }}

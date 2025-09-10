@@ -1,0 +1,43 @@
+name: 'Trivy Scan'
+description: 'Scan with trivy and output result'
+
+inputs:
+  scan-type:
+    description: 'Does we push to private maven registry'
+    required: false
+    default: "rootfs"
+
+  scan-path:
+    description: 'The file mask that will be scanned'
+    required: false
+    default: "*/build/libs/*.jar"
+
+outputs:
+    result:
+      description: "The trivy result"
+      value: ${{ steps.read-trivy.outputs.content }}
+
+runs:
+  using: composite
+  steps:
+    - name: Trivy - Copy template and files to scan
+      shell: bash
+      run: |
+        mkdir -p /tmp/trivy-scan
+        find -type f -wholename '${{ inputs.scan-ref }}' -exec cp "{}" /tmp/trivy-scan  \;
+
+    - name: Trivy - Run Trivy scanner
+      uses: aquasecurity/trivy-action@0.28.0
+      id: trivy
+      with:
+        scan-type: ${{ inputs.scan-type }}
+        scan-ref: /tmp/trivy-scan
+        format: 'template'
+        template: "@${{ github.workspace }}/composite/scan-trivy/trivy.tpl"
+        output: "trivy-result.md"
+
+    - name: Trivy - Read results
+      id: read-trivy
+      uses: andstor/file-reader-action@v1
+      with:
+        path: "trivy-result.md"
