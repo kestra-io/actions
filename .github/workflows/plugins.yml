@@ -17,8 +17,8 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
-      shadowJar:
-        description: "Does we generate a shadowJar"
+      generate-shadowjar:
+        description: "Does we generate a shadow jar"
         required: false
         type: boolean
         default: true
@@ -48,7 +48,6 @@ jobs:
           repository: kestra-io/actions
           sparse-checkout-cone-mode: true
           path: .actions
-          ref: "feat/plugin-actions" # TODO: change to main
           sparse-checkout: |
             composite
             actions
@@ -61,15 +60,14 @@ jobs:
       # Setup build
       - name: Setup - Build
         uses: ./composite/setup-build
-        id: build
         with:
           java-enabled: true
 
-      # Setup for unit test
-      - name: Setup - Secret to Env
-        uses: oNaiPs/secrets-to-env-action@v1
-        with:
-          secrets: ${{ toJSON(secrets) }}
+      # USED ? Setup for unit test
+      # - name: Setup - Secret to Env
+      #   uses: oNaiPs/secrets-to-env-action@v1
+      #   with:
+      #     secrets: ${{ toJSON(secrets) }}
 
       # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
       - name: GCP - Auth with github service account
@@ -92,7 +90,7 @@ jobs:
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check ${{ inputs.shadowJar == true && 'shadowJar' || ''  }} --parallel
+        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -103,22 +101,22 @@ jobs:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
 
-      # Upload plugins as artifacts
-      - name: Artifacts - Upload JAR
-        uses: actions/upload-artifact@v4
+      # Upload
+      - name: Publish - Jar artifacts
+        uses: ./composite/jar-upload
+        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
         with:
-          name: jar
-          path: "**/build/libs/*.jar"
-          retention-days: 7
+          secrets: ${{ toJSON(secrets) }}
 
       # Trivy scan
-      - name: Trivy
-        id: trivy
-        if: inputs.shadowJar == true
+      - name: Trivy - Scan jar
+        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
         uses: ./composite/scan-trivy
+        with:
+          secrets: ${{ toJSON(secrets) }}
 
       # GitHub Release
-      - name: Create GitHub release
+      - name: GitHub - Create release
         uses: ./composite/github-release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
@@ -131,31 +129,12 @@ jobs:
         if: ${{ !cancelled() && inputs.skip-test == false }}
         with:
           secrets: ${{ toJSON(secrets) }}
-          skip-test: ${{ inputs.skip-test }}
-
-      # Comment PR with artifacts & Trivy results
-      - name: Artifacts - Comment pull request
-        uses: ./actions/comment-update
-        if: ${{ always() && (github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name) }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Super title"
-          template: |
-            ## Artifacts
-            | Name | Size | Updated | Expiration |
-            | :--- | :--- | :--- | :--- |
-            {{#each artifacts }}
-            | [![{{ name }}](https://img.shields.io/badge/Download%20{{ name }}-8405FF?style=for-the-badge)]({{ download_url }}) | {{ prettySize size_in_bytes }} | {{ prettyDate updated_at }} | {{ prettyDate expires_at }} |
-            {{/each }}
-            
-            ${{ steps.trivy.outputs.result }}
-
 
       # Slack on error
-      - name: Slack - Notify failed CI
+      - name: Slack - Notify on failure
         id: send-ci-failed
         if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status == 'failure'
-        uses: ./composite/send-ci-failed
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        uses: ./composite/slack-status
+        with:
+          channel: "C09FE0QCN2E"
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}

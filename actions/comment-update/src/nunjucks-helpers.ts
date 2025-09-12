@@ -9,7 +9,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('default', {
     timeZoneName: 'short'
 })
 
-export function humanReadableSize(bytes) {
+export function humanReadableSize(bytes: number) :string {
     if (bytes === 0) {
         return '0 Bytes'
     }
@@ -20,16 +20,8 @@ export function humanReadableSize(bytes) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)).toString()} ${sizes[i]}`
 }
 
-export function humanReadableDate(dateString) {
-    const date = Date.parse(dateString)
+export function humanReadableDate(d: string) :string {
+    const date = Date.parse(d)
     return dateTimeFormat.format(date)
-}
-
-export function toJson(object) {
-    return JSON.stringify(object);
-}
-
-export function fromJson(object) {
-    return JSON.parse(object);
 }
 

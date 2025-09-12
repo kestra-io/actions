@@ -6,11 +6,6 @@ runs:
   main: dist/index.js
 
 inputs:
-  who-to-greet: # id of input
-    description: Who to greet
-    required: true
-    default: World
-
   github-token:
     description: The github token to use
     required: true
@@ -23,6 +18,19 @@ inputs:
     description: The handlebars template to use for the comment
     required: true
 
+  fetch-artifact:
+    description: Does we fetch the artifact from the workflow run
+    required: false
+    default: 'false'
+
+  add-summary:
+    description: Does we add a summary section
+    required: false
+    default: 'true'
+
+  files:
+    description: The files to inject as data in the template
+    required: false
 
 outputs:
   comment-id:

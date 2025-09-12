@@ -2,11 +2,6 @@ name: 'Report Java'
 description: 'Send Allure, Jacoco, Sonar and Codecov reports'
 
 inputs:
-  skip-test:
-    description: "Does we need to skip test"
-    required: true
-    type: boolean
-
   secrets:
     description: 'Secrets passed as toJSON'
     required: true
@@ -14,19 +9,36 @@ inputs:
 runs:
   using: composite
   steps:
-    # GCP
     - name: Test - Publish Test Results
-      uses: dorny/test-reporter@v1
+      uses: mikepenz/action-junit-report@v5
       if: always()
+      id: test-report
       continue-on-error: true
+      env:
+        NODE_OPTIONS: "--max-old-space-size=4096"
       with:
-        name: Java Tests Report
-        reporter: java-junit
-        path: '**/build/test-results/test/TEST-*.xml'
-        only-summary: 'true'
-        list-suites: 'failed'
-        list-tests: 'failed'
-        fail-on-error: 'false'
+        check_name: Java Tests Report
+        report_paths: '**/build/test-results/test/TEST-*.xml'
+        fail_on_failure: 'false'
+        summary: 'true'
+        detailed_summary: 'true'
+        require_tests: 'false'
+        include_time_in_summary: 'true'
+        job_summary: 'false'
+        verbose_summary: 'false'
+        simplified_summary: 'true'
+
+    - name: Test - Comment pull request
+      uses: ./actions/comment-update
+      if: ${{ always() && (github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name) }}
+      with:
+        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        title: "🧪 Java Unit Tests"
+        template: |
+          ${{ steps.test-report.outputs.summary }}
+          {% if ${{ steps.test-report.outputs.failed }} > 0 %}
+          ${{ steps.test-report.outputs.detailed_summary }}
+          {% endif %}
 
     # GCP
     - name: GCP - Auth with unit test account
@@ -58,6 +70,7 @@ runs:
         prefix: ${{ format('{0}/{1}', github.repository, 'allure/java') }}
         copyLatest: true
         ignoreMissingResults: true
+        collapseSummary: 'true'
 
     # Jacoco
     - name: Jacoco - Copy reports

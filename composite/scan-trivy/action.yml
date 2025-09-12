@@ -12,10 +12,9 @@ inputs:
     required: false
     default: "*/build/libs/*.jar"
 
-outputs:
-    result:
-      description: "The trivy result"
-      value: ${{ steps.read-trivy.outputs.content }}
+  secrets:
+    description: 'Secrets passed as toJSON'
+    required: true
 
 runs:
   using: composite
@@ -24,7 +23,8 @@ runs:
       shell: bash
       run: |
         mkdir -p /tmp/trivy-scan
-        find -type f -wholename '${{ inputs.scan-ref }}' -exec cp "{}" /tmp/trivy-scan  \;
+        find -type f -wholename '${{ inputs.scan-path }}' -exec cp "{}" /tmp/trivy-scan  \;
+        ls -lh /tmp/trivy-scan/
 
     - name: Trivy - Run Trivy scanner
       uses: aquasecurity/trivy-action@0.28.0
@@ -32,12 +32,27 @@ runs:
       with:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: /tmp/trivy-scan
-        format: 'template'
-        template: "@${{ github.workspace }}/composite/scan-trivy/trivy.tpl"
-        output: "trivy-result.md"
+        format: 'json'
+        output: "${{ github.workspace }}/trivy-result.json"
 
-    - name: Trivy - Read results
-      id: read-trivy
-      uses: andstor/file-reader-action@v1
+    - name: Artifacts - Comment pull request
+      uses: ./actions/comment-update
       with:
-        path: "trivy-result.md"
+        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        title: "🛡 Trivy"
+        files: |
+          ${{ github.workspace }}/trivy-result.json
+        template: |
+          {% if files[0] and files[0].Results | length > 0 %}
+          {%- for suite in files[0].Results %}
+          {% if suite.Vulnerabilities | length > 0 %}
+          ####  Vulnerability in: `{{ suite.Target }}`
+
+          | Vulnerability | Severity | Package | Installed Version | Fixed Version |
+          | :--- | :--- | :--- | :--- | :--- |
+          {%- for vulnerability in suite.Vulnerabilities %}
+          | [{{ vulnerability.VulnerabilityID }}]({{ vulnerability.PrimaryURL }}) | {{ vulnerability.Severity }} | {{ vulnerability.PkgName }} | {{ vulnerability.InstalledVersion }} | {{ vulnerability.FixedVersion }} |          
+          {%- endfor %}
+          {% endif %}
+          {%- endfor %}
+          {% endif %}
