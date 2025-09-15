@@ -86,6 +86,8 @@ jobs:
         if: ${{ inputs.skip-test == false }}
         shell: bash
         run: ./gradlew check ${{ inputs.shadowJar == true && 'shadowJar' || ''  }} --parallel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       # Clean Up - Pre-release
       - name: Clean Up - Pre-release
