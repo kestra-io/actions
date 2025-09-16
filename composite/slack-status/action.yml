@@ -4,7 +4,8 @@ description: 'This action intends to send the result of a CI build to a Slack ch
 inputs:
   channel:
     description: 'The slack channel'
-    required: true
+    required: false
+    default: 'C07FGC1FG0N'
 
   webhook-url:
     description: 'The slack incoming webhook url'
