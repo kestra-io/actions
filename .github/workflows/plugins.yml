@@ -63,11 +63,11 @@ jobs:
         with:
           java-enabled: true
 
-      # USED ? Setup for unit test
-      # - name: Setup - Secret to Env
-      #   uses: oNaiPs/secrets-to-env-action@v1
-      #   with:
-      #     secrets: ${{ toJSON(secrets) }}
+      # Setup for setup-unit.sh, injecting secrets as env variables
+      - name: Setup - Secret to Env
+        uses: oNaiPs/secrets-to-env-action@v1
+        with:
+          secrets: ${{ toJSON(secrets) }}
 
       # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
       - name: GCP - Auth with github service account
