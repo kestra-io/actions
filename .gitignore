@@ -17,3 +17,9 @@ out/
 
 ### Docker
 /.gcp-service-account.json
+
+
+## Actions
+
+**/node_modules/*
+**/coverage/**

@@ -1,0 +1,116 @@
+name: 'Report Java'
+description: 'Send Allure, Jacoco, Sonar and Codecov reports'
+
+inputs:
+  secrets:
+    description: 'Secrets passed as toJSON'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Test - Publish Test Results
+      uses: mikepenz/action-junit-report@v5
+      if: always()
+      id: test-report
+      continue-on-error: true
+      env:
+        NODE_OPTIONS: "--max-old-space-size=4096"
+      with:
+        check_name: Java Tests Report
+        report_paths: '**/build/test-results/test/TEST-*.xml'
+        fail_on_failure: 'false'
+        summary: 'true'
+        detailed_summary: 'true'
+        require_tests: 'false'
+        include_time_in_summary: 'true'
+        job_summary: 'false'
+        verbose_summary: 'false'
+        simplified_summary: 'true'
+
+    - name: Test - Comment pull request
+      uses: ./actions/comment-update
+      if: ${{ always() && (github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name) }}
+      with:
+        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        title: "🧪 Java Unit Tests"
+        template: |
+          ${{ steps.test-report.outputs.summary }}
+          {% if ${{ steps.test-report.outputs.failed }} > 0 %}
+          ${{ steps.test-report.outputs.detailed_summary }}
+          {% endif %}
+
+    # GCP
+    - name: GCP - Auth with unit test account
+      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT }}'
+
+    - name: GCP - Setup Cloud SDK
+      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      uses: 'google-github-actions/setup-gcloud@v2'
+
+    # Allure check
+    - name: Allure - Generate slug variables
+      uses: rlespinasse/github-slug-action@v4
+
+    - name: Allure - Publish report
+      uses: andrcuns/allure-publish-action@v2.6.0
+      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      continue-on-error: true
+      env:
+        GITHUB_AUTH_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        JAVA_HOME: /usr/lib/jvm/default-jvm/
+      with:
+        storageType: gcs
+        resultsGlob: "**/build/allure-results"
+        bucket: internal-kestra-host
+        baseUrl: "https://internal.dev.kestra.io"
+        prefix: ${{ format('{0}/{1}', github.repository, 'allure/java') }}
+        copyLatest: true
+        ignoreMissingResults: true
+        collapseSummary: 'true'
+
+    # Jacoco
+    - name: Jacoco - Copy reports
+      shell: bash
+      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      continue-on-error: true
+      run: |
+        if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
+          mv build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
+          mv build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/jacocoTestReport.xml
+        fi
+        
+        if [ -d build/reports/jacoco/test/ ]; then
+          gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
+        fi
+
+    # Codecov
+    - name: Codecov - Upload coverage reports
+      uses: codecov/codecov-action@v5
+      continue-on-error: true
+      with:
+        token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
+
+    - name: Codecov - Upload test results
+      uses: codecov/test-results-action@v1
+      continue-on-error: true
+      with:
+        token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
+
+    # Gradle dependency
+    - name: Java - Gradle dependency graph
+      if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+      uses: gradle/actions/dependency-submission@v4
+
+    # Sonar
+    - name: Sonar - Analyze with Sonar
+      if: ${{ env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') }}
+      env:
+        GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_AUTH_TOKEN }}
+        SONAR_TOKEN: ${{ fromJSON(inputs.secrets).SONAR_TOKEN }}
+      shell: bash
+      continue-on-error: true
+      run: ./gradlew sonar
