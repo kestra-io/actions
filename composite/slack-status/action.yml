@@ -24,7 +24,7 @@ runs:
         username: GitHub Actions
         icon_emoji: ':github-actions:'
         channel: "${{ inputs.channel }}"
-        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.job }}` ended with status `${{ job.status }}`" 
+        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.job }}* ended with status `${{ job.status }}`" 
         attachments:
           - color: "${{ job.status == 'success' && '#388E3C' || '#D32F2F' }}"
             blocks:
