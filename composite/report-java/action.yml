@@ -42,22 +42,23 @@ runs:
 
     # GCP
     - name: GCP - Auth with unit test account
-      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
       uses: 'google-github-actions/auth@v2'
       with:
         credentials_json: '${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT }}'
 
     - name: GCP - Setup Cloud SDK
-      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       uses: 'google-github-actions/setup-gcloud@v2'
 
     # Allure check
     - name: Allure - Generate slug variables
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       uses: rlespinasse/github-slug-action@v4
 
     - name: Allure - Publish report
       uses: andrcuns/allure-publish-action@v2.6.0
-      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       continue-on-error: true
       env:
         GITHUB_AUTH_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
@@ -75,7 +76,7 @@ runs:
     # Jacoco
     - name: Jacoco - Copy reports
       shell: bash
-      if: ${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       continue-on-error: true
       run: |
         if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
@@ -102,12 +103,12 @@ runs:
 
     # Gradle dependency
     - name: Java - Gradle dependency graph
-      if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+      if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
       uses: gradle/actions/dependency-submission@v4
 
     # Sonar
     - name: Sonar - Analyze with Sonar
-      if: ${{ env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') }}
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && env.SONAR_TOKEN != '' }}
       env:
         GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_AUTH_TOKEN }}
         SONAR_TOKEN: ${{ fromJSON(inputs.secrets).SONAR_TOKEN }}
