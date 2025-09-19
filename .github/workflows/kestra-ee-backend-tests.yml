@@ -1,6 +1,7 @@
 name: Backend tests
 
 on:
+  # TODO remove all dispatch, it has no sense. Just for dev
   workflow_dispatch:
 
   workflow_call:
