@@ -13,6 +13,10 @@ inputs:
   nextVersion:
     required: false
     description: "Next version (e.g. 1.4.0-SNAPSHOT)"
+  dry-run:
+    required: false
+    default: "false"
+    description: "If true, simulate the release without pushing or tagging"
 
 runs:
   using: composite
@@ -32,4 +36,4 @@ runs:
       shell: bash
       run: |
         chmod +x ${{ github.action_path }}/release.sh
-        ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}"
+        ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.dry-run }}"
