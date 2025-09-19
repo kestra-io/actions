@@ -41,6 +41,22 @@ RELEASE_VERSION=$1
 NEXT_VERSION=${2:-}
 DRY_RUN=${3:-false}
 
+# Determine release type
+if [[ -z "$NEXT_VERSION" ]]; then
+  RELEASE_TYPE="PATCH"
+elif [[ "$RELEASE_VERSION" =~ ^[0-9]+\.0\.0$ ]]; then
+  RELEASE_TYPE="MAJOR"
+elif [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[1-9][0-9]*\.0$ ]]; then
+  RELEASE_TYPE="MINOR"
+else
+  RELEASE_TYPE="UNKNOWN"
+fi
+
+if [[ "$RELEASE_TYPE" == "UNKNOWN" ]]; then
+  echo "❌ Unable to determine release type from version '$RELEASE_VERSION' with next version '$NEXT_VERSION'"
+  exit 1
+fi
+
 echo "📦 Release Version: $RELEASE_VERSION"
 echo "📦 Next Version: $NEXT_VERSION"
 echo "🧪 Dry Run: $DRY_RUN"
@@ -96,7 +112,7 @@ if [[ -z "$NEXT_VERSION" ]]; then
 
   echo "✅ Patch release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
 else
-  echo "🚀 Detected MAJOR or MINOR release mode on branch $DEFAULT_BRANCH"
+  echo "🚀 Detected $RELEASE_TYPE release mode on branch $DEFAULT_BRANCH"
 
   # Checkout and pull the default branch
   git checkout "$DEFAULT_BRANCH"
@@ -147,5 +163,5 @@ else
     git push origin "$DEFAULT_BRANCH"
   fi
 
-  echo "✅ MAJOR or MINOR release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
+  echo "✅ $RELEASE_TYPE release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
 fi
