@@ -19,7 +19,7 @@
 # - Pushes the commit and the tag
 #
 # USAGE:
-#   ./release.sh <releaseVersion> [nextVersion]
+#   ./release.sh <releaseVersion> [nextVersion] [dry-run]
 #
 # EXAMPLES:
 #   # MAJOR release (with next version)
@@ -30,21 +30,28 @@
 #
 #   # PATCH release (no next version)
 #   ./release.sh 1.3.2
+#
+#   # DRY RUN
+#   ./release.sh 1.3.2 "" true
 # ==============================================================================
 
 set -euo pipefail
 
 RELEASE_VERSION=$1
 NEXT_VERSION=${2:-}
+DRY_RUN=${3:-false}
 
 echo "📦 Release Version: $RELEASE_VERSION"
 echo "📦 Next Version: $NEXT_VERSION"
+echo "🧪 Dry Run: $DRY_RUN"
 
 # Tag to be created
 TAG="v${RELEASE_VERSION}"
 
 # Extract X.Y for the maintenance branch
 BASE_VERSION=$(echo "$RELEASE_VERSION" | grep -Eo '^[0-9]+\.[0-9]+')
+
+# Branch to use for PATCH releases
 RELEASE_BRANCH="releases/v${BASE_VERSION}.x"
 
 # Detect the default branch (main or master)
@@ -76,14 +83,18 @@ if [[ -z "$NEXT_VERSION" ]]; then
   git add gradle.properties
   git commit -m "chore(version): update to version '${RELEASE_VERSION}'"
 
+  # Create the tag
   echo "🏷 Creating annotated tag: $TAG"
-  git tag -a "$TAG" -m "$TAG"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Skipping: git tag -a $TAG -m \"$TAG\""
+    echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH && git push origin $TAG"
+  else
+    git tag -a "$TAG" -m "$TAG"
+    git push origin "$RELEASE_BRANCH"
+    git push origin "$TAG"
+  fi
 
-  echo "📤 Pushing commit and tag"
-  git push origin "$RELEASE_BRANCH"
-  git push origin "$TAG"
-
-  echo "✅ Patch release $RELEASE_VERSION completed!"
+  echo "✅ Patch release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
 else
   echo "🚀 Detected MAJOR or MINOR release mode on branch $DEFAULT_BRANCH"
 
@@ -94,7 +105,11 @@ else
   # Create the release branch if it doesn't exist yet
   if ! git ls-remote --heads origin "$RELEASE_BRANCH" &>/dev/null; then
     git checkout -b "$RELEASE_BRANCH"
-    git push origin "$RELEASE_BRANCH"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
+    else
+      git push origin "$RELEASE_BRANCH"
+    fi
   else
     echo "ℹ️ Branch '$RELEASE_BRANCH' already exists."
   fi
@@ -105,11 +120,15 @@ else
   echo "🧪 Running Gradle release..."
   echo "ℹ️ Note: './gradlew release' will automatically create and push the Git tag '$TAG'"
 
-  # Perform the Gradle release (this creates and pushes the tag)
-  ./gradlew release \
-    -Prelease.useAutomaticVersion=true \
-    -Prelease.releaseVersion="$RELEASE_VERSION" \
-    -Prelease.newVersion="$NEXT_VERSION"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Skipping: ./gradlew release -Prelease.useAutomaticVersion=true -Prelease.releaseVersion=\"$RELEASE_VERSION\" -Prelease.newVersion=\"$NEXT_VERSION\""
+  else
+    # Perform the Gradle release (this creates and pushes the tag)
+    ./gradlew release \
+      -Prelease.useAutomaticVersion=true \
+      -Prelease.releaseVersion="$RELEASE_VERSION" \
+      -Prelease.newVersion="$NEXT_VERSION"
+  fi
 
   # Update gradle.properties with the next snapshot version
   echo "📝 Updating gradle.properties with next snapshot version: $NEXT_VERSION"
@@ -117,7 +136,12 @@ else
 
   git add gradle.properties
   git commit -m "chore(version): prepare for next development iteration (${NEXT_VERSION})"
-  git push origin "$DEFAULT_BRANCH"
 
-  echo "✅ MAJOR or MINOR release $RELEASE_VERSION completed!"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Skipping: git push origin $DEFAULT_BRANCH"
+  else
+    git push origin "$DEFAULT_BRANCH"
+  fi
+
+  echo "✅ MAJOR or MINOR release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
 fi
