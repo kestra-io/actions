@@ -64,7 +64,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export KESTRA_PWD=$(pwd) && sh -c 'cd ./kestra/dev-tools/kestra-devtools && npm ci && npm run build && node dist/kestra-devtools-cli.cjs generateTestReportSummary --only-errors --ci $KESTRA_PWD'
+          npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
 
       # Test results
       - name: Test - Publish Test Results
