@@ -50,27 +50,18 @@ runs:
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       uses: 'google-github-actions/setup-gcloud@v2'
 
-    # Allure check
-    - name: Allure - Generate slug variables
-      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
-      uses: rlespinasse/github-slug-action@v4
-
-    - name: Allure - Publish report
-      uses: andrcuns/allure-publish-action@v2.6.0
+    # Allure
+    - name: Allure - Generate reports
+      shell: bash
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       continue-on-error: true
-      env:
-        GITHUB_AUTH_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
-        JAVA_HOME: /usr/lib/jvm/default-jvm/
-      with:
-        storageType: gcs
-        resultsGlob: "**/build/allure-results"
-        bucket: internal-kestra-host
-        baseUrl: "https://internal.dev.kestra.io"
-        prefix: ${{ format('{0}/{1}', github.repository, 'allure/java') }}
-        copyLatest: true
-        ignoreMissingResults: true
-        collapseSummary: 'true'
+      run: |
+        gcloud storage cp -r gs://internal-kestra-host/${{ github.repository }}/allure/java/history build/allure-results/
+        docker run --rm -v $PWD:/work tobix/allure-cli generate /work/build/allure-results/ -o /work/build/reports/allure --clean 
+        
+        if [ -d build/reports/allure/ ]; then
+          gsutil -m rsync -d -r  build/reports/allure/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'allure/java') }}
+        fi
 
     # Jacoco
     - name: Jacoco - Copy reports
