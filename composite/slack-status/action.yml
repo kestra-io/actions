@@ -42,16 +42,16 @@ runs:
                       type: plain_text
                       text: ":wood: Check Run"
                       emoji: true
-                    url: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}/job/${{ job.check_run_id }}
+                    url: "${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}/job/${{ job.check_run_id }}"
                     action_id: action
                   - type: button
                     text:
                       type: plain_text
-                      text: ":twisted_rightwards_arrows: ${{ github.event.pull_request.html_url && format('Pull request #{0}', github.event.pull_request.number) || 'Commit' }}"
+                      text: ":twisted_rightwards_arrows: ${{ github.event.pull_request.html_url && format('Pull request #{0}', github.event.pull_request.number) || (github.event_name == 'schedule' && 'Schedule' || 'Commit') }}"
                       emoji: true
-                    url: ${{ github.event.pull_request.html_url || github.event.head_commit.url }}
+                    url: "${{ github.event.pull_request.html_url || github.event.head_commit.url || github.event.repository.html_url }}"
                     action_id: source
               - type: context
                 elements:
                   - type: mrkdwn
-                    text: "On ${{ github.event_name }} ${{ github.event.sender.login && format('from <{0}|{1}>,', github.event.sender.html_url, github.event.sender.login) || ''}} with branch `${{ github.event.pull_request.head.ref || github.ref_name }}`"
+                    text: "On ${{ github.event_name }} ${{ github.event.sender.login && format('from <{0}|{1}> ', github.event.sender.html_url, github.event.sender.login) || ''}}with branch `${{ github.event.pull_request.head.ref || github.ref_name }}`"
