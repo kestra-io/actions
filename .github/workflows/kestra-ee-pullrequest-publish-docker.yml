@@ -31,7 +31,7 @@ jobs:
           path: kestra-ee
 
       - name: Docker init
-        uses: kestra-io/.github/actions/kestra-ee-docker-init
+        uses: kestra-io/actions/.github/actions/kestra-ee-docker-init
 
       # Docker Login
       - name: Docker - Login to GitHub registry
