@@ -54,4 +54,4 @@ runs:
               - type: context
                 elements:
                   - type: mrkdwn
-                    text: "On ${{ github.event_name }} ${{ github.event.sender.login && format('from <{0}|{1}> ', github.event.sender.html_url, github.event.sender.login) || ''}}with branch `${{ github.event.pull_request.head.ref || github.ref_name }}`"
+                    text: "On ${{ github.event_name }} attempt #${{ github.run_attempt }} ${{ github.event.sender.login && format('from <{0}|{1}> ', github.event.sender.html_url, github.event.sender.login) || ''}}with branch `${{ github.event.pull_request.head.ref || github.ref_name }}`"
