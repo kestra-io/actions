@@ -9,14 +9,14 @@ description: "Release logic for Kestra plugins (MAJOR, MINOR, PATCH)"
 inputs:
   releaseVersion:
     required: true
-    description: "Release version (e.g. 1.3.0)"
+    description: "Release version (e.g. 1.0.0, 1.3.0 or 1.4.2)"
   nextVersion:
     required: false
-    description: "Next version (e.g. 1.4.0-SNAPSHOT)"
+    description: "Next version (e.g. 1.4.0-SNAPSHOT). If omitted, a PATCH release is performed."
   dryRun:
     required: false
     default: "false"
-    description: "If true, simulate the release without pushing or tagging"
+    description: "If true, simulate the release without pushing or tagging and log the actions"
 
 runs:
   using: composite
