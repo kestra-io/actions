@@ -102,8 +102,12 @@ else
   git checkout "$DEFAULT_BRANCH"
   git pull origin "$DEFAULT_BRANCH"
 
-  # Create the release branch if it doesn't exist yet
-  if ! git ls-remote --heads origin "$RELEASE_BRANCH" &>/dev/null; then
+  # Ensure remote branch list is fresh
+  git fetch origin
+
+  # Check if remote release branch exists
+  if ! git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
+    echo "🌱 Creating release branch: $RELEASE_BRANCH"
     git checkout -b "$RELEASE_BRANCH"
     if [[ "$DRY_RUN" == "true" ]]; then
       echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
@@ -111,7 +115,7 @@ else
       git push origin "$RELEASE_BRANCH"
     fi
   else
-    echo "ℹ️ Branch '$RELEASE_BRANCH' already exists."
+    echo "ℹ️ Branch '$RELEASE_BRANCH' already exists on remote."
   fi
 
   # Return to the default branch for the actual release
