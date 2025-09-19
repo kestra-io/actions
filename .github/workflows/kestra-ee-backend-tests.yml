@@ -1,6 +1,8 @@
 name: Backend tests
 
 on:
+  workflow_dispatch:
+
   workflow_call:
     secrets:
       SLACK_WEBHOOK_URL:
