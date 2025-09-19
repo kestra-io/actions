@@ -17,7 +17,7 @@ runs:
         retention-days: 7
 
     - name: Artifacts - Comment pull request
-      uses: ./actions/comment-update
+      uses: kestra-io/actions/actions/comment-update@main
       with:
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
         title: "📦 Artifacts"

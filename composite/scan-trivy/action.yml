@@ -36,7 +36,7 @@ runs:
         output: "${{ github.workspace }}/trivy-result.json"
 
     - name: Artifacts - Comment pull request
-      uses: ./actions/comment-update
+      uses: kestra-io/actions/actions/comment-update@main
       with:
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🛡 Trivy"
