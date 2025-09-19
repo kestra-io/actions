@@ -55,7 +55,7 @@ BASE_VERSION=$(echo "$RELEASE_VERSION" | grep -Eo '^[0-9]+\.[0-9]+')
 RELEASE_BRANCH="releases/v${BASE_VERSION}.x"
 
 # Detect the default branch (main or master)
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d ':' -f2 | tr -d ' ')
 
 # Check if the tag already exists
 if git rev-parse "$TAG" >/dev/null 2>&1; then
