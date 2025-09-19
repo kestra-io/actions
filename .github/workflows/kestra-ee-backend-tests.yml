@@ -42,8 +42,10 @@ jobs:
       - name: Checkout - OSS
         uses: ./.github/actions/kestra-ee-checkout
 
-      - name: Gradle - Init
-        uses: ./kestra-ee/.github/actions/gradle-init
+      - name: setup build
+        uses: ./composite/setup-build
+        with:
+          java-enabled: true
 
       # Services
       - name: Setup - Start docker compose

@@ -23,8 +23,10 @@ jobs:
       - name: Checkout - OSS
         uses: ./.github/actions/kestra-ee-checkout
 
-      - name: Npm - Init
-        uses: ./kestra-ee/.github/actions/npm-init
+      - name: setup build
+        uses: ./composite/setup-build
+        with:
+          node-enabled: true
 
       - name: Npm - Install
         shell: bash

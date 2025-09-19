@@ -39,6 +39,9 @@ jobs:
 
       - name: setup init
         uses: ./composite/setup-build
+        with:
+          java-enabled: 'true'
+          node-enabled: 'true'
 
       # Shadow Jar
       - name: Gradle - Build jars
