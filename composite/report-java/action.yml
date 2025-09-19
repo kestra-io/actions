@@ -2,6 +2,10 @@ name: 'Report Java'
 description: 'Send Allure, Jacoco, Sonar and Codecov reports'
 
 inputs:
+  run-sonar:
+    description: 'Run Sonar analysis'
+    required: false
+    default: 'true'
   secrets:
     description: 'Secrets passed as toJSON'
     required: true
@@ -100,7 +104,7 @@ runs:
 
     # Sonar
     - name: Sonar - Analyze with Sonar
-      if: ${{ job.status == 'success' && env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+      if: ${{ job.status == 'success' && inputs.run-sonar == 'true' && env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       env:
         GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_AUTH_TOKEN }}
         SONAR_TOKEN: ${{ fromJSON(inputs.secrets).SONAR_TOKEN }}
