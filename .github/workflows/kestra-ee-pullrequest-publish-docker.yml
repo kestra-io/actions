@@ -10,7 +10,7 @@ jobs:
   # ********************************************************************************************************************
   build-artifacts:
     name: Build Artifacts
-    uses: ./.github/workflows/workflow-build-artifacts.yml
+    uses: ./.github/workflows/kestra-ee-build-artifacts.yml
     secrets:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
