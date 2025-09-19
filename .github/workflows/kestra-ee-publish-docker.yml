@@ -80,7 +80,7 @@ jobs:
           path: kestra-ee
 
       - name: Docker init
-        uses: ./kestra-ee/.github/actions/docker-init
+        uses: ./.github/actions/kestra-ee-docker-init
 
       # Google Auth
       - name: GCP - Auth with github service account
