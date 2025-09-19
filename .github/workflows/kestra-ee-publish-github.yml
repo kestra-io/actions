@@ -1,0 +1,68 @@
+name: Github - Release
+
+on:
+  workflow_call:
+    secrets:
+      GH_PERSONAL_TOKEN:
+        description: "The Github personal token."
+        required: true
+      SLACK_RELEASES_WEBHOOK_URL:
+        description: "The Slack webhook URL."
+        required: true
+
+jobs:
+  release:
+    name: Github - Release
+    runs-on: kestra-private-standard
+    steps:
+      # Check out
+      - name: Checkout - Repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      # Download Exec
+      # Must be done after checkout actions
+      - name: Artifacts - Download executable
+        uses: actions/download-artifact@v5
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: exe
+          path: build/executable
+
+      - name: Check if current tag is latest
+        id: is_latest
+        run: |
+          latest_tag=$(git tag | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n1)
+          current_tag="${GITHUB_REF_NAME#v}"
+          if [ "$current_tag" = "$latest_tag" ]; then
+          echo "latest=true" >> $GITHUB_OUTPUT
+          else
+          echo "latest=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
+      # Push API Reference to website
+      - name: Push API Reference to website
+        uses: kestra-io/actions/composite/publish-api-reference@main
+        if: ${{ steps.is_latest.outputs.latest }}
+        with:
+          gh_personal_token: ${{ secrets.GH_PERSONAL_TOKEN }}
+
+      # GitHub Release
+      - name: Create GitHub release
+        uses: kestra-io/actions/composite/github-release@main
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          MAKE_LATEST: ${{ steps.is_latest.outputs.latest }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+
+      - name: Merge Release Notes
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: kestra-io/actions/composite/github-release-note-merge@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
