@@ -97,7 +97,7 @@ jobs:
       # Publish
       - name: Publish - Java
         uses: ./composite/publish-java
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}"
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.repository == github.event.pull_request.head.repo.full_name }}"
         with:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
