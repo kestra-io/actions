@@ -24,7 +24,7 @@ jobs:
           path: kestra-ee
 
       - name: Checkout - OSS
-        uses: ./kestra-ee/.github/actions/checkout
+        uses: ./.github/actions/kestra-ee-checkout
 
       - name: Npm - Init
         uses: ./kestra-ee/.github/actions/npm-init
