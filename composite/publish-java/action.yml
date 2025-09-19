@@ -26,11 +26,11 @@ runs:
     # Publish
     - name: Publish - Release package with Gradle
       shell: bash
-      if: ${{ inputs.is-private == true }}
+      if: ${{ inputs.is-private == 'true' }}
       run: ./gradlew publish
 
     - name: Publish - Release package to Maven Central
-      if: ${{ inputs.is-private == false }}
+      if: ${{ inputs.is-private == 'false' }}
       env:
         ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ fromJson(inputs.secrets).SONATYPE_USER }}
         ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ fromJson(inputs.secrets).SONATYPE_PASSWORD }}
