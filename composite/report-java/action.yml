@@ -41,23 +41,23 @@ runs:
 
     # GCP
     - name: GCP - Auth with unit test account
-      if: ${{ success() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
       uses: 'google-github-actions/auth@v2'
       with:
         credentials_json: '${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT }}'
 
     - name: GCP - Setup Cloud SDK
-      if: ${{ success() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       uses: 'google-github-actions/setup-gcloud@v2'
 
     # Allure check
     - name: Allure - Generate slug variables
-      if: ${{ success() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       uses: rlespinasse/github-slug-action@v4
 
     - name: Allure - Publish report
       uses: andrcuns/allure-publish-action@v2.6.0
-      if: ${{ success() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       continue-on-error: true
       env:
         GITHUB_AUTH_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
@@ -75,7 +75,7 @@ runs:
     # Jacoco
     - name: Jacoco - Copy reports
       shell: bash
-      if: ${{ success() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       continue-on-error: true
       run: |
         if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
@@ -90,26 +90,26 @@ runs:
     # Codecov
     - name: Codecov - Upload coverage reports
       uses: codecov/codecov-action@v5
-      if: ${{ success() }}
+      if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
         token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
 
     - name: Codecov - Upload test results
       uses: codecov/test-results-action@v1
-      if: ${{ success() }}
+      if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
         token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
 
     # Gradle dependency
     - name: Java - Gradle dependency graph
-      if: ${{ success() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       uses: gradle/actions/dependency-submission@v4
 
     # Sonar
     - name: Sonar - Analyze with Sonar
-      if: ${{ success() && env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+      if: ${{ job.status == 'success' && env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       env:
         GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_AUTH_TOKEN }}
         SONAR_TOKEN: ${{ fromJSON(inputs.secrets).SONAR_TOKEN }}
