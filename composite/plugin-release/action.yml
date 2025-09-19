@@ -28,7 +28,7 @@ runs:
         submodules: true
 
     - name: Setup - Build
-      uses: ./composite/setup-build
+      uses: kestra-io/actions/composite/setup-build@main
       with:
         java-enabled: true
 
