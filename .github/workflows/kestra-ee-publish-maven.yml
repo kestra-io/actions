@@ -24,13 +24,13 @@ jobs:
           path: kestra-ee
 
       - name: Checkout - OSS
-        uses: kestra-io/actions/actions/kestra-ee-checkout
+        uses: kestra-io/.github/actions/kestra-ee-checkout
 
       - name: Npm - Init
-        uses: kestra-io/actions/actions/npm-init
+        uses: kestra-io/.github/actions/npm-init
 
       - name: Gradle - Init
-        uses: kestra-io/actions/actions/gradle-init
+        uses: kestra-io/.github/actions/gradle-init
 
       # Google Auth
       - name: GCP - Auth with github service account
