@@ -15,6 +15,16 @@ on:
         description: "The DockerHub token"
         required: true
     inputs:
+      retag-latest:
+        description: 'Retag latest Docker images'
+        required: true
+        type: boolean
+        default: false
+      retag-lts:
+        description: 'Retag LTS Docker images'
+        required: true
+        type: boolean
+        default: false
       plugin-version:
         description: 'Plugin version'
         required: false
