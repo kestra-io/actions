@@ -24,7 +24,7 @@ runs:
         username: GitHub Actions
         icon_emoji: ':github-actions:'
         channel: "${{ inputs.channel }}"
-        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.job }}* ended with status `${{ job.status }}`" 
+        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}* ended with status `${{ job.status }}`" 
         attachments:
           - color: "${{ job.status == 'success' && '#388E3C' || '#D32F2F' }}"
             blocks:
@@ -54,4 +54,4 @@ runs:
               - type: context
                 elements:
                   - type: mrkdwn
-                    text: "From <${{ github.event.sender.html_url }}|${{ github.event.sender.login }}>, on branch `${{ github.event.pull_request.head.ref || github.event.ref }}`"
+                    text: "On ${{ github.event_name }} ${{ github.event.sender.login && format('from <{0}|{1}>,', github.event.sender.html_url, github.event.sender.login) || ''}} with branch `${{ github.event.pull_request.head.ref || github.ref_name }}`"
