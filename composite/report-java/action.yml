@@ -33,7 +33,8 @@ runs:
 
     - name: Test - Comment pull request
       uses: kestra-io/actions/actions/comment-update@main
-      if: ${{ github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
+      continue-on-error: true
+      if: ${{ github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
       with:
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🧪 Java Unit Tests"

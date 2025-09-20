@@ -37,6 +37,7 @@ runs:
 
     - name: Artifacts - Comment pull request
       uses: kestra-io/actions/actions/comment-update@main
+      continue-on-error: true
       with:
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🛡 Trivy"

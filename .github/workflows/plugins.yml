@@ -97,7 +97,7 @@ jobs:
       # Publish
       - name: Publish - Java
         uses: ./composite/publish-java
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.repository == github.event.pull_request.head.repo.full_name }}"
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
         with:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
@@ -105,13 +105,13 @@ jobs:
       # Upload
       - name: Publish - Jar artifacts
         uses: ./composite/jar-upload
-        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
+        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         with:
           secrets: ${{ toJSON(secrets) }}
 
       # Trivy scan
       - name: Trivy - Scan jar
-        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && github.repository == github.event.pull_request.head.repo.full_name }}
+        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         uses: ./composite/scan-trivy
         with:
           secrets: ${{ toJSON(secrets) }}
@@ -134,7 +134,7 @@ jobs:
       # Slack on error
       - name: Slack - Notify on failure
         id: send-ci-failed
-        if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status == 'failure'
+        if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && job.status == 'failure'
         uses: ./composite/slack-status
         with:
           channel: "C09FE0QCN2E"
