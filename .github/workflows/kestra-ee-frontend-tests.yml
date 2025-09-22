@@ -28,6 +28,13 @@ jobs:
         with:
           node-enabled: true
 
+      # Hack npm install install from oss
+      - name: Npm - Hack install from oss
+        shell: bash
+        run: |
+          cd kestra/ui
+          npm install
+
       - name: Npm - Install
         shell: bash
         working-directory: kestra-ee/ui-ee
