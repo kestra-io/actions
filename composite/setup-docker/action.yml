@@ -1,4 +1,4 @@
-name: Docker init
+name: Setup docker
 description: Composite action to prepare docker build env.
 
 runs:
