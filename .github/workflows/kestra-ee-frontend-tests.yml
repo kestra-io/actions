@@ -20,7 +20,7 @@ jobs:
           path: kestra-ee
 
       - name: Checkout - OSS
-        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@ee-ci-rework
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
 
       - name: setup build
         uses: kestra-io/actions/composite/setup-build@main

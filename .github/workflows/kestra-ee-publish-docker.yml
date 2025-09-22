@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v5
       # Get Plugins List
       - name: Plugins - Get list
-        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@ee-ci-rework
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@main
         id: plugins
         with:
           plugin-version:  ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
@@ -89,7 +89,7 @@ jobs:
           path: kestra-ee
 
       - name: Docker init
-        uses: kestra-io/actions/composite/setup-docker@ee-ci-rework
+        uses: kestra-io/actions/composite/setup-docker@main
 
       # Google Auth
       - name: GCP - Auth with github service account
