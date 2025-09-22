@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Checkout - OSS
-        uses: kestra-io/actions/.github/actions/kestra-ee-checkout@ee-ci-rework
+        uses: kestra-io/actions/composite/kestra-ee-checkout@ee-ci-rework
 
       - name: setup build
         uses: kestra-io/actions/composite/setup-build@main
