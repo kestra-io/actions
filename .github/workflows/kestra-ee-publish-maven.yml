@@ -1,7 +1,6 @@
 name: Publish - Maven
 
 on:
-  workflow_dispatch:
   workflow_call:
     secrets:
       GCP_SERVICE_ACCOUNT:
