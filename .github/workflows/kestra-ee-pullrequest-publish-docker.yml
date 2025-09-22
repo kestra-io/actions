@@ -30,7 +30,7 @@ jobs:
           path: kestra-ee
 
       - name: Docker init
-        uses: kestra-io/actions/composite/setup-docker@ee-ci-rework
+        uses: kestra-io/actions/composite/setup-docker@main
 
       # Docker Login
       - name: Docker - Login to GitHub registry
