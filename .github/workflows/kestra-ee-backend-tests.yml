@@ -40,21 +40,24 @@ jobs:
           path: kestra-ee
 
       - name: Checkout - OSS
-        uses: kestra-io/actions/.github/actions/kestra-ee-checkout
+        uses: kestra-io/actions/.github/actions/checkout
 
       - name: setup build
         uses: ./composite/setup-build
         with:
           java-enabled: true
 
+      - name: Move working directory structure
+        run: |
+          mv kestra ../kestra
+
       # Services
       - name: Setup - Start docker compose
-        run: docker compose -f kestra-ee/docker-compose-ci.yml up -d
+        run: docker compose -f docker-compose-ci.yml up -d
 
       # Gradle check
       - name: Gradle - Build
         run: |
-          cd kestra-ee
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           ./gradlew check javadoc --parallel
@@ -63,83 +66,14 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
+        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
 
-      # Test results
-      - name: Test - Publish Test Results
-        uses: dorny/test-reporter@v2
-        if: always()
-        continue-on-error: true
+      # Report Java
+      - name: Report - Java
+        uses: kestra-io/actions/composite/report-java@main
+        if: ${{ !cancelled() }}
         with:
-          name: Java Tests Report
-          reporter: java-junit
-          path: '**/build/test-results/test/TEST-*.xml'
-          list-suites: 'failed'
-          list-tests: 'failed'
-          fail-on-error: 'false'
-          working-directory: 'kestra-ee'
-
-      # Allure check
-#      - name: Allure - Generate slug variables
-#        uses: rlespinasse/github-slug-action@v5
-
-#      - name: Allure - Publish report
-#        uses: andrcuns/allure-publish-action@v2.10.0
-#        if: ${{ always() && env.GOOGLE_SERVICE_ACCOUNT != 0 }}
-#        continue-on-error: true
-#        env:
-#          GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#          JAVA_HOME: /usr/lib/jvm/default-jvm/
-#        with:
-#          storageType: gcs
-#          resultsGlob: "**/build/allure-results"
-#          bucket: internal-kestra-host
-#          baseUrl: "https://internal.dev.kestra.io"
-#          prefix: ${{ format('{0}/{1}', github.repository, 'allure/java') }}
-#          copyLatest: true
-#          ignoreMissingResults: true
-
-      # Google Auth
-      - name: GCP - Auth with unit test account
-        id: auth
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != 0 }}
-        uses: 'google-github-actions/auth@v3'
-        with:
-          credentials_json: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-
-      - name: GCP - Setup Cloud SDK
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != 0 && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
-        uses: "google-github-actions/setup-gcloud@v3"
-
-      # Jacoco
-      - name: Jacoco - Copy reports
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != 0 }}
-        continue-on-error: true
-        run: |
-          cd kestra-ee
-          mv build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
-          mv build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/test/jacocoTestReport.xml
-          gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
-
-      # Codecov
-      - name: Codecov - Upload coverage reports
-        uses: codecov/codecov-action@v5
-        if: ${{ !cancelled() && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
-        continue-on-error: true
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: backend
-          working-directory: kestra-ee
-
-      - name: Codecov - Upload test results
-        uses: codecov/test-results-action@v1
-        if: ${{ !cancelled() && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
-        continue-on-error: true
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: backend
-          working-directory: kestra-ee
+          secrets: ${{ toJSON(secrets) }}
 
       - name: Slack - Notify failed CI
         id: send-ci-failed
