@@ -1,3 +1,4 @@
+# TODO migrate this to a node function in https://github.com/kestra-io/kestra/tree/develop/dev-tools
 name: 'Kestra Action to List Plugins'
 description: 'Composite action to load list of plugins from a local file.'
 inputs:
