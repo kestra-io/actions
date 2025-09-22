@@ -1,0 +1,191 @@
+name: Create Docker images on Release
+
+on:
+  workflow_call:
+    secrets:
+      GCP_SERVICE_ACCOUNT:
+        required: true
+      GOOGLE_SERVICE_ACCOUNT:
+        required: true
+      DOCKERHUB_USERNAME:
+        description: "The DockerHub username"
+        required: true
+      DOCKERHUB_TOKEN:
+        description: "The DockerHub token"
+        required: true
+    inputs:
+      retag-latest:
+        description: 'Retag latest Docker images'
+        required: true
+        type: boolean
+        default: false
+      retag-lts:
+        description: 'Retag LTS Docker images'
+        required: true
+        type: boolean
+        default: false
+      plugin-version:
+        description: 'Plugin version'
+        required: false
+        type: string
+        default: "LATEST"
+
+env:
+  PLUGIN_VERSION: ${{ inputs.plugin-version != '' && inputs.plugin-version || 'LATEST' }}
+jobs:
+  plugins:
+    name: List Plugins
+    runs-on: kestra-private-standard
+    outputs:
+      plugins: ${{ steps.plugins.outputs.plugins }}
+    steps:
+      # Checkout
+      - uses: actions/checkout@v5
+      # Get Plugins List
+      - name: Plugins - Get list
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@ee-ci-rework
+        id: plugins
+        with:
+          plugin-version:  ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
+
+  # ********************************************************************************************************************
+  # Build
+  # ********************************************************************************************************************
+  build-artifacts:
+    name: Build Artifacts
+    uses: ./.github/workflows/kestra-ee-build-artifacts.yml
+    secrets:
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  # ********************************************************************************************************************
+  # Docker
+  # ********************************************************************************************************************
+  docker:
+    name: Publish docker
+    runs-on: kestra-private-standard
+    needs: [ plugins, build-artifacts ]
+    if: |
+      always() && !cancelled()
+    strategy:
+      matrix:
+        image:
+          - tag: -no-plugins
+            plugins: ""
+            packages: jattach
+            node-apt-packages: ""
+            python-libraries: ""
+
+          - tag: ""
+            plugins: ${{needs.plugins.outputs.plugins}}
+            packages: python3 python-is-python3 python3-pip curl jattach
+            python-libraries: kestra
+    env:
+      GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
+      GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v5
+        with:
+          path: kestra-ee
+
+      - name: Docker init
+        uses: kestra-io/actions/composite/setup-docker@ee-ci-rework
+
+      # Google Auth
+      - name: GCP - Auth with github service account
+        id: glogin
+        uses: 'google-github-actions/auth@v3'
+        with:
+          token_format: 'access_token'
+          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+
+      # Vars
+      - name: Plugins - Set List
+        id: vars
+
+        run: |
+          TAG=${GITHUB_REF#refs/*/}
+
+          echo "tag=${TAG}${{ matrix.image.tag }}" >> $GITHUB_OUTPUT
+
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              # this will remove the patch version number
+              MINOR_SEMVER=${TAG%.*}
+              echo "minor_semver=${MINOR_SEMVER}" >> $GITHUB_OUTPUT
+            else
+              echo "Tag '$TAG' is not a valid semver (vMAJOR.MINOR.PATCH), skipping minor_semver"
+            fi
+          fi
+
+          PRIVATE_REPO="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-west1-maven.pkg.dev/kestra-host/maven"
+          if [[ "${{ env.PLUGIN_VERSION }}" != *"-SNAPSHOT" ]]; then
+            echo "plugins=$PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+          else
+            echo "plugins=$PRIVATE_REPO-snapshot --repositories=https://central.sonatype.com/repository/maven-snapshots ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+          fi
+
+      # Download executable from artifact
+      - name: Artifacts - Download executable
+        uses: actions/download-artifact@v5
+        with:
+          name: exe
+          path: build/executable
+
+      - name: Docker - Copy exe to image
+        shell: bash
+        run: |
+          cp build/executable/* kestra-ee/docker/app/kestra && chmod +x kestra-ee/docker/app/kestra
+
+      - name: Docker - Login to GitHub registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker - Login to Google Cloud registry
+        uses: docker/login-action@v3
+        with:
+          registry: europe-west1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.glogin.outputs.access_token }}
+
+      - name: Docker - Build and push
+        id: docker-build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: kestra-ee/.
+          push: true
+          tags: |
+            ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
+            ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
+          platforms: linux/amd64,linux/arm64
+          network: host
+          build-args: |
+            KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
+            APT_PACKAGES=${{ matrix.image.packages }}
+            PYTHON_LIBRARIES=${{ matrix.image.python-libraries }}
+
+
+      - name: Setup - Install regctl
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: regclient/actions/regctl-installer@main
+
+      - name: Retag to minor semver version
+        if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != ''
+        run: |
+          regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
+          regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
+
+      - name: Retag to latest
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.retag-latest == 'true'
+        run: |
+          regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest${{ matrix.image.tag }}
+          regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest${{ matrix.image.tag }}
+
+      - name: Retag to LTS
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.retag-lts == 'true'
+        run: |
+          regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
+          regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}

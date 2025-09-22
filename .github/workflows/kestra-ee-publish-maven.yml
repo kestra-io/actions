@@ -1,0 +1,52 @@
+name: Publish - Maven
+
+on:
+  workflow_call:
+    secrets:
+      GCP_SERVICE_ACCOUNT:
+        required: true
+
+env:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+jobs:
+  maven:
+    name: Publish - Maven
+    runs-on: kestra-private-large
+    env:
+      COREPACK_INTEGRITY_KEYS: 0
+    steps:
+      # Checkout
+      - name: Checkout - EE
+        uses: actions/checkout@v5
+        with:
+          path: kestra-ee
+
+      - name: Checkout - OSS
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@ee-ci-rework
+
+      - name: setup init
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: 'true'
+
+      # Google Auth
+      - name: GCP - Auth with github service account
+        id: auth
+        uses: 'google-github-actions/auth@v3'
+        with:
+          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+
+      # Publish
+      - name: Publish - Release package with Gradle
+        working-directory: kestra-ee
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: ./gradlew publish
+
+      # Gradle dependency
+      - name: Java - Gradle dependency graph
+        if: ${{ github.ref == 'refs/heads/develop' }}
+        uses: gradle/actions/dependency-submission@v4
+        with:
+          build-root-directory: kestra-ee

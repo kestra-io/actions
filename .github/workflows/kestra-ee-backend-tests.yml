@@ -1,0 +1,79 @@
+name: Backend tests
+
+on:
+  workflow_call:
+    secrets:
+      SLACK_WEBHOOK_URL:
+        description: "The Slack webhook url."
+        required: true
+      GOOGLE_SERVICE_ACCOUNT:
+        description: "The Google Service Account."
+        required: false
+      CODECOV_TOKEN:
+        description: "The Codecov token."
+        required: false
+
+permissions:
+  contents: write
+  checks: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  check:
+    name: Check
+    runs-on: kestra-private-large
+    timeout-minutes: 60
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      # to save corepack from itself
+      COREPACK_INTEGRITY_KEYS: 0
+    steps:
+      # Checkout
+      - name: Checkout - EE
+        uses: actions/checkout@v5
+
+      - name: Checkout - OSS
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@ee-ci-rework
+
+      - name: setup build
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: true
+
+      - name: Move working directory structure
+        run: |
+          mv kestra ../kestra
+
+      # Services
+      - name: Setup - Start docker compose
+        run: docker compose -f docker-compose-ci.yml up -d
+
+      # Gradle check
+      - name: Gradle - Build
+        run: |
+          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
+          ./gradlew check javadoc --parallel
+
+      - name: comment PR with test report
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
+
+      # Report Java
+      - name: Report - Java
+        uses: kestra-io/actions/composite/report-java@main
+        if: ${{ !cancelled() }}
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
+      - name: Slack - Notify failed CI
+        id: send-ci-failed
+        if: always() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && job.status != 'success'
+        uses: kestra-io/actions/composite/slack-status@main
+        with:
+          webhook-url: '${{ secrets.SLACK_WEBHOOK_URL }}'
+          channel: 'C09FF36GKE1'

@@ -1,0 +1,62 @@
+name: Frontend tests
+
+on:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        description: "The Codecov token."
+        required: false
+
+jobs:
+  check:
+    name: Check
+    runs-on: kestra-private-standard
+    timeout-minutes: 60
+    steps:
+      # Checkout
+      - name: Checkout - EE
+        uses: actions/checkout@v5
+        with:
+          path: kestra-ee
+
+      - name: Checkout - OSS
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@ee-ci-rework
+
+      - name: setup build
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          node-enabled: true
+
+      # Hack npm install install from oss
+      - name: Npm - Hack install from oss
+        shell: bash
+        run: |
+          cd kestra/ui
+          npm install
+
+      - name: Npm - Install
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npm install
+
+      - name: Npm - Lint
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review # Change reporter.
+          workdir: "kestra-ee/ui-ee"
+
+      - name: Run front-end unit tests
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npm run test:unit -- --coverage
+
+      - name: Storybook - Install Playwright
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npx playwright install --with-deps
+
+      - name: Run Storybook component tests
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npm run test:storybook -- --coverage

@@ -1,0 +1,27 @@
+name: Indexing plugins
+description: "Start indexing plugins for given Kestra version, it will use the associated docker image."
+
+inputs:
+  doc-indexing-webhook:
+    description: "The webhook url on kestra cloud to reindex doc."
+    required: true
+  kestra-version:
+    description: "Kestra version to index plugins for, can be the exact version like v1.0.1 or 'LATEST-SNAPSHOT'"
+    default: 'LATEST-SNAPSHOT'
+runs:
+  using: composite
+  steps:
+    - name: Extract version to index
+      id: extract-version
+      shell: bash
+      run: |
+        versionToIndex=${{ inputs.kestra-version }}
+        if [[  $versionToIndex == 'LATEST-SNAPSHOT' ]]; then
+          echo "version=v$(curl -s https://api.kestra.io/v1/versions/latest?snapshot=true | jq -r '.version')" >> $GITHUB_OUTPUT
+        else
+          echo "version=${versionToIndex}" >> $GITHUB_OUTPUT
+        fi
+    - name: Launch plugins documentation indexing
+      shell: bash
+      run: |
+        curl -X POST -H "Content-Type: application/json" -d "{\"tag\": \"${{steps.extract-version.outputs.version}}\", \"to_index\": [\"plugins\",\"blueprints\"]}" ${{ inputs.doc-indexing-webhook }}
