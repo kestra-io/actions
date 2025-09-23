@@ -61,6 +61,14 @@ echo "📦 Release Version: $RELEASE_VERSION"
 echo "📦 Next Version: $NEXT_VERSION"
 echo "🧪 Dry Run: $DRY_RUN"
 
+# Override Git remote with PAT to allow pushing to protected branches
+if [[ -n "${GITHUB_PAT:-}" ]]; then
+  echo "🔐 Using GITHUB_PAT for authentication"
+  REMOTE_URL=$(git config --get remote.origin.url | sed -E 's#https://([^@]*@)?#https://#')
+  AUTHED_URL="https://x-access-token:${GITHUB_PAT}@${REMOTE_URL#https://}"
+  git remote set-url origin "$AUTHED_URL"
+fi
+
 # Tag to be created
 TAG="v${RELEASE_VERSION}"
 
