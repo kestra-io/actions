@@ -16,12 +16,12 @@ on:
     inputs:
       retag-latest:
         description: 'Retag latest Docker images'
-        required: true
+        required: false
         type: boolean
         default: false
       retag-lts:
         description: 'Retag LTS Docker images'
-        required: true
+        required: false
         type: boolean
         default: false
       plugin-version:
