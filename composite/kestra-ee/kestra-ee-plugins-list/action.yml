@@ -1,0 +1,65 @@
+# TODO migrate this to a node function in https://github.com/kestra-io/kestra/tree/develop/dev-tools
+name: 'Kestra Action to List Plugins'
+description: 'Composite action to load list of plugins from a local file.'
+inputs:
+  plugin-version:
+    description: "Kestra version"
+    default: 'LATEST'
+    required: true
+outputs:
+  plugins:
+    description: "List of all Kestra OSS && EE plugins"
+    value: ${{ steps.plugins.outputs.plugins }}
+  pluginsOSS:
+    description: "List of all Kestra OSS plugins"
+    value: ${{ steps.plugins.outputs.pluginsOSS }}
+  pluginsEE:
+    description: "List of all Kestra EE plugins"
+    value: ${{ steps.plugins.outputs.pluginsEE }}
+  repositoriesEE:
+    description: "List of all Kestra EE plugin repositories"
+    value: ${{ steps.plugins.outputs.repositoriesEE }}
+  pluginsALL:
+    description: "List of all Kestra plugins"
+    value: ${{ steps.plugins.outputs.pluginsALL }}
+  secretsEE:
+    description: "List of all Kestra secrets plugins"
+    value: ${{ steps.plugins.outputs.secretsEE }}
+runs:
+  using: composite
+  steps:
+    - name: Checkout - OSS
+      uses: actions/checkout@v4
+      if: hashFiles('kestra/') == ''
+      with:
+        repository: kestra-io/kestra
+        sparse-checkout-cone-mode: false
+        path: kestra
+        ref: ${{ github.ref }}
+        sparse-checkout: |
+          .plugins
+
+    - name: Checkout - EE
+      uses: actions/checkout@v4
+      if: hashFiles('kestra-ee/') == ''
+      with:
+        repository: kestra-io/kestra-ee
+        sparse-checkout-cone-mode: false
+        path: kestra-ee
+        sparse-checkout: |
+          .plugins
+
+    - name: Plugins - Get list
+      id: plugins
+      shell: bash
+      run: |
+        PLUGINS_OSS=$([ -f ./kestra/.plugins ] && cat ./kestra/.plugins | grep "io\\.kestra\\." | sed -e '/#/s/^.//' | sed -e "s/LATEST/${{ inputs.plugin-version }}/g" | cut -d':' -f2- | xargs || echo '');
+        PLUGINS_EE=$([ -f ./kestra-ee/.plugins ] && cat ./kestra-ee/.plugins | grep "io\\.kestra\\." | sed -e '/#/s/^.//' | grep -v "io.kestra.ee.secret" | sed -e "s/LATEST/${{ inputs.plugin-version }}/g" | cut -d':' -f2- | xargs || echo '');
+        REPOSITORIES_EE=$([ -f ./kestra-ee/.plugins ] && cat ./kestra-ee/.plugins | grep "io\\.kestra\\." | sed -e '/#/s/^.//' | cut -d':' -f1 | uniq | sort | xargs || echo '')
+        SECRETS_EE=$([ -f ./kestra-ee/.plugins ] && cat ./kestra-ee/.plugins | grep "io\\.kestra\\." | sed -e '/#/s/^.//' | grep -v "io.kestra.ee.plugin" | sed -e "s/LATEST/${{ inputs.plugin-version }}/g" | cut -d':' -f2- | xargs || echo '');
+        echo "pluginsOSS=$PLUGINS_OSS" >> $GITHUB_OUTPUT
+        echo "pluginsEE=$PLUGINS_EE" >> $GITHUB_OUTPUT
+        echo "repositoriesEE=$REPOSITORIES_EE" >> $GITHUB_OUTPUT
+        echo "pluginsALL=$PLUGINS_OSS $PLUGINS_EE" >> $GITHUB_OUTPUT
+        echo "secretsEE=$SECRETS_EE" >> $GITHUB_OUTPUT
+        echo "plugins=$PLUGINS_OSS $PLUGINS_EE $SECRETS_EE" >> $GITHUB_OUTPUT

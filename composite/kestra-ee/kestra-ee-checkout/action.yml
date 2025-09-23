@@ -1,0 +1,25 @@
+name: 'Kestra Action to Checkout'
+description: 'Composite action to checkout and prepare local file.'
+
+runs:
+  using: composite
+  steps:
+    # Checkout open source
+    - name: Checkout - Get checkout branch from OSS
+      id: checkout-branch
+      shell: bash
+      run: |
+        OUT=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }})
+        if [[ ! -z $OUT ]]; then
+            echo "ossBranch=${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}" >> "$GITHUB_OUTPUT"
+        else
+            echo "ossBranch=develop" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout - OSS
+      uses: actions/checkout@v4
+      with:
+        repository: kestra-io/kestra
+        path: kestra
+        ref: ${{ steps.checkout-branch.outputs.ossBranch }}
+

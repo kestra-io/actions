@@ -1,0 +1,57 @@
+name: 'Send CI result to Slack'
+description: 'This action intends to send the result of a CI build to a Slack channel'
+
+inputs:
+  channel:
+    description: 'The slack channel'
+    required: false
+    default: 'C07FGC1FG0N'
+
+  webhook-url:
+    description: 'The slack incoming webhook url'
+    required: true
+
+runs:
+  using: composite
+  steps:
+  - name: Slack - Post
+    uses: slackapi/slack-github-action@v2.1.1
+    with:
+      errors: true
+      webhook: ${{ inputs.webhook-url }}
+      webhook-type: incoming-webhook
+      payload: |
+        username: GitHub Actions
+        icon_emoji: ':github-actions:'
+        channel: "${{ inputs.channel }}"
+        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}* ended with status `${{ job.status }}`" 
+        attachments:
+          - color: "${{ job.status == 'success' && '#388E3C' || '#D32F2F' }}"
+            blocks:
+              - type: actions
+                elements:
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: ":arrow_forward: Job"
+                      emoji: true
+                    url: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+                    action_id: job
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: ":wood: Check Run"
+                      emoji: true
+                    url: "${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}/job/${{ job.check_run_id }}"
+                    action_id: action
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: ":twisted_rightwards_arrows: ${{ github.event.pull_request.html_url && format('Pull request #{0}', github.event.pull_request.number) || (github.event_name == 'schedule' && 'Schedule' || 'Commit') }}"
+                      emoji: true
+                    url: "${{ github.event.pull_request.html_url || github.event.head_commit.url || github.event.repository.html_url }}"
+                    action_id: source
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: "On ${{ github.event_name }} attempt #${{ github.run_attempt }} ${{ github.event.sender.login && format('from <{0}|{1}> ', github.event.sender.html_url, github.event.sender.login) || ''}}with branch `${{ github.event.pull_request.head.ref || github.ref_name }}`"

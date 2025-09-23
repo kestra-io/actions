@@ -1,0 +1,59 @@
+name: 'Trivy Scan'
+description: 'Scan with trivy and output result'
+
+inputs:
+  scan-type:
+    description: 'Does we push to private maven registry'
+    required: false
+    default: "rootfs"
+
+  scan-path:
+    description: 'The file mask that will be scanned'
+    required: false
+    default: "*/build/libs/*.jar"
+
+  secrets:
+    description: 'Secrets passed as toJSON'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Trivy - Copy template and files to scan
+      shell: bash
+      run: |
+        mkdir -p /tmp/trivy-scan
+        find -type f -wholename '${{ inputs.scan-path }}' -exec cp "{}" /tmp/trivy-scan  \;
+        ls -lh /tmp/trivy-scan/
+
+    - name: Trivy - Run Trivy scanner
+      uses: aquasecurity/trivy-action@0.28.0
+      id: trivy
+      with:
+        scan-type: ${{ inputs.scan-type }}
+        scan-ref: /tmp/trivy-scan
+        format: 'json'
+        output: "${{ github.workspace }}/trivy-result.json"
+
+    - name: Artifacts - Comment pull request
+      uses: kestra-io/actions/actions/comment-update@main
+      continue-on-error: true
+      with:
+        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        title: "🛡 Trivy"
+        files: |
+          ${{ github.workspace }}/trivy-result.json
+        template: |
+          {% if files[0] and files[0].Results | length > 0 %}
+          {%- for suite in files[0].Results %}
+          {% if suite.Vulnerabilities | length > 0 %}
+          ####  Vulnerability in: `{{ suite.Target }}`
+
+          | Vulnerability | Severity | Package | Installed Version | Fixed Version |
+          | :--- | :--- | :--- | :--- | :--- |
+          {%- for vulnerability in suite.Vulnerabilities %}
+          | [{{ vulnerability.VulnerabilityID }}]({{ vulnerability.PrimaryURL }}) | {{ vulnerability.Severity }} | {{ vulnerability.PkgName }} | {{ vulnerability.InstalledVersion }} | {{ vulnerability.FixedVersion }} |          
+          {%- endfor %}
+          {% endif %}
+          {%- endfor %}
+          {% endif %}

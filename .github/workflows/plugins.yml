@@ -17,16 +17,18 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
-      pullDockerEE:
-        description: "Does we pull the EE docker image"
+      generate-shadowjar:
+        description: "Does we generate a shadow jar"
         required: false
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
   checks: write
   actions: read
+  pull-requests: write
+  packages: read
 
 jobs:
   main:
@@ -45,18 +47,23 @@ jobs:
         with:
           repository: kestra-io/actions
           sparse-checkout-cone-mode: true
-          path: actions
+          path: .actions
           sparse-checkout: |
-            .github/actions
+            composite
+            actions
+
+      - name: Checkout - Actions Move
+        run: |
+          mv .actions/composite composite
+          mv .actions/actions actions 
 
       # Setup build
       - name: Setup - Build
-        uses: ./actions/.github/actions/setup-build
-        id: build
+        uses: ./composite/setup-build
         with:
           java-enabled: true
 
-      # Setup for unit test
+      # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env
         uses: oNaiPs/secrets-to-env-action@v1
         with:
@@ -69,22 +76,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      ## Pull EE image
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        if: ${{ inputs.pullDockerEE == true }}
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      - name: Build the docker-compose stack
-        if: ${{ inputs.pullDockerEE == true }}
-        run: |
-          docker pull ghcr.io/kestra-io/kestra-ee:develop
-
       - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -f .github/setup-unit.sh ]; then
             ./.github/setup-unit.sh 
@@ -94,157 +90,52 @@ jobs:
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check --parallel
-
-      # Clean Up - Pre-release
-      - name: Clean Up - Pre-release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        run: |
-          echo "--- Preparing for release ---"
-          echo "Removing test certificate directory..."
-          sudo rm -rf certs
-          echo "---------------------------"
+        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       # Publish
-      - name: Publish - Release package with Gradle
-        shell: bash
-        if: ${{ inputs.sonatype-publish == false && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
-        run: ./gradlew publish
+      - name: Publish - Java
+        uses: ./composite/publish-java
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
+        with:
+          secrets: ${{ toJSON(secrets) }}
+          is-private: ${{ inputs.sonatype-publish == false }}
 
-      - name: Publish - Release package to Maven Central
-        if: ${{ inputs.sonatype-publish == true && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
-        env:
-          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_USER }}
-          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPE_PASSWORD }}
-          SONATYPE_GPG_KEYID: ${{ secrets.SONATYPE_GPG_KEYID }}
-          SONATYPE_GPG_PASSWORD: ${{ secrets.SONATYPE_GPG_PASSWORD }}
-          SONATYPE_GPG_FILE: ${{ secrets.SONATYPE_GPG_FILE }}
-        run: |
-          echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
-          echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
-          echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
-          echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
-          ./gradlew publishToMavenCentral
+      # Upload
+      - name: Publish - Jar artifacts
+        uses: ./composite/jar-upload
+        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
+      # Trivy scan
+      - name: Trivy - Scan jar
+        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+        uses: ./composite/scan-trivy
+        with:
+          secrets: ${{ toJSON(secrets) }}
 
       # GitHub Release
-      - name: Create GitHub release
-        uses: ./actions/.github/actions/github-release
+      - name: GitHub - Create release
+        uses: ./composite/github-release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
 
-      # Test results
-      - name: Test - Publish Test Results
-        uses: dorny/test-reporter@v1
-        if: always()
-        continue-on-error: true
+      # Report Java
+      - name: Report - Java
+        uses: ./composite/report-java
+        if: ${{ !cancelled() && inputs.skip-test == false }}
         with:
-          name: Java Tests Report
-          reporter: java-junit
-          path: '**/build/test-results/test/TEST-*.xml'
-          only-summary: 'true'
-          list-suites: 'failed'
-          list-tests: 'failed'
-          fail-on-error: 'false'
+          secrets: ${{ toJSON(secrets) }}
 
-      # GCP
-      - name: GCP - Auth with unit test account
-        id: auth
-        if: ${{ always() && env.GOOGLE_SERVICE_ACCOUNT != '' }}
-        uses: 'google-github-actions/auth@v2'
-        with:
-          credentials_json: '${{ secrets.GOOGLE_SERVICE_ACCOUNT }}'
-
-      - name: GCP - Setup Cloud SDK
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
-        uses: 'google-github-actions/setup-gcloud@v2'
-
-      # Allure check
-      - name: Allure - Generate slug variables
-        uses: rlespinasse/github-slug-action@v4
-
-      - name: Allure - Publish report
-        uses: andrcuns/allure-publish-action@v2.6.0
-        if: ${{ always() && env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
-        continue-on-error: true
-        env:
-          GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          JAVA_HOME: /usr/lib/jvm/default-jvm/
-        with:
-          storageType: gcs
-          resultsGlob: "**/build/allure-results"
-          bucket: internal-kestra-host
-          baseUrl: "https://internal.dev.kestra.io"
-          prefix: ${{ format('{0}/{1}', github.repository, 'allure/java') }}
-          copyLatest: true
-          ignoreMissingResults: true
-
-      # Jacoco
-      - name: Jacoco - Copy reports
-        shell: bash
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != '' && inputs.skip-test == false }}
-        continue-on-error: true
-        run: |
-          if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
-            mv build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
-            mv build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/jacocoTestReport.xml
-          fi
-
-          if [ -d build/reports/jacoco/test/ ]; then
-            gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
-          fi
-
-      # Codecov
-      - name: Codecov - Upload coverage reports
-        uses: codecov/codecov-action@v5
-        if: ${{ !cancelled() && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
-        continue-on-error: true
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Codecov - Upload test results
-        uses: codecov/test-results-action@v1
-        if: ${{ !cancelled() && (github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '') }}
-        continue-on-error: true
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      # Gradle dependency
-      - name: Java - Gradle dependency graph
-        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
-        uses: gradle/actions/dependency-submission@v4
-
-      # Sonar
-      - name: Sonar - Analyze with Sonar
-        if: env.SONAR_TOKEN != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        shell: bash
-        continue-on-error: true
-        run: ./gradlew sonar
-
-      # Slack
-      - name: Slack - Notification
-        uses: 8398a7/action-slack@v3
-        if: ${{ always() && env.SLACK_WEBHOOK_URL != '' }}
-        with:
-          status: ${{ job.status }}
-          job_name: Main
-          fields: repo,ref,commit,author,workflow,took
-          username: GitHub Actions
-          icon_emoji: ':github-actions:'
-          channel: 'C02DQ1A7JLR'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      - name: Slack - Notify failed CI
+      # Slack on error
+      - name: Slack - Notify on failure
         id: send-ci-failed
-        if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && job.status == 'failure'
-        uses: ./actions/.github/actions/send-ci-failed
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && job.status == 'failure'
+        uses: ./composite/slack-status
+        with:
+          channel: "C09FE0QCN2E"
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}

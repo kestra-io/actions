@@ -1,0 +1,46 @@
+name: 'Publish Java'
+description: 'This action uploads the package to maven central or private maven registry'
+
+inputs:
+  is-private:
+    description: 'Does we push to private maven registry'
+    required: true
+
+  secrets:
+    description: 'Secrets passed as toJSON'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Clean Up - Pre-release
+    - name: Clean Up - Pre-release
+      if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      shell: bash
+      run: |
+        echo "--- Preparing for release ---"
+        echo "Removing test certificate directory..."
+        sudo rm -rf certs
+        echo "---------------------------"
+
+    # Publish
+    - name: Publish - Release package with Gradle
+      shell: bash
+      if: ${{ inputs.is-private == 'true' }}
+      run: ./gradlew publish
+
+    - name: Publish - Release package to Maven Central
+      if: ${{ inputs.is-private == 'false' }}
+      env:
+        ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ fromJson(inputs.secrets).SONATYPE_USER }}
+        ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ fromJson(inputs.secrets).SONATYPE_PASSWORD }}
+        SONATYPE_GPG_KEYID: ${{ fromJson(inputs.secrets).SONATYPE_GPG_KEYID }}
+        SONATYPE_GPG_PASSWORD: ${{ fromJson(inputs.secrets).SONATYPE_GPG_PASSWORD }}
+        SONATYPE_GPG_FILE: ${{ fromJson(inputs.secrets).SONATYPE_GPG_FILE }}
+      shell: bash
+      run: |
+        echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+        echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+        echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+        echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+        ./gradlew publishToMavenCentral

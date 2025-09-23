@@ -1,0 +1,80 @@
+name: Pull Request - Publish Docker
+
+on:
+  workflow_call:
+
+jobs:
+  # ********************************************************************************************************************
+  # Build
+  # ********************************************************************************************************************
+  build-artifacts:
+    name: Build Artifacts
+    uses: ./.github/workflows/kestra-ee-build-artifacts.yml
+    secrets:
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ********************************************************************************************************************
+  # Docker
+  # ********************************************************************************************************************
+  docker:
+    name: Publish docker
+    runs-on: kestra-private-standard
+    needs: build-artifacts
+    env:
+      GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee-pr
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v5
+        with:
+          path: kestra-ee
+
+      - name: Docker init
+        uses: kestra-io/actions/composite/setup-docker@main
+
+      # Docker Login
+      - name: Docker - Login to GitHub registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build Docker Image
+      - name: Artifacts - Download executable
+        uses: actions/download-artifact@v5
+        with:
+          name: exe
+          path: build/executable
+
+      - name: Docker - Copy exe to image
+        shell: bash
+        run: |
+          cp build/executable/* kestra-ee/docker/app/kestra && chmod +x kestra-ee/docker/app/kestra
+
+      - name: Docker - Build and push
+        id: docker-build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: kestra-ee/.
+          file: ./kestra-ee/Dockerfile.pr
+          push: true
+          tags: ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}
+          platforms: linux/amd64,linux/arm64
+
+      # Add comment on pull request
+      - name: Add comment to PR
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `**🐋 Docker image**: \`${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}\`\n` +
+                `\n` +
+                `\`\`\`bash\n` +
+                `docker run --pull=always --rm -it -p 8080:8080 --user=root -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }} server local\n` +
+                `\`\`\``
+            })

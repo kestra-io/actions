@@ -1,0 +1,32 @@
+name: "Push API Reference to website"
+description: "This action pushes the API reference changes to the website."
+
+inputs:
+  gh_personal_token:
+    description: 'Github token'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout - Docs
+      uses: actions/checkout@v5
+      with:
+        repository: kestra-io/docs
+        path: docs
+        ref: "main"
+        token: ${{ inputs.gh_personal_token }}
+
+    - name: Artifacts - Download swagger
+      uses: actions/download-artifact@v5
+      with:
+        name: swagger
+        path: docs/public/
+
+    - name: GitHub - Push change to docs
+      uses: stefanzweifel/git-auto-commit-action@v6
+      with:
+        commit_message: "feat(docs): update api swagger"
+        branch: main
+        file_pattern: 'public/*.yml'
+        repository: "docs"

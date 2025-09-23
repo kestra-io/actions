@@ -19,7 +19,7 @@ inputs:
     required: true
   node-version:
     description: "Node version"
-    default: '18'
+    default: '22'
     required: true
   python-enabled:
     description: "Specify whether to setup Python"

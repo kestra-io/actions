@@ -1,0 +1,38 @@
+name: Comment Update
+description: Create or update a comment in a pull request
+
+runs:
+  using: node20
+  main: dist/index.js
+
+inputs:
+  github-token:
+    description: The github token to use
+    required: true
+
+  title:
+    description: The sections title
+    required: true
+
+  template:
+    description: The handlebars template to use for the comment
+    required: true
+
+  fetch-artifact:
+    description: Does we fetch the artifact from the workflow run
+    required: false
+    default: 'false'
+
+  add-summary:
+    description: Does we add a summary section
+    required: false
+    default: 'true'
+
+  files:
+    description: The files to inject as data in the template
+    required: false
+
+outputs:
+  comment-id:
+    description: The comment id that was created or updated
+

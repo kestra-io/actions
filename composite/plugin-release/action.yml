@@ -1,0 +1,45 @@
+# This workflow handles manual release preparation (version bump, tag, branch).
+# When the tag (e.g. v1.2.0) is pushed, it automatically triggers main.yml,
+# which runs the full CI/CD pipeline via plugins.yml (build, publish, GitHub Release).
+# The two workflows are complementary: release.yml = prepare, main.yml = execute.
+
+name: Release Kestra Plugin
+description: "Release logic for Kestra plugins (MAJOR, MINOR, PATCH)"
+
+inputs:
+  releaseVersion:
+    required: true
+    description: "Release version (e.g. 1.0.0, 1.3.0 or 1.4.2)"
+  nextVersion:
+    required: false
+    description: "Next version (e.g. 1.4.0-SNAPSHOT). If omitted, a PATCH release is performed."
+  dryRun:
+    required: false
+    default: "false"
+    description: "If true, simulate the release without pushing or tagging and log the actions"
+
+runs:
+  using: composite
+  steps:
+    - name: Configure Git
+      shell: bash
+      run: |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+
+    - name: Setup - Build
+      uses: kestra-io/actions/composite/setup-build@main
+      with:
+        java-enabled: true
+
+    - name: Run Release
+      shell: bash
+      run: |
+        chmod +x ${{ github.action_path }}/release.sh
+        ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.dryRun }}"
