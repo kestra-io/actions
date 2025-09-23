@@ -91,7 +91,7 @@ release:
             - 'choredeps'
             - 'deps'
           order: 6
-    makeLatest: 'TRUE'
+    makeLatest: 'FALSE'
 files:
   globs:
     - pattern: "**/build/libs/**"

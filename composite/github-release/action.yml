@@ -12,17 +12,6 @@ runs:
         ref: main
         path: jreleaser
 
-    - name: Setup - Copy jreleaser.yml
-      shell: bash
-      run: |
-        cp jreleaser/jreleaser.yml .
-
-    - name: Patch jreleaser.yml if MAKE_LATEST
-      if: env.MAKE_LATEST == 'false'
-      shell: bash
-      run: |
-        sed -i "s/makeLatest: 'TRUE'/makeLatest: 'FALSE'/g" jreleaser.yml
-
     - name: Setup - Generate variables for JReleaser
       shell: bash
       run: |
@@ -37,6 +26,30 @@ runs:
           echo "BRANCH=master" >> $GITHUB_ENV
         else
           echo "BRANCH=develop" >> $GITHUB_ENV
+        fi
+
+    - name: Setup - Copy jreleaser.yml
+      shell: bash
+      run: |
+        cp jreleaser/jreleaser.yml .
+
+    - name: Patch jreleaser.yml for major releases
+      shell: bash
+      run: |
+        # Retrieve all existing versions (tags) and add the current version
+        all_versions=$( (git tag -l 'v*' | sed 's/^v//' ; echo "${{ env.VERSION }}" ) | sort -V)
+
+        # Get the highest version
+        highest=$(echo "$all_versions" | tail -n1)
+
+        echo "Current version: ${{ env.VERSION }}"
+        echo "Highest version: $highest"
+
+        if [ "${{ env.VERSION }}" = "$highest" ]; then
+          echo "→ This is the highest version, setting makeLatest=TRUE"
+          sed -i "s/makeLatest: 'FALSE'/makeLatest: 'TRUE'/g" jreleaser.yml
+        else
+          echo "→ Not the highest version, keep makeLatest=FALSE"
         fi
         
     - name: Setup - Set Java
