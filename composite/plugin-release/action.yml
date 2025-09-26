@@ -43,3 +43,9 @@ runs:
       run: |
         chmod +x ${{ github.action_path }}/release.sh
         ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.dryRun }}"
+    
+    - name: Index release
+      uses: kestra-io/actions/composite/plugin-release-index@main
+      with:
+        webhook-url: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
+        dry-run: "${{ inputs.dryRun }}"
