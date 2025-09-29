@@ -47,7 +47,7 @@ jobs:
       # Push API Reference to website
       - name: Push API Reference to website
         uses: kestra-io/actions/composite/publish-api-reference@main
-        if: ${{ steps.is_latest.outputs.latest }}
+        if: steps.is_latest.outputs.latest
         with:
           gh_personal_token: ${{ secrets.GH_PERSONAL_TOKEN }}
 
