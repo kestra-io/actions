@@ -1,0 +1,57 @@
+name: 'E2E tests'
+# 'New E2E tests implementation started by Roman. Based on playwright in npm UI project, tests Kestra OSS develop docker image. These tests are written from zero, lets make them unflaky from the start!.'
+on:
+  workflow_call:
+    inputs:
+      noInputYet:
+        description: 'not input yet.'
+        required: false
+        type: string
+        default: "no input"
+jobs:
+  check:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Checkout kestra
+        uses: actions/checkout@v5
+        with:
+          path: kestra
+
+      # Setup build
+      - uses: kestra-io/actions/composite/setup-build@main
+        name: Setup - Build
+        id: build
+        with:
+          java-enabled: true
+          node-enabled: true
+          python-enabled: true
+
+      - name: Install Npm dependencies
+        run: |
+          cd kestra/ui
+          npm i
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E Tests
+        run: |
+          cd kestra
+          sh build-and-start-e2e-tests.sh
+
+      - name: Upload Playwright Report as Github artifact
+        # 'With this report, you can analyze locally the results of the tests. see https://playwright.dev/docs/ci-intro#html-report'
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: kestra/ui/playwright-report/
+          retention-days: 7
