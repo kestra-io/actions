@@ -14,6 +14,7 @@ runs:
             # try to find if there is an associated OSS branch
             ASSOCIATED_OSS_BRANCH_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.ref }})
             if [[ -z ASSOCIATED_OSS_BRANCH_FOUND ]]; then
+              echo "associated branch found ${{ github.ref }}"
               echo "ossBranch=${{ github.ref }}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -21,12 +22,13 @@ runs:
             # else use the branch the PR is based on (develop, releases/v1.0.x, ..)
             BASE_REF_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.base_ref }})
             if [[ -z BASE_REF_FOUND ]]; then
+              echo "base branch found ${{ github.base_ref }}"
               echo "ossBranch=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
         fi
         
-        # fallback to develop for edge cases like a PR based on a branch that exist only in EE
+        echo "fallback to develop for edge cases like a PR based on a branch that exist only in EE"
         echo "ossBranch=develop" >> "$GITHUB_OUTPUT"
 
     - name: Checkout - OSS
