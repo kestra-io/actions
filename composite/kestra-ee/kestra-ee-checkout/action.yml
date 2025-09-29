@@ -9,7 +9,7 @@ runs:
       id: checkout-branch
       shell: bash
       run: |
-        OUT=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }})
+        OUT=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.event_name == 'pull_request' && github.base_ref || github.ref }})
         if [[ ! -z $OUT ]]; then
             echo "ossBranch=${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}" >> "$GITHUB_OUTPUT"
         else
