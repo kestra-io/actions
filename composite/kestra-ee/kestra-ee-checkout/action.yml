@@ -9,12 +9,25 @@ runs:
       id: checkout-branch
       shell: bash
       run: |
-        OUT=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.event_name == 'pull_request' && github.base_ref || github.ref }})
-        if [[ ! -z $OUT ]]; then
-            echo "ossBranch=${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}" >> "$GITHUB_OUTPUT"
-        else
-            echo "ossBranch=develop" >> "$GITHUB_OUTPUT"
+        if [[ ${{ github.event_name == 'pull_request' }} ]]; then
+        
+            # try to find if there is an associated OSS branch
+            ASSOCIATED_OSS_BRANCH_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.ref }})
+            if [[ ! -z ASSOCIATED_OSS_BRANCH_FOUND ]]; then
+              echo "ossBranch=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+        
+            # else use the branch the PR is based on (develop, releases/v1.0.x, ..)
+            BASE_REF_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.base_ref }})
+            if [[ ! -z BASE_REF_FOUND ]]; then
+              echo "ossBranch=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
         fi
+        
+        # fallback to develop for edge cases like a PR based on a branch that exist only in EE
+        echo "ossBranch=${{ github.ref }}" >> "$GITHUB_OUTPUT"
 
     - name: Checkout - OSS
       uses: actions/checkout@v4
