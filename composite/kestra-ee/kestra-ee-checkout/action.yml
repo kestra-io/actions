@@ -27,7 +27,7 @@ runs:
         fi
         
         # fallback to develop for edge cases like a PR based on a branch that exist only in EE
-        echo "ossBranch=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+        echo "ossBranch=develop" >> "$GITHUB_OUTPUT"
 
     - name: Checkout - OSS
       uses: actions/checkout@v4
