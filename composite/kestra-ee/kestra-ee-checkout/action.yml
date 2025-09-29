@@ -12,10 +12,10 @@ runs:
         if [[ ${{ github.event_name == 'pull_request' }} ]]; then
         
             # try to find if there is an associated OSS branch
-            ASSOCIATED_OSS_BRANCH_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.ref }})
+            ASSOCIATED_OSS_BRANCH_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.head_ref }})
             if [[ ! -z $ASSOCIATED_OSS_BRANCH_FOUND ]]; then
-              echo "associated branch found ${{ github.ref }}"
-              echo "ossBranch=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+              echo "associated branch found ${{ github.head_ref }}"
+              echo "ossBranch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
         
