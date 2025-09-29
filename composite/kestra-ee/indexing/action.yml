@@ -1,0 +1,31 @@
+name: Indexing plugins
+description: "Start indexing plugins for given Kestra version, it will use the associated docker image."
+
+inputs:
+  doc-indexing-webhook:
+    description: "The webhook url on kestra cloud to reindex doc."
+    required: true
+  kestra-tag:
+    description: "Kestra tag to index plugins for, eg: 'v1.0.1'"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check latest
+      id: check-latest
+      shell: bash
+      run: |
+        if [[ ${{ inputs.kestra-version }} = "v$(curl -s https://api.kestra.io/v1/versions/latest | jq -r '.version')" ]]; then
+          echo "latest=true" >> $GITHUB_OUTPUT
+          echo "latestSnapshot=v$(curl -s https://api.kestra.io/v1/versions/latest?snapshot=true | jq -r '.version')" >> $GITHUB_OUTPUT
+        else
+          echo "latest=false" >> $GITHUB_OUTPUT
+        fi
+    - name: Launch plugins & blueprints documentation indexing
+      shell: bash
+      run: |
+        curl -X POST -H "Content-Type: application/json" -d "{\"tag\": \"${{ inputs.kestra-tag}}\", \"to_index\": [\"plugins\",\"blueprints\"]}" ${{ inputs.doc-indexing-webhook }}
+        if [[ ${{ steps.check-latest.outputs.latest }} = "true" ]]; then
+          echo "Retagging latest documentation"
+          curl -X POST -H "Content-Type: application/json" -d "{\"tag\": \"${{ steps.check-latest.outputs.latestSnapshot }}\", \"to_index\": [\"plugins\",\"blueprints\"]}" ${{ inputs.doc-indexing-webhook }}
+        fi
