@@ -9,8 +9,9 @@ runs:
       id: checkout-branch
       shell: bash
       run: |
-        if [[ ${{ github.event_name == 'pull_request' }} ]]; then
         
+        if ${{ github.event_name == 'pull_request' }}; then
+      
             # try to find if there is an associated OSS branch
             ASSOCIATED_OSS_BRANCH_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.head_ref }})
             if [[ ! -z $ASSOCIATED_OSS_BRANCH_FOUND ]]; then
@@ -26,6 +27,13 @@ runs:
               echo "ossBranch=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+        else 
+          REF_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.ref }})
+          if [[ ! -z $REF_FOUND ]]; then
+            echo "self ref found ${{ github.ref }}"
+            echo "ossBranch=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
         fi
         
         echo "fallback to develop for edge cases like a PR based on a branch that exist only in EE"
