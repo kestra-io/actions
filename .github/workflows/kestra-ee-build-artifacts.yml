@@ -41,6 +41,12 @@ jobs:
           java-enabled: 'true'
           node-enabled: 'true'
 
+      - name: build OSS UI required for EE UI build
+        shell: bash
+        run: |
+          cd kestra/ui
+          npm install
+
       # Shadow Jar
       - name: Gradle - Build jars
         env:
