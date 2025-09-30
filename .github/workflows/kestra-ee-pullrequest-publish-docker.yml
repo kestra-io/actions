@@ -2,7 +2,9 @@ name: Pull Request - Publish Docker
 
 on:
   workflow_call:
-
+    secrets:
+      GOOGLE_SERVICE_ACCOUNT:
+        required: true
 jobs:
   # ********************************************************************************************************************
   # Build
