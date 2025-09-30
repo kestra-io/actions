@@ -62,6 +62,8 @@ jobs:
           file: ./kestra-ee/Dockerfile.pr
           push: true
           tags: ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}
+          build-args: |
+            KESTRA_DOCKER_BASE_VERSION: ${{ github.base_ref }})
           platforms: linux/amd64,linux/arm64
 
       # Add comment on pull request
