@@ -52,12 +52,8 @@ jobs:
       # Gradle check
       - name: Gradle - Build
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
-        env:
-          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
         shell: bash
         run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > ~/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/.gcp-service-account.json
           ./gradlew check javadoc --parallel
 
       - name: comment PR with test report
