@@ -57,7 +57,13 @@ jobs:
           ./gradlew check javadoc --parallel
 
       - name: comment PR with test report
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
+        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
+
+      - name: generate PR test report in logs on fork
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository}}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
         run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
