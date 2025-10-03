@@ -1,0 +1,26 @@
+name: Index Release Kestra Plugin
+description: "Index a plugin release"
+
+inputs:
+  webhook-url:
+    description: "The webhook URL on kestra cloud to index plugin release."
+    required: true
+  dryRun:
+    required: false
+    default: "false"
+    description: "If true, simulate the indexing without calling the webhook"
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+
+    - name: Run Plugin Release Indexing
+      id: run-release
+      shell: bash
+      run: |
+        chmod +x ${{ github.action_path }}/index-plugin-release.sh
+        ${{ github.action_path }}/release.sh "${{ inputs.webhook-url }}" "${{ inputs.dryRun }}"
