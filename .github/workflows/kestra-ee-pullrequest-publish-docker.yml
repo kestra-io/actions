@@ -68,17 +68,17 @@ jobs:
 
       # Add comment on pull request
       - name: Add comment to PR
-        uses: actions/github-script@v8
+        uses: kestra-io/actions/actions/comment-update@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `**🐋 Docker image**: \`${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}\`\n` +
-                `\n` +
-                `\`\`\`bash\n` +
-                `docker run --pull=always --rm -it -p 8080:8080 --user=root -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }} server local\n` +
-                `\`\`\``
-            })
+          title: "🐋 Docker image"
+          files: |
+            ${{ github.workspace }}/trivy-result.json
+          template: |
+            ```
+              ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}`
+            ```
+
+            ```bash
+              docker run --pull=always --rm -it -p 8080:8080 --user=root -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }} server local
+            ```
