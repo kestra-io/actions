@@ -179,13 +179,27 @@ jobs:
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
 
       - name: Retag to latest
-        if: startsWith(github.ref, 'refs/tags/v') && inputs.retag-latest == 'true'
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')
         run: |
+          echo "TODO remove this safety net after debugging inputs.retag-latest, its value: ${{ inputs.retag-latest }}"
+          TAG=${GITHUB_REF#refs/*/}
+          if [[ ! $TAG =~ ^v1\.0\.[0-9]+$ ]]; then
+            echo "error there is a bug, tag is probably not the expected one: $TAG"
+            exit 1
+          fi
+          
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest${{ matrix.image.tag }}
 
       - name: Retag to LTS
-        if: startsWith(github.ref, 'refs/tags/v') && inputs.retag-lts == 'true'
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true')
         run: |
+          echo "TODO remove this safety net after debugging inputs.retag-lts, its value: ${{ inputs.retag-lts }}"
+          TAG=${GITHUB_REF#refs/*/}
+          if [[ ! $TAG =~ ^v1\.0\.[0-9]+$ ]]; then
+            echo "error there is a bug, tag is probably not the expected one: $TAG"
+            exit 1
+          fi
+          
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
