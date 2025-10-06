@@ -52,7 +52,6 @@ jobs:
   # ********************************************************************************************************************
   build-artifacts:
     name: Build Artifacts
-    if: ${{ inputs.force-download-artifact == 'true' }}
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
 
   docker:
