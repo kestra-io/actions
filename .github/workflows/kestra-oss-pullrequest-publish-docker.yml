@@ -61,8 +61,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           title: "🐋 Docker image"
-          files: |
-            ${{ github.workspace }}/trivy-result.json
           template: |
             ```
               ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}`
