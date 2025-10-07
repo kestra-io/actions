@@ -63,6 +63,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
 
+      - name: display test report in Github logs
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors $(pwd)
+
       # Report Java
       - name: Report - Java
         uses: kestra-io/actions/composite/report-java@main
