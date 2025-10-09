@@ -63,9 +63,9 @@ jobs:
           title: "🐋 Docker image"
           template: |
             ```
-              ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}`
+            ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}
             ```
 
             ```bash
-              docker run --pull=always --rm -it -p 8080:8080 --user=root -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }} server local
+            docker run --pull=always --rm -it -p 8080:8080 --user=root -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }} server local
             ```
