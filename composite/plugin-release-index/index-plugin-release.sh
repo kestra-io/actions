@@ -45,7 +45,14 @@ index() {
         echo "Error: Invalid kestraVersion '$MIN_CORE'. Expected format MAJOR.MINOR.PATCH"
         exit 1
     fi
-        
+    
+    # Determine license based on branch name
+    if [[ "$GIT_REF" == plugin-ee* ]]; then
+        LICENSE="ENTERPRISE"
+    else
+        LICENSE="OPEN_SOURCE"
+    fi
+    
     # Replace empty strings with null for printing
     [ -z "$GROUP" ] && GROUP=null || GROUP="\"$GROUP\""
     [ -z "$ARTIFACT" ] && ARTIFACT=null || ARTIFACT="\"$ARTIFACT\""
@@ -54,8 +61,9 @@ index() {
     [ -z "$GIT_REPO" ] && GIT_REPO=null || GIT_REPO="\"$GIT_REPO\""
     [ -z "$GIT_BRANCH" ] && GIT_BRANCH=null || GIT_BRANCH="\"$GIT_BRANCH\""
     [ -z "$GIT_COMMIT" ] && GIT_COMMIT=null || GIT_COMMIT="\"$GIT_COMMIT\""
+    [ -z "$LICENSE" ] && LICENSE=null || LICENSE="\"$LICENSE\""
 
-    JSON_STRING="{\"groupId\": $GROUP, \"artifactId\": $ARTIFACT, \"version\": $VERSION, \"minCoreCompatibilityVersion\": $MIN_CORE, \"repository\": $GIT_REPO, \"branch\": $GIT_BRANCH, \"commit\": $GIT_COMMIT}"
+    JSON_STRING="{\"groupId\": $GROUP, \"artifactId\": $ARTIFACT, \"version\": $VERSION, \"minCoreCompatibilityVersion\": $MIN_CORE, \"repository\": $GIT_REPO, \"branch\": $GIT_BRANCH, \"commit\": $GIT_COMMIT \"license\": $LICENSE}"
 
     echo "Plugin release to index: $JSON_STRING"
     
