@@ -24,7 +24,8 @@ runs:
     - name: Launch plugins & blueprints documentation indexing
       shell: bash
       run: |
-        curl -X POST -H "Content-Type: application/json" -d "{\"tag\": \"${{ inputs.kestra-tag}}\", \"to_index\": [\"plugins\",\"blueprints\"]}" ${{ inputs.doc-indexing-webhook }}
+        toIndexForCurrentTag=$(([ ${{ steps.check-latest.outputs.latest }} = "true" ] && echo '["plugins","blueprints"]') || echo '["plugins"]')
+        curl -X POST -H "Content-Type: application/json" -d "{\"tag\": \"${{ inputs.kestra-tag }}\", \"to_index\": $toIndexForCurrentTag}" ${{ inputs.doc-indexing-webhook }}
         if [[ ${{ steps.check-latest.outputs.latest }} = "true" ]]; then
           echo "Retagging latest documentation"
           curl -X POST -H "Content-Type: application/json" -d "{\"tag\": \"${{ steps.check-latest.outputs.latestSnapshot }}\", \"to_index\": [\"plugins\",\"blueprints\"]}" ${{ inputs.doc-indexing-webhook }}
