@@ -76,6 +76,7 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      # Setup unit tests environment
       - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
         env:
@@ -93,6 +94,17 @@ jobs:
         run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      # Cleanup unit tests environment
+      - name: Cleanup - Unit test
+        if: ${{ inputs.skip-test == false }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f .github/cleanup-unit.sh ]; then
+            ./.github/cleanup-unit.sh
+          fi
 
       # Publish
       - name: Publish - Java
