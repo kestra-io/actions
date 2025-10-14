@@ -151,24 +151,11 @@ else
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "🚫 [DRY RUN] Skipping: ./gradlew release -Prelease.useAutomaticVersion=true -Prelease.releaseVersion=\"$RELEASE_VERSION\" -Prelease.newVersion=\"$NEXT_VERSION\""
   else
-    # Perform the Gradle release (this creates and pushes the tag)
+    # Perform the Gradle release (this creates, pushes the tag and updates to NEXT_VERSION (SNAPSHOT) on main branch)
     ./gradlew release \
       -Prelease.useAutomaticVersion=true \
       -Prelease.releaseVersion="$RELEASE_VERSION" \
       -Prelease.newVersion="$NEXT_VERSION"
-  fi
-
-  # Update gradle.properties with the next snapshot version
-  echo "📝 Updating gradle.properties with next snapshot version: $NEXT_VERSION"
-  sed -i "s/^version=.*/version=${NEXT_VERSION}/" gradle.properties
-
-  git add gradle.properties
-  git commit -m "chore(version): prepare for next development iteration (${NEXT_VERSION})"
-
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "🚫 [DRY RUN] Skipping: git push origin $DEFAULT_BRANCH"
-  else
-    git push origin "$DEFAULT_BRANCH"
   fi
 
   echo "✅ $RELEASE_TYPE release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
