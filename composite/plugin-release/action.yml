@@ -42,6 +42,8 @@ runs:
 
     - name: Run Release
       shell: bash
+      env:
+        GITHUB_PAT: ${{ env.GITHUB_PAT }}
       run: |
         chmod +x ${{ github.action_path }}/release.sh
         ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.dryRun }}"
