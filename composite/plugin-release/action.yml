@@ -13,6 +13,9 @@ inputs:
   nextVersion:
     required: false
     description: "Next version (e.g. 1.4.0-SNAPSHOT). If omitted, a PATCH release is performed."
+  kestraVersion:
+    required: true
+    description: "Target Kestra core version (e.g. 1.1.0). Will override kestraVersion in gradle.properties if set."
   dryRun:
     required: false
     default: "false"
@@ -47,7 +50,7 @@ runs:
         GITHUB_PAT: ${{ env.GITHUB_PAT }}
       run: |
         chmod +x ${{ github.action_path }}/release.sh
-        ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.dryRun }}"
+        ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.kestraVersion }}" "${{ inputs.dryRun }}"
     
     - name: Index release
       uses: kestra-io/actions/composite/plugin-release-index@main

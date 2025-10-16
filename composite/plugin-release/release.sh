@@ -23,23 +23,24 @@
 #
 # EXAMPLES:
 #   # MAJOR release (with next version)
-#   ./release.sh 2.0.0 2.1.0-SNAPSHOT
+#   ./release.sh 2.0.0 2.1.0-SNAPSHOT 1.1.0
 #
 #   # MINOR release (with next version)
-#   ./release.sh 1.3.0 1.4.0-SNAPSHOT
+#   ./release.sh 1.3.0 1.4.0-SNAPSHOT 1.1.0
 #
 #   # PATCH release (no next version)
-#   ./release.sh 1.3.2
+#   ./release.sh 1.3.2 "" 1.1.0
 #
 #   # DRY RUN
-#   ./release.sh 1.3.2 "" true
+#   ./release.sh 1.3.2 "" 1.1.0 true
 # ==============================================================================
 
 set -euo pipefail
 
 RELEASE_VERSION=$1
 NEXT_VERSION=${2:-}
-DRY_RUN=${3:-false}
+KESTRA_VERSION=${3:-}
+DRY_RUN=${4:-false}
 
 DRY_RUN_SUFFIX=""
 if [[ "$DRY_RUN" == "true" ]]; then
@@ -108,6 +109,11 @@ if [[ -z "$NEXT_VERSION" ]]; then
 
   echo "🔧 Updating gradle.properties with version=$RELEASE_VERSION"
   sed -i "s/^version=.*/version=${RELEASE_VERSION}/" gradle.properties
+
+  if [[ -n "$KESTRA_VERSION" ]]; then
+    echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
+    sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
+  fi
 
   git add gradle.properties
   git commit -m "chore(version): update to version '${RELEASE_VERSION}'"
