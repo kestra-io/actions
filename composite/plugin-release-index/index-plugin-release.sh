@@ -46,8 +46,8 @@ index() {
         exit 1
     fi
     
-    # Determine license based on branch name
-    if [[ "$GIT_REF" == plugin-ee* ]]; then
+    # Determine license based on artifact name
+    if [[ "$ARTIFACT" == plugin-ee* ]]; then
         LICENSE="ENTERPRISE"
     else
         LICENSE="OPEN_SOURCE"
