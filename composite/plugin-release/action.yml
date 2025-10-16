@@ -54,3 +54,4 @@ runs:
       with:
         webhookUrl: "${{ inputs.webhookUrl }}"
         dryRun: "${{ inputs.dryRun }}"
+        releaseVersion: "${{ inputs.releaseVersion }}"
