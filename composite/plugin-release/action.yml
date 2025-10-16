@@ -34,6 +34,7 @@ runs:
       with:
         fetch-depth: 0
         submodules: true
+        token: ${{ env.GITHUB_PAT }}
 
     - name: Setup - Build
       uses: kestra-io/actions/composite/setup-build@main
