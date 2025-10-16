@@ -75,8 +75,8 @@ runs:
       continue-on-error: true
       run: |
         if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
-          mv build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
-          mv build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/test/jacocoTestReport.xml
+          cp -R build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
+          cp build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/test/jacocoTestReport.xml
         fi
         
         if [ -d build/reports/jacoco/test/ ]; then
