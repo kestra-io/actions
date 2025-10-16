@@ -23,4 +23,4 @@ runs:
       shell: bash
       run: |
         chmod +x ${{ github.action_path }}/index-plugin-release.sh
-        ${{ github.action_path }}/release.sh "${{ inputs.webhook-url }}" "${{ inputs.dryRun }}"
+        ${{ github.action_path }}/index-plugin-release.sh "${{ inputs.webhook-url }}" "${{ inputs.dryRun }}"
