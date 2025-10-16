@@ -52,5 +52,5 @@ runs:
     - name: Index release
       uses: kestra-io/actions/composite/plugin-release-index@main
       with:
-        webhook-url: "${{ inputs.webhookUrl }}"
-        dry-run: "${{ inputs.dryRun }}"
+        webhookUrl: "${{ inputs.webhookUrl }}"
+        dryRun: "${{ inputs.dryRun }}"
