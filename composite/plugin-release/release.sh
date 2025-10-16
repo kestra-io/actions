@@ -41,6 +41,11 @@ RELEASE_VERSION=$1
 NEXT_VERSION=${2:-}
 DRY_RUN=${3:-false}
 
+DRY_RUN_SUFFIX=""
+if [[ "$DRY_RUN" == "true" ]]; then
+  DRY_RUN_SUFFIX=" (dry-run)"
+fi
+
 # Determine release type
 if [[ -z "$NEXT_VERSION" ]]; then
   RELEASE_TYPE="PATCH"
@@ -118,7 +123,7 @@ if [[ -z "$NEXT_VERSION" ]]; then
     git push origin "$TAG"
   fi
 
-  echo "✅ Patch release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
+  echo "✅ Patch release $RELEASE_VERSION$DRY_RUN_SUFFIX completed!"
 else
   echo "🚀 Detected $RELEASE_TYPE release mode on branch $DEFAULT_BRANCH"
 
@@ -158,5 +163,5 @@ else
       -Prelease.newVersion="$NEXT_VERSION"
   fi
 
-  echo "✅ $RELEASE_TYPE release $RELEASE_VERSION ${DRY_RUN:+(dry-run)} completed!"
+  echo "✅ $RELEASE_TYPE release $RELEASE_VERSION$DRY_RUN_SUFFIX completed!"
 fi
