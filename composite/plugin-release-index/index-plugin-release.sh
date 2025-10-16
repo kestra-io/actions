@@ -63,7 +63,7 @@ index() {
     [ -z "$GIT_COMMIT" ] && GIT_COMMIT=null || GIT_COMMIT="\"$GIT_COMMIT\""
     [ -z "$LICENSE" ] && LICENSE=null || LICENSE="\"$LICENSE\""
 
-    JSON_STRING="{\"groupId\": $GROUP, \"artifactId\": $ARTIFACT, \"version\": $VERSION, \"minCoreCompatibilityVersion\": $MIN_CORE, \"repository\": $GIT_REPO, \"branch\": $GIT_BRANCH, \"commit\": $GIT_COMMIT \"license\": $LICENSE}"
+    JSON_STRING="{\"groupId\": $GROUP, \"artifactId\": $ARTIFACT, \"version\": $VERSION, \"minCoreCompatibilityVersion\": $MIN_CORE, \"repository\": $GIT_REPO, \"branch\": $GIT_BRANCH, \"commit\": $GIT_COMMIT, \"license\": $LICENSE}"
 
     echo "Plugin release to index: $JSON_STRING"
     
@@ -86,8 +86,8 @@ main() {
    SUB_PROJECTS="${SUB_PROJECTS#*\[}"
    SUB_PROJECTS="${SUB_PROJECTS%\]*}"
 
-   if [[ "$SUB_PROJECTS" -eq "" ]]; then
-    echo "🛠 Gradle mono project build detected"
+   if [[ -z "$SUB_PROJECTS" ]]; then
+     echo "🛠 Gradle mono project build detected"
      index ""
      exit 0;
    fi
