@@ -18,8 +18,9 @@ index() {
     gradleProject=$1
 
     # Read properties, default to null if empty
-    GROUP=$(./gradlew -q "$gradleProject:properties" | grep '^group:' | cut -d':' -f2 | tr -d '[:space:]')
-    ARTIFACT=$(./gradlew -q "$gradleProject:properties" | grep '^name:' | cut -d':' -f2 | tr -d '[:space:]')
+    PROJECT_PROPS=$(./gradlew -q "$gradleProject:properties")
+    GROUP=$(echo "$PROJECT_PROPS" | grep '^group:' | cut -d':' -f2 | tr -d '[:space:]')
+    ARTIFACT=$(echo "$PROJECT_PROPS" | grep '^name:' | cut -d':' -f2 | tr -d '[:space:]')
     GIT_REPO=$(git config --get remote.origin.url)
     GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
     if [[ "$GIT_BRANCH" == "HEAD" ]]; then
@@ -47,7 +48,7 @@ index() {
     fi
     
     # Determine license based on artifact name
-    if [[ "$ARTIFACT" == plugin-ee* ]]; then
+    if [[ "$ARTIFACT" == plugin-ee* || "$ARTIFACT" == secret-* ]]; then
         LICENSE="ENTERPRISE"
     else
         LICENSE="OPEN_SOURCE"
