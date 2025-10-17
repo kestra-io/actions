@@ -42,6 +42,11 @@ NEXT_VERSION=${2:-}
 KESTRA_VERSION=${3:-}
 DRY_RUN=${4:-false}
 
+if [[ -n "$KESTRA_VERSION" && "$KESTRA_VERSION" == *"-SNAPSHOT" ]]; then
+  echo "❌ Invalid kestraVersion: '$KESTRA_VERSION' must not end with -SNAPSHOT"
+  exit 1
+fi
+
 DRY_RUN_SUFFIX=""
 if [[ "$DRY_RUN" == "true" ]]; then
   DRY_RUN_SUFFIX=" (dry-run)"
