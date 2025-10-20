@@ -68,12 +68,6 @@ if [[ "$RELEASE_TYPE" == "UNKNOWN" ]]; then
   exit 1
 fi
 
-# Prevent PATCH releases from having a NEXT_VERSION
-if [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[1-9][0-9]*$ && -n "$NEXT_VERSION" ]]; then
-  echo "❌ PATCH release ($RELEASE_VERSION) must not include a NEXT_VERSION argument ('$NEXT_VERSION')."
-  exit 1
-fi
-
 echo "📦 Release Version: $RELEASE_VERSION"
 echo "📦 Next Version: $NEXT_VERSION"
 echo "🧪 Dry Run: $DRY_RUN"
