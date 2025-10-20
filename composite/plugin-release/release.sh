@@ -124,6 +124,17 @@ if [[ "$RELEASE_TYPE" == "UNKNOWN" ]]; then
   exit 1
 fi
 
+# Prevent invalid PATCH releases like 2.0.0 or 3.1.0 (where Z == 0)
+if [[ -z "$NEXT_VERSION" ]]; then
+  PATCH_PART=$(echo "$RELEASE_VERSION" | cut -d'.' -f3)
+  if [[ "$PATCH_PART" == "0" ]]; then
+    echo "❌ Invalid PATCH release: ${RELEASE_VERSION}"
+    echo "   Patch releases must increment the last component (Z > 0)."
+    echo "   Example of valid patch: 2.0.1 or 3.1.5"
+    exit 1
+  fi
+fi
+
 echo "📦 Release Version: $RELEASE_VERSION"
 echo "📦 Next Version: $NEXT_VERSION"
 echo "🧪 Dry Run: $DRY_RUN"
