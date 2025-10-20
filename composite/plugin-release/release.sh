@@ -47,9 +47,65 @@ if [[ -n "$KESTRA_VERSION" && "$KESTRA_VERSION" == *"-SNAPSHOT" ]]; then
   exit 1
 fi
 
+# Enforce nextVersion to end with -SNAPSHOT (only when provided).
+if [[ -n "$NEXT_VERSION" && ! "$NEXT_VERSION" =~ -SNAPSHOT$ ]]; then
+  echo "❌ Invalid nextVersion: '$NEXT_VERSION' must end with -SNAPSHOT (e.g., 1.4.0-SNAPSHOT)"
+  exit 1
+fi
+
 DRY_RUN_SUFFIX=""
 if [[ "$DRY_RUN" == "true" ]]; then
   DRY_RUN_SUFFIX=" (dry-run)"
+fi
+
+# Read and normalize the current project version from gradle.properties.
+CURRENT_VERSION_LINE=$(grep '^version=' gradle.properties || echo "")
+CURRENT_VERSION=$(echo "$CURRENT_VERSION_LINE" | cut -d'=' -f2 | tr -d '[:space:]')
+CURRENT_BASE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-SNAPSHOT//')
+
+# Extract version components for rule checks.
+CURRENT_MAJOR=$(echo "$CURRENT_BASE_VERSION" | cut -d'.' -f1)
+CURRENT_MINOR=$(echo "$CURRENT_BASE_VERSION" | cut -d'.' -f2)
+RELEASE_MAJOR=$(echo "$RELEASE_VERSION" | cut -d'.' -f1)
+RELEASE_MINOR=$(echo "$RELEASE_VERSION" | cut -d'.' -f2)
+
+# Validate MINOR/PATCH coherence relative to the current development state.
+# - If NEXT_VERSION is provided -> MINOR/MAJOR flow: releaseVersion must match current SNAPSHOT base (e.g., 1.2.0-SNAPSHOT -> 1.2.0).
+# - If PATCH (no NEXT_VERSION):
+#     * If current is SNAPSHOT -> cannot patch the same or any future minor.
+#       (e.g., current 1.2.0-SNAPSHOT => 1.2.x disallowed, 1.3.x disallowed, but 1.1.x allowed)
+#     * If current is stable (non-SNAPSHOT) -> can patch same or older minors, but not future minors.
+if [[ -n "$NEXT_VERSION" ]]; then
+  # MINOR/MAJOR consistency when in SNAPSHOT
+  if [[ "$CURRENT_VERSION" =~ SNAPSHOT$ ]]; then
+    EXPECTED_RELEASE="${CURRENT_BASE_VERSION}"
+    if [[ "$RELEASE_VERSION" != "$EXPECTED_RELEASE" ]]; then
+      echo "❌ Inconsistent MINOR release: gradle.properties=${CURRENT_VERSION}"
+      echo "   You can only release version ${EXPECTED_RELEASE}"
+      exit 1
+    fi
+  fi
+else
+  # PATCH rules
+  if [[ "$CURRENT_VERSION" =~ SNAPSHOT$ ]]; then
+    # Disallow patching same or future minor while current minor isn't released yet.
+    if (( RELEASE_MAJOR > CURRENT_MAJOR )) || \
+       (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR >= CURRENT_MINOR )); then
+      echo "❌ Invalid PATCH release: ${RELEASE_VERSION}"
+      echo "   Current development version (${CURRENT_VERSION}) indicates ${CURRENT_MAJOR}.${CURRENT_MINOR}.0 is not released yet."
+      echo "   You may only patch older maintenance branches (e.g., ${CURRENT_MAJOR}.$((CURRENT_MINOR-1)).x)."
+      exit 1
+    fi
+  else
+    # Disallow patching a future minor when current is already stable.
+    if (( RELEASE_MAJOR > CURRENT_MAJOR )) || \
+       (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR > CURRENT_MINOR )); then
+      echo "❌ Invalid PATCH release: cannot release a future minor (${RELEASE_VERSION})"
+      echo "   Current version: ${CURRENT_VERSION}"
+      echo "   You may only patch the current or older minors."
+      exit 1
+    fi
+  fi
 fi
 
 # Determine release type
