@@ -29,4 +29,4 @@ runs:
       shell: bash
       run: |
         chmod +x ${{ github.action_path }}/index-plugin-release.sh
-        ${{ github.action_path }}/index-plugin-release.sh "${{ inputs.releaseVersion }}" "${{ inputs.kestraVersion }}" "${{ inputs.webhookUrl }}" "${{ inputs.dryRun }}"
+        ${{ github.action_path }}/index-plugin-release.sh ${{ inputs.releaseVersion }} ${{ inputs.kestraVersion }} ${{ inputs.webhookUrl }} ${{ inputs.dryRun }}
