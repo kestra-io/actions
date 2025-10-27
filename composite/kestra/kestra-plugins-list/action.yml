@@ -1,0 +1,23 @@
+name: 'List compatible Plugins'
+description: 'List compatible Plugins for a particular Kestra version by requesting Kestra API.'
+inputs:
+  kestraVersion:
+    description: "Kestra version to find compatible plugins for"
+    required: true
+outputs:
+  plugins:
+    description: "List of all Kestra OSS && EE plugins"
+    value: ${{ steps.plugins.outputs.plugins }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v5
+    - name: Plugins - Get list
+      id: plugins
+      shell: bash
+      run: |
+        KESTRA_VERSION=${{ inputs.kestraVersion }}
+        echo "list compatible plugins for Kestra version: $KESTRA_VERSION"
+        npx --yes @kestra-io/kestra-devtools getCompatiblePlugins $KESTRA_VERSION >> $COMPATIBLE_PLUGINS 
+        echo "compatible plugins:\n\t$COMPATIBLE_PLUGINS\n"
+        echo "plugins=$COMPATIBLE_PLUGINS" >> $GITHUB_OUTPUT
