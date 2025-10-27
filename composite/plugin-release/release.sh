@@ -228,6 +228,13 @@ else
   # Return to the default branch for the actual release
   git checkout "$DEFAULT_BRANCH"
 
+  if [[ -n "$KESTRA_VERSION" ]]; then
+    echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
+    sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
+    git add gradle.properties
+    git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
+  fi
+
   echo "🧪 Running Gradle release..."
   echo "ℹ️ Note: './gradlew release' will automatically create and push the Git tag '$TAG'"
 
