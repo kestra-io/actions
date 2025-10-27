@@ -19,5 +19,5 @@ runs:
         KESTRA_VERSION=${{ inputs.kestraVersion }}
         echo "list compatible plugins for Kestra version: $KESTRA_VERSION"
         COMPATIBLE_PLUGINS=$(npx --yes @kestra-io/kestra-devtools getCompatiblePlugins $KESTRA_VERSION) 
-        echo "compatible plugins:\n\t$COMPATIBLE_PLUGINS\n"
+        echo "compatible plugins $COMPATIBLE_PLUGINS"
         echo "plugins=$COMPATIBLE_PLUGINS" >> $GITHUB_OUTPUT
