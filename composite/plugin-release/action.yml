@@ -29,16 +29,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: GCP - Auth with github service account
-      id: auth
-      uses: 'google-github-actions/auth@v3'
-      with:
-        credentials_json: '${{ inputs.gcpCredentials }}'
-
-    - name: GCP - Setup Cloud SDK
-      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.gcpCredentials != ''}}
-      uses: 'google-github-actions/setup-gcloud@v3'
-
     - name: Configure Git
       shell: bash
       run: |
@@ -72,3 +62,4 @@ runs:
         dryRun: "${{ inputs.dryRun }}"
         releaseVersion: "${{ inputs.releaseVersion }}"
         kestraVersion: "${{ inputs.kestraVersion }}"
+        gcpCredentials: "${{ inputs.gcpCredentials }}"

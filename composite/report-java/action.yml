@@ -55,6 +55,12 @@ runs:
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       uses: 'google-github-actions/setup-gcloud@v3'
 
+    - name: GCP - Configure project and location
+      shell: bash
+      run: |
+        gcloud config set project kestra-io
+        gcloud config set artifacts/location europe-west1
+
     # Allure
     - name: Allure - Generate reports
       shell: bash

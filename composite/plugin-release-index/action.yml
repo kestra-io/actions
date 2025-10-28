@@ -15,9 +15,23 @@ inputs:
     required: false
     default: "false"
     description: "If true, simulate the indexing without calling the webhook"
+  gcpCredentials:
+    required: true
+    description: "GCP Service Account credentials (JSON string)"
+
 runs:
   using: composite
   steps:
+    - name: GCP - Auth with github service account
+      id: auth
+      uses: 'google-github-actions/auth@v3'
+      with:
+        credentials_json: '${{ inputs.gcpCredentials }}'
+
+    - name: GCP - Setup Cloud SDK
+      if: ${{ job.status == 'success' && inputs.gcpCredentials != ''}}
+      uses: 'google-github-actions/setup-gcloud@v3'
+
     - name: Checkout
       uses: actions/checkout@v4
       with:
