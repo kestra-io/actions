@@ -71,7 +71,7 @@ jobs:
 
       # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
       - name: GCP - Auth with github service account
-        uses: 'google-github-actions/auth@v2'
+        uses: 'google-github-actions/auth@v3'
         if: ${{ inputs.sonatype-publish == false }}
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}

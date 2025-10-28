@@ -47,13 +47,13 @@ runs:
     # GCP
     - name: GCP - Auth with unit test account
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
-      uses: 'google-github-actions/auth@v2'
+      uses: 'google-github-actions/auth@v3'
       with:
         credentials_json: '${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT }}'
 
     - name: GCP - Setup Cloud SDK
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
-      uses: 'google-github-actions/setup-gcloud@v2'
+      uses: 'google-github-actions/setup-gcloud@v3'
 
     # Allure
     - name: Allure - Generate reports
