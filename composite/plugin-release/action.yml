@@ -23,7 +23,7 @@ inputs:
   webhookUrl:
     required: true
   gcpCredentials:
-    required: true
+    required: false
     description: "GCP Service Account credentials (JSON string)"
 
 runs:
