@@ -22,9 +22,6 @@ inputs:
     description: "If true, simulate the release without pushing or tagging and log the actions"
   webhookUrl:
     required: true
-  gcpCredentials:
-    required: false
-    description: "GCP Service Account credentials (JSON string)"
 
 runs:
   using: composite
@@ -62,4 +59,3 @@ runs:
         dryRun: "${{ inputs.dryRun }}"
         releaseVersion: "${{ inputs.releaseVersion }}"
         kestraVersion: "${{ inputs.kestraVersion }}"
-        gcpCredentials: "${{ inputs.gcpCredentials }}"
