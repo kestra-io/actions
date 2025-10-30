@@ -53,12 +53,12 @@ jobs:
           echo "    pluginsWindowVersion: ${{ inputs.plugin-version }}"
       # Get Plugins List
       - name: Plugins - Get list
-        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@main
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@poc-release-docker-dry-run
         id: plugins
         with:
           plugin-version:  ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
       - name: new plugins list
-        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
+        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@poc-release-docker-dry-run
         with:
           kestraVersion: ${{ github.ref_name }}
 
