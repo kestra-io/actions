@@ -11,8 +11,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v5
-    - name: Plugins - Get list
+    - name: Plugins - Get compatible plugins for Kestra version
       id: plugins
       shell: bash
       run: |

@@ -63,3 +63,5 @@ runs:
         echo "pluginsALL=$PLUGINS_OSS $PLUGINS_EE" >> $GITHUB_OUTPUT
         echo "secretsEE=$SECRETS_EE" >> $GITHUB_OUTPUT
         echo "plugins=$PLUGINS_OSS $PLUGINS_EE $SECRETS_EE" >> $GITHUB_OUTPUT
+
+        echo "plugins=$PLUGINS_OSS $PLUGINS_EE $SECRETS_EE"

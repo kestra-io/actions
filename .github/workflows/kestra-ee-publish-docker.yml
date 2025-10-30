@@ -46,12 +46,21 @@ jobs:
     steps:
       # Checkout
       - uses: actions/checkout@v5
+      - name: Log params
+        run: |
+          echo "parameters:"
+          echo "    kestraVersion: ${{ github.ref_name }}"
+          echo "    pluginsWindowVersion: ${{ inputs.plugin-version }}"
       # Get Plugins List
       - name: Plugins - Get list
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@main
         id: plugins
         with:
           plugin-version:  ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
+      - name: new plugins list
+        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
+        with:
+          kestraVersion: ${{ github.ref_name }}
 
   # ********************************************************************************************************************
   # Build
