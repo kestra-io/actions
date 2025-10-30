@@ -188,7 +188,7 @@ if [[ -z "$NEXT_VERSION" ]]; then
   fi
 
   git add gradle.properties
-  git commit -m "chore(version): update to version '${RELEASE_VERSION}'"
+  git diff --cached --quiet || git commit -m "chore(version): update to version '${RELEASE_VERSION}'"
 
   # Create the tag
   echo "🏷 Creating annotated tag: $TAG"
@@ -232,7 +232,7 @@ else
     echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
     sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
     git add gradle.properties
-    git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
+    git diff --cached --quiet || git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
   fi
 
   echo "🧪 Running Gradle release..."
