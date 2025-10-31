@@ -20,8 +20,6 @@ inputs:
     required: false
     default: "false"
     description: "If true, simulate the release without pushing or tagging and log the actions"
-  webhookUrl:
-    required: true
 
 runs:
   using: composite
@@ -51,9 +49,3 @@ runs:
       run: |
         chmod +x ${{ github.action_path }}/release.sh
         ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.kestraVersion }}" "${{ inputs.dryRun }}"
-    
-    - name: Index release
-      uses: kestra-io/actions/composite/plugin-release-index@main
-      with:
-        webhookUrl: "${{ inputs.webhookUrl }}"
-        dryRun: "${{ inputs.dryRun }}"
