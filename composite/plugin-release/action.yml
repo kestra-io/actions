@@ -58,4 +58,3 @@ runs:
         webhookUrl: "${{ inputs.webhookUrl }}"
         dryRun: "${{ inputs.dryRun }}"
         releaseVersion: "${{ inputs.releaseVersion }}"
-        kestraVersion: "${{ inputs.kestraVersion }}"
