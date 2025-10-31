@@ -44,9 +44,9 @@ jobs:
       # Checkout GitHub Actions
       - name: Checkout - Actions
         uses: actions/checkout@v4
-        fetch-depth: 0
-        submodules: true
         with:
+          fetch-depth: 0
+          submodules: true
           repository: kestra-io/actions
           sparse-checkout-cone-mode: true
           path: .actions
