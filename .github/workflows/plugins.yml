@@ -41,18 +41,25 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      # Checkout GitHub Actions
+      # Checkout Kestra shared GitHub Actions repo
       - name: Checkout - Actions
         uses: actions/checkout@v4
         with:
+          repository: kestra-io/actions
           fetch-depth: 0
           submodules: true
-          repository: kestra-io/actions
-          sparse-checkout-cone-mode: true
           path: .actions
-          sparse-checkout: |
-            composite
-            actions
+
+      # Copy only the relevant composite/actions folders
+      - name: Import - Kestra Actions
+        run: |
+          echo "=== Listing downloaded .actions ==="
+          ls -R .actions || true
+          mkdir -p composite actions
+          cp -r .actions/composite/* composite/ || true
+          cp -r .actions/actions/* actions/ || true
+          echo "=== After copy: composite ==="
+          ls -R composite || true
 
       - name: Checkout - Actions Move
         run: |
