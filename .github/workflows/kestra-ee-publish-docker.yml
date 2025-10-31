@@ -25,7 +25,7 @@ on:
         type: boolean
         default: false
       plugin-version:
-        description: 'Plugin version'
+        description: '(deprecated) Plugin version'
         required: false
         type: string
         default: "LATEST"
@@ -52,12 +52,12 @@ jobs:
           echo "    kestraVersion: ${{ github.ref_name }}"
           echo "    pluginsWindowVersion: ${{ inputs.plugin-version }}"
       # Get Plugins List
-      - name: Plugins - Get list
+      - name: Get old plugins list from .plugins file
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@poc-release-docker-dry-run
-        id: plugins
         with:
           plugin-version:  ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
-      - name: new plugins list
+      - name: Get new plugins list from API
+        id: plugins
         uses: kestra-io/actions/composite/kestra/kestra-plugins-list@poc-release-docker-dry-run
         with:
           kestraVersion: ${{ github.ref_name }}
@@ -103,6 +103,7 @@ jobs:
       - name: inputs.dry-run OFF
         if: ${{ inputs.dry-run == false }}
         run: echo 'inputs.dry-run OFF'
+
       - name: Code Checkout
         uses: actions/checkout@v5
         with:
@@ -177,10 +178,8 @@ jobs:
         with:
           context: kestra-ee/.
           push: ${{ inputs.dry-run == false }}
-#          tags: | FIXME rollback before merge
-#            ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
-#            ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           tags: |
+            ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
             ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           network: host
