@@ -232,7 +232,14 @@ else
     echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
     sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
     git add gradle.properties
-    git diff --cached --quiet || git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
+
+    if ! git diff --cached --quiet; then
+      git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
+      echo "⬆️  Pushing commit before Gradle release..."
+      git push origin "$DEFAULT_BRANCH"
+    else
+      echo "ℹ️  No kestraVersion change detected — skipping commit and push."
+    fi
   fi
 
   echo "🧪 Running Gradle release..."
