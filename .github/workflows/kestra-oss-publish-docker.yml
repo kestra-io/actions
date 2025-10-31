@@ -51,13 +51,13 @@ jobs:
       - name: Get old plugins list from .plugins file
         id: old-plugin-list-from-inputs-file
         if: ${{ inputs.plugin-version != '' }}
-        uses: kestra-io/actions/composite/kestra-oss/kestra-oss-plugins-list@main
+        uses: kestra-io/actions/composite/kestra-oss/kestra-oss-plugins-list@poc-release-docker-dry-run
         with:
           plugin-version: ${{ inputs.plugin-version == 'LATEST-SNAPSHOT' && 'LATEST' || inputs.plugin-version }}
       - name: Get new plugins list from API
         id: new-plugin-list-from-api
         if: ${{ inputs.plugin-version == '' }}
-        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
+        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@poc-release-docker-dry-run
         with:
           kestraVersion: ${{ github.ref_name }}
       - name: Select plugins output
