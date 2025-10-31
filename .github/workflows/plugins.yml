@@ -44,9 +44,6 @@ jobs:
       # Checkout GitHub Actions
       - name: Checkout - Actions
         uses: actions/checkout@v4
-        # useful when release.yml triggered main.yml in the same run
-        # because composite folder may be missing when reaching this point
-        if: ${{ !hashFiles('composite/**') }}
         with:
           repository: kestra-io/actions
           sparse-checkout-cone-mode: true
@@ -54,6 +51,7 @@ jobs:
           sparse-checkout: |
             composite
             actions
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout - Actions Move
         run: |
