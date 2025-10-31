@@ -23,6 +23,8 @@ on:
         type: boolean
         default: true
       webhookUrl:
+        description: "The webhook url to index the plugin release"
+        type: string
         required: true
 
 permissions:
