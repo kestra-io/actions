@@ -39,13 +39,21 @@ jobs:
     steps:
       # Checkout
       - uses: actions/checkout@v5
-
+      - name: Log params
+        run: |
+          echo "parameters:"
+          echo "    kestraVersion: ${{ github.ref_name }}"
+          echo "    pluginsWindowVersion: ${{ inputs.plugin-version }}"
       # Get Plugins List
-      - name: Get Plugins List
-        uses: kestra-io/actions/composite/kestra-oss/kestra-oss-plugins-list@main
-        id: plugins
+      - name: Get old plugins list from .plugins file
+        uses: kestra-io/actions/composite/kestra-oss/kestra-oss-plugins-list@poc-release-docker-dry-run
         with: # remap LATEST-SNAPSHOT to LATEST
           plugin-version: ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
+      - name: Get new plugins list from API
+        id: plugins
+        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@poc-release-docker-dry-run
+        with:
+          kestraVersion: ${{ github.ref_name }}
 
   # ********************************************************************************************************************
   # Build
@@ -71,6 +79,13 @@ jobs:
             packages: python3 python-is-python3 python3-pip curl jattach
             python-libs: kestra
     steps:
+      - name: echo inputs.dry-run ON
+        if: ${{ inputs.dry-run == true }}
+        run: echo 'inputs.dry-run ON'
+      - name: inputs.dry-run OFF
+        if: ${{ inputs.dry-run == false }}
+        run: echo 'inputs.dry-run OFF'
+
       - uses: actions/checkout@v5
 
       # Vars
@@ -136,7 +151,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ inputs.dry-run == false }}
           tags: ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }}
           platforms: linux/amd64,linux/arm64
           build-args: |
@@ -145,16 +160,16 @@ jobs:
             PYTHON_LIBRARIES=${{ matrix.image.python-libs }}
 
       - name: Install regctl
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')  && (inputs.dry-run == false)
         uses: regclient/actions/regctl-installer@main
 
       - name: Retag to minor semver version
-        if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != ''
+        if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != ''  && (inputs.dry-run == false)
         run: |
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.minor_semver, matrix.image.name) }}
 
       - name: Retag to latest
-        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')  && (inputs.dry-run == false)
         run: |
           echo "TODO remove this safety net after debugging inputs.retag-latest, its value: ${{ inputs.retag-latest }}"
           TAG=${GITHUB_REF#refs/*/}
@@ -166,7 +181,7 @@ jobs:
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest{0}', matrix.image.name) }}
 
       - name: Retag to LTS
-        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true')
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true')  && (inputs.dry-run == false)
         run: |
           echo "TODO remove this safety net after debugging inputs.retag-lts, its value: ${{ inputs.retag-lts }}"
           TAG=${GITHUB_REF#refs/*/}
