@@ -23,10 +23,15 @@ on:
         type: boolean
         default: false
       plugin-version:
-        description: 'Plugin version'
+        description: '(deprecated) Plugin version'
         required: false
         type: string
         default: "LATEST"
+      dry-run:
+        description: 'Dry run mode that will stop before publishing the image'
+        required: false
+        type: boolean
+        default: false
 
 env:
   PLUGIN_VERSION: ${{ inputs.plugin-version != null && inputs.plugin-version || 'LATEST' }}

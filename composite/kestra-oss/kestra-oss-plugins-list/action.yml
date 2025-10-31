@@ -1,4 +1,4 @@
-name: 'Load Kestra Plugin List'
+name: '(Deprecated) Load Kestra Plugin List'
 description: 'Composite action to load list of plugins'
 inputs:
   plugin-version:
@@ -19,7 +19,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Get Plugins List
+    - name: (Deprecated) Get Plugins List
       id: plugins
       shell: bash
       run: |
