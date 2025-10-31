@@ -13,12 +13,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        submodules: true
-
     - name: Run Plugin Release Indexing
       id: run-release
       shell: bash
