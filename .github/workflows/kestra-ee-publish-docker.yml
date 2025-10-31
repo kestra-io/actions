@@ -25,24 +25,22 @@ on:
         type: boolean
         default: false
       plugin-version:
-        description: '(deprecated) Plugin version'
+        description: '(deprecated) Plugin version window for old Kestra releases using .plugins file (0.22 to 0.24). If omitted, then plugin list will be fetched from the API compatible versions endpoint'
         required: false
         type: string
-        default: "LATEST"
+        default: ''
       dry-run:
         description: 'Dry run mode that will stop before publishing the image'
         required: false
         type: boolean
         default: false
 
-env:
-  PLUGIN_VERSION: ${{ inputs.plugin-version != '' && inputs.plugin-version || 'LATEST' }}
 jobs:
   plugins:
     name: List Plugins
     runs-on: kestra-private-standard
     outputs:
-      plugins: ${{ steps.plugins.outputs.plugins }}
+      plugins: ${{ steps.plugins-outputs-step.outputs.plugins }}
     steps:
       # Checkout
       - uses: actions/checkout@v5
@@ -53,14 +51,26 @@ jobs:
           echo "    pluginsWindowVersion: ${{ inputs.plugin-version }}"
       # Get Plugins List
       - name: Get old plugins list from .plugins file
+        id: old-plugin-list-from-inputs-file
+        if: ${{ inputs.plugin-version != '' }}
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-plugins-list@poc-release-docker-dry-run
         with:
-          plugin-version:  ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
+          plugin-version: ${{ inputs.plugin-version == 'LATEST-SNAPSHOT' && 'LATEST' || inputs.plugin-version }}
       - name: Get new plugins list from API
-        id: plugins
+        id: new-plugin-list-from-api
+        if: ${{ inputs.plugin-version == '' }}
         uses: kestra-io/actions/composite/kestra/kestra-plugins-list@poc-release-docker-dry-run
         with:
           kestraVersion: ${{ github.ref_name }}
+      - name: Select plugins output
+        id: plugins-outputs-step
+        shell: bash
+        run: |
+          if [ "${{ inputs.plugin-version }}" != "" ]; then
+            echo "plugins=${{ steps.old-plugin-list-from-inputs-file.outputs.plugins }}" >> $GITHUB_OUTPUT
+          else
+            echo "plugins=${{ steps.new-plugin-list-from-api.outputs.plugins }}" >> $GITHUB_OUTPUT
+          fi
 
   # ********************************************************************************************************************
   # Build
@@ -123,7 +133,6 @@ jobs:
       # Vars
       - name: Plugins - Set List
         id: vars
-
         run: |
           TAG=${GITHUB_REF#refs/*/}
 
@@ -140,10 +149,10 @@ jobs:
           fi
 
           PRIVATE_REPO="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-west1-maven.pkg.dev/kestra-host/maven"
-          if [[ "${{ env.PLUGIN_VERSION }}" != *"-SNAPSHOT" ]]; then
-            echo "plugins=$PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
-          else
+          if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             echo "plugins=$PRIVATE_REPO-snapshot --repositories=https://central.sonatype.com/repository/maven-snapshots ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+          else
+            echo "plugins=$PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           fi
 
       # Download executable from artifact
@@ -187,7 +196,6 @@ jobs:
             KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
             APT_PACKAGES=${{ matrix.image.packages }}
             PYTHON_LIBRARIES=${{ matrix.image.python-libraries }}
-
 
       - name: Setup - Install regctl
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.dry-run == false)
