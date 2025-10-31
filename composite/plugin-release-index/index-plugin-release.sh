@@ -3,14 +3,13 @@
 # SCRIPT FOR INDEXING KESTRA PLUGIN RELEASE
 
 # USAGE:
-#   ./index-plugin-release.sh <release_version> <webhook_url> [<dry-run>]
+#   ./index-plugin-release.sh <webhook_url> [<dry-run>]
 # ==============================================================================
 set -euo pipefail
 
 ## ARGS
-RELEASE_VERSION=$1
-INDEXING_WEBHOOK=$2
-DRY_RUN=${3:-false}
+INDEXING_WEBHOOK=$1
+DRY_RUN=${2:-false}
 
 ## FUNCTIONS
 index() {
@@ -20,6 +19,7 @@ index() {
     PROJECT_PROPS=$(./gradlew -q "$gradleProject:properties")
     GROUP=$(echo "$PROJECT_PROPS" | grep '^group:' | cut -d':' -f2 | tr -d '[:space:]')
     ARTIFACT=$(echo "$PROJECT_PROPS" | grep '^name:' | cut -d':' -f2 | tr -d '[:space:]')
+    VERSION=$(./gradlew -q "$gradleProject:properties" | grep '^version:' | cut -d':' -f2 | tr -d '[:space:]')
     MIN_CORE=$(./gradlew -q "$gradleProject:properties" | grep '^kestraVersion:' | cut -d':' -f2 | tr -d '[:space:]')
     GIT_REPO=$(git config --get remote.origin.url)
     GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -37,8 +37,8 @@ index() {
     GIT_COMMIT=$(git rev-parse --short HEAD)
     
     semver_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
-    if [[ ! $RELEASE_VERSION =~ $semver_regex ]]; then
-        echo "Error: Invalid pluginVersion '$RELEASE_VERSION'. Expected format MAJOR.MINOR.PATCH"
+    if [[ ! $VERSION =~ $semver_regex ]]; then
+        echo "Error: Invalid pluginVersion '$VERSION'. Expected format MAJOR.MINOR.PATCH"
         exit 1
     fi
 
@@ -57,21 +57,21 @@ index() {
     # Replace empty strings with null for printing
     [ -z "$GROUP" ] && GROUP=null || GROUP="\"$GROUP\""
     [ -z "$ARTIFACT" ] && ARTIFACT=null || ARTIFACT="\"$ARTIFACT\""
-    [ -z "$RELEASE_VERSION" ] && RELEASE_VERSION=null || RELEASE_VERSION="\"$RELEASE_VERSION\""
+    [ -z "$VERSION" ] && VERSION=null || VERSION="\"$VERSION\""
     [ -z "$MIN_CORE" ] && MIN_CORE=null || MIN_CORE="\"$MIN_CORE\""
     [ -z "$GIT_REPO" ] && GIT_REPO=null || GIT_REPO="\"$GIT_REPO\""
     [ -z "$GIT_BRANCH" ] && GIT_BRANCH=null || GIT_BRANCH="\"$GIT_BRANCH\""
     [ -z "$GIT_COMMIT" ] && GIT_COMMIT=null || GIT_COMMIT="\"$GIT_COMMIT\""
     [ -z "$LICENSE" ] && LICENSE=null || LICENSE="\"$LICENSE\""
 
-    JSON_STRING="{\"groupId\": $GROUP, \"artifactId\": $ARTIFACT, \"version\": $RELEASE_VERSION, \"minCoreCompatibilityVersion\": $MIN_CORE, \"repository\": $GIT_REPO, \"branch\": $GIT_BRANCH, \"commit\": $GIT_COMMIT, \"license\": $LICENSE}"
+    JSON_STRING="{\"groupId\": $GROUP, \"artifactId\": $ARTIFACT, \"version\": $VERSION, \"minCoreCompatibilityVersion\": $MIN_CORE, \"repository\": $GIT_REPO, \"branch\": $GIT_BRANCH, \"commit\": $GIT_COMMIT, \"license\": $LICENSE}"
 
     echo "Plugin release to index: $JSON_STRING"
     
     if [[ "$DRY_RUN" == "true" ]]; then
       echo "🚫 [DRY RUN] Skipping webhook"
     else
-      if [ -n "$GROUP" ] && [ -n "$ARTIFACT" ] && [ -n "$RELEASE_VERSION" ] && [ -n "$MIN_CORE" ]; then
+      if [ -n "$GROUP" ] && [ -n "$ARTIFACT" ] && [ -n "$VERSION" ] && [ -n "$MIN_CORE" ]; then
         curl -X POST -H "Content-Type: application/json" -d "$JSON_STRING" "$INDEXING_WEBHOOK"
       else
         echo "🚫 Skipping webhook: some properties are null"

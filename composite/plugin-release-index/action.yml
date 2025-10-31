@@ -2,9 +2,6 @@ name: Index Release Kestra Plugin
 description: "Index a plugin release"
 
 inputs:
-  releaseVersion:
-    required: true
-    description: "Release version (e.g. 1.0.0, 1.3.0 or 1.4.2)"
   webhookUrl:
     description: "The webhook URL on kestra cloud to index plugin release."
     required: true
@@ -27,4 +24,4 @@ runs:
       shell: bash
       run: |
         chmod +x ${{ github.action_path }}/index-plugin-release.sh
-        ${{ github.action_path }}/index-plugin-release.sh "${{ inputs.releaseVersion }}" "${{ inputs.webhookUrl }}" "${{ inputs.dryRun }}"
+        ${{ github.action_path }}/index-plugin-release.sh "${{ inputs.webhookUrl }}" "${{ inputs.dryRun }}"
