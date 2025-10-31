@@ -1,5 +1,4 @@
-# TODO migrate this to a node function in https://github.com/kestra-io/kestra/tree/develop/dev-tools
-name: 'Kestra Action to List Plugins'
+name: '(Deprecated) Kestra Action to List Plugins'
 description: 'Composite action to load list of plugins from a local file.'
 inputs:
   plugin-version:
@@ -49,7 +48,7 @@ runs:
         sparse-checkout: |
           .plugins
 
-    - name: Plugins - Get list
+    - name: (Deprecated) Plugins - Get list
       id: plugins
       shell: bash
       run: |
@@ -63,3 +62,5 @@ runs:
         echo "pluginsALL=$PLUGINS_OSS $PLUGINS_EE" >> $GITHUB_OUTPUT
         echo "secretsEE=$SECRETS_EE" >> $GITHUB_OUTPUT
         echo "plugins=$PLUGINS_OSS $PLUGINS_EE $SECRETS_EE" >> $GITHUB_OUTPUT
+
+        echo "plugins=$PLUGINS_OSS $PLUGINS_EE $SECRETS_EE"

@@ -23,29 +23,52 @@ on:
         type: boolean
         default: false
       plugin-version:
-        description: 'Plugin version'
+        description: '(deprecated) Plugin version window for old Kestra releases using .plugins file (0.22 to 0.24). If omitted, then plugin list will be fetched from the API compatible versions endpoint'
         required: false
         type: string
-        default: "LATEST"
+        default: ''
+      dry-run:
+        description: 'Dry run mode that will stop before publishing the image'
+        required: false
+        type: boolean
+        default: false
 
-env:
-  PLUGIN_VERSION: ${{ inputs.plugin-version != null && inputs.plugin-version || 'LATEST' }}
 jobs:
   plugins:
     name: List Plugins
     runs-on: ubuntu-latest
     outputs:
-      plugins: ${{ steps.plugins.outputs.plugins }}
+      plugins: ${{ steps.plugins-outputs-step.outputs.plugins }}
     steps:
       # Checkout
       - uses: actions/checkout@v5
-
+      - name: Log params
+        run: |
+          echo "parameters:"
+          echo "    kestraVersion: ${{ github.ref_name }}"
+          echo "    pluginsWindowVersion: ${{ inputs.plugin-version }}"
       # Get Plugins List
-      - name: Get Plugins List
+      - name: Get old plugins list from .plugins file
+        id: old-plugin-list-from-inputs-file
+        if: ${{ inputs.plugin-version != '' }}
         uses: kestra-io/actions/composite/kestra-oss/kestra-oss-plugins-list@main
-        id: plugins
-        with: # remap LATEST-SNAPSHOT to LATEST
-          plugin-version: ${{ env.PLUGIN_VERSION == 'LATEST-SNAPSHOT' && 'LATEST' || env.PLUGIN_VERSION }}
+        with:
+          plugin-version: ${{ inputs.plugin-version == 'LATEST-SNAPSHOT' && 'LATEST' || inputs.plugin-version }}
+      - name: Get new plugins list from API
+        id: new-plugin-list-from-api
+        if: ${{ inputs.plugin-version == '' }}
+        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
+        with:
+          kestraVersion: ${{ github.ref_name }}
+      - name: Select plugins output
+        id: plugins-outputs-step
+        shell: bash
+        run: |
+          if [ "${{ inputs.plugin-version }}" != "" ]; then
+            echo "plugins=${{ steps.old-plugin-list-from-inputs-file.outputs.plugins }}" >> $GITHUB_OUTPUT
+          else
+            echo "plugins=${{ steps.new-plugin-list-from-api.outputs.plugins }}" >> $GITHUB_OUTPUT
+          fi
 
   # ********************************************************************************************************************
   # Build
@@ -71,6 +94,13 @@ jobs:
             packages: python3 python-is-python3 python3-pip curl jattach
             python-libs: kestra
     steps:
+      - name: echo inputs.dry-run ON
+        if: ${{ inputs.dry-run == true }}
+        run: echo 'inputs.dry-run ON'
+      - name: inputs.dry-run OFF
+        if: ${{ inputs.dry-run == false }}
+        run: echo 'inputs.dry-run OFF'
+
       - uses: actions/checkout@v5
 
       # Vars
@@ -95,7 +125,7 @@ jobs:
             fi
           fi
 
-          if [[ "${{ env.PLUGIN_VERSION }}" == *"-SNAPSHOT" ]]; then
+          if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             echo "plugins=--repositories=https://central.sonatype.com/repository/maven-snapshots/ ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT;
           else
             echo "plugins=${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
@@ -136,7 +166,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ inputs.dry-run == false }}
           tags: ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }}
           platforms: linux/amd64,linux/arm64
           build-args: |
@@ -145,16 +175,16 @@ jobs:
             PYTHON_LIBRARIES=${{ matrix.image.python-libs }}
 
       - name: Install regctl
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')  && (inputs.dry-run == false)
         uses: regclient/actions/regctl-installer@main
 
       - name: Retag to minor semver version
-        if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != ''
+        if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != ''  && (inputs.dry-run == false)
         run: |
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.minor_semver, matrix.image.name) }}
 
       - name: Retag to latest
-        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')  && (inputs.dry-run == false)
         run: |
           echo "TODO remove this safety net after debugging inputs.retag-latest, its value: ${{ inputs.retag-latest }}"
           TAG=${GITHUB_REF#refs/*/}
@@ -162,11 +192,11 @@ jobs:
             echo "error there is a bug, tag is probably not the expected one: $TAG"
             exit 1
           fi
-          
+
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest{0}', matrix.image.name) }}
 
       - name: Retag to LTS
-        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true')
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true') && (inputs.dry-run == false)
         run: |
           echo "TODO remove this safety net after debugging inputs.retag-lts, its value: ${{ inputs.retag-lts }}"
           TAG=${GITHUB_REF#refs/*/}
@@ -190,4 +220,3 @@ jobs:
         uses: kestra-io/actions/composite/slack-status@main
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-
