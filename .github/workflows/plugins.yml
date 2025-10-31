@@ -114,15 +114,15 @@ jobs:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
 
-      # Upload
-      - name: Publish - Jar artifacts
+      # Upload JAR for PR
+      - name: Publish - Jar artifacts for PR only
         uses: ./composite/jar-upload
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # Trivy scan
-      - name: Trivy - Scan jar
+      # Trivy scan for PR
+      - name: Trivy - Scan jar for PR only
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         uses: ./composite/scan-trivy
         with:
@@ -155,6 +155,6 @@ jobs:
       # Index release
       - name: Index release
         uses: kestra-io/actions/composite/plugin-release-index@main
-        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
