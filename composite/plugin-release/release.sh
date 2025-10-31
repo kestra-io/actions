@@ -42,6 +42,18 @@ NEXT_VERSION=${2:-}
 KESTRA_VERSION=${3:-}
 DRY_RUN=${4:-false}
 
+# If kestraVersion is not provided, use the one from gradle.properties on main
+if [[ -z "$KESTRA_VERSION" ]]; then
+  echo "ℹ️ No kestraVersion provided — reading from gradle.properties on main"
+  git fetch origin main --quiet
+  KESTRA_VERSION=$(git show origin/main:gradle.properties | grep '^kestraVersion=' | cut -d'=' -f2 | tr -d '[:space:]' || true)
+  if [[ -z "$KESTRA_VERSION" ]]; then
+    echo "❌ Unable to determine kestraVersion from main branch."
+    exit 1
+  fi
+  echo "🔧 Using kestraVersion from main: $KESTRA_VERSION"
+fi
+
 if [[ -n "$KESTRA_VERSION" && "$KESTRA_VERSION" == *"-SNAPSHOT" ]]; then
   echo "❌ Invalid kestraVersion: '$KESTRA_VERSION' must not end with -SNAPSHOT"
   exit 1

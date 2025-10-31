@@ -15,7 +15,7 @@ inputs:
     description: "Next version (e.g. 1.4.0-SNAPSHOT). If omitted, a PATCH release is performed."
   kestraVersion:
     required: true
-    description: "Target Kestra core version (e.g. 1.1.0). Will override kestraVersion in gradle.properties if set."
+    description: "Target Kestra core version (e.g. 1.1.0). Will override kestraVersion in gradle.properties if set, else uses current kestraVersion from main branch."
   dryRun:
     required: false
     default: "false"
