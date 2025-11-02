@@ -41,23 +41,6 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      # # Checkout GitHub Actions
-      # - name: Checkout - Actions
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: kestra-io/actions
-      #     sparse-checkout-cone-mode: true
-      #     path: .actions
-      #     sparse-checkout: |
-      #       composite
-      #       actions
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-
-      # - name: Checkout - Actions Move
-      #   run: |
-      #     mv .actions/composite composite
-      #     mv .actions/actions actions
-
       # Setup build
       - name: Setup - Build
         uses: kestra-io/actions/composite/setup-build@main
