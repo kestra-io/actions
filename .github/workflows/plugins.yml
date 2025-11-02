@@ -174,6 +174,7 @@ jobs:
       # Index release
       - name: Index release
         uses: kestra-io/actions/composite/plugin-release-index@main
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
+        # We trigger the plugin release index only for NON SNAPSHOT version thus the if:
+        if: ${{ (startsWith(github.ref, 'releases/v') || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
