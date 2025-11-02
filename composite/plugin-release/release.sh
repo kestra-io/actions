@@ -215,25 +215,6 @@ else
   git checkout "$DEFAULT_BRANCH"
   git pull origin "$DEFAULT_BRANCH"
 
-  # Ensure remote branch list is fresh
-  git fetch origin
-
-  # Check if remote release branch exists
-  if ! git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
-    echo "🌱 Creating release branch: $RELEASE_BRANCH"
-    git checkout -b "$RELEASE_BRANCH"
-    if [[ "$DRY_RUN" == "true" ]]; then
-      echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
-    else
-      git push origin "$RELEASE_BRANCH"
-    fi
-  else
-    echo "ℹ️ Branch '$RELEASE_BRANCH' already exists on remote."
-  fi
-
-  # Return to the default branch for the actual release
-  git checkout "$DEFAULT_BRANCH"
-
   if [[ -n "$KESTRA_VERSION" ]]; then
     echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
     sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
@@ -242,12 +223,17 @@ else
     if ! git diff --cached --quiet; then
       git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
       echo "⬆️  Pushing commit before Gradle release..."
-      git push origin "$DEFAULT_BRANCH"
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "🚫 [DRY RUN] Skipping: git push origin $DEFAULT_BRANCH"
+      else
+        git push origin "$DEFAULT_BRANCH"
+      fi
     else
       echo "ℹ️  No kestraVersion change detected — skipping commit and push."
     fi
   fi
 
+  # This creates the vX.Y.Z tag and pushes the next SNAPSHOT version to main
   echo "🧪 Running Gradle release..."
   echo "ℹ️ Note: './gradlew release' will automatically create and push the Git tag '$TAG'"
 
@@ -260,6 +246,28 @@ else
       -Prelease.releaseVersion="$RELEASE_VERSION" \
       -Prelease.newVersion="$NEXT_VERSION"
   fi
+
+  # Ensure local tags are up-to-date (tag was just created by gradle)
+  git fetch origin --tags
+
+  # Check if remote branch exists
+  if ! git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
+    echo "🌱 Creating release branch: $RELEASE_BRANCH from tag $TAG"
+    
+    # Create the branch from the TAG
+    git checkout -b "$RELEASE_BRANCH" "$TAG"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
+    else
+      git push origin "$RELEASE_BRANCH"
+    fi
+  else
+    echo "ℹ️ Branch '$RELEASE_BRANCH' already exists on remote."
+  fi
+
+  # Return to the default branch to finish
+  git checkout "$DEFAULT_BRANCH"
 
   echo "✅ $RELEASE_TYPE release $RELEASE_VERSION$DRY_RUN_SUFFIX completed!"
 fi
