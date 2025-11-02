@@ -152,7 +152,14 @@ jobs:
         with:
           channel: "C09FE0QCN2E"
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-      
+
+      # Allure report permissions
+      - name: Allure report permissions
+        if: ${{ !cancelled() && inputs.skip-test == false }}
+        shell: bash
+        run: |
+          sudo chown -R $(whoami) build/reports/allure
+
       # Index release
       - name: Index release
         uses: kestra-io/actions/composite/plugin-release-index@main
