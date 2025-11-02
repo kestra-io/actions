@@ -41,26 +41,26 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      # Checkout GitHub Actions
-      - name: Checkout - Actions
-        uses: actions/checkout@v4
-        with:
-          repository: kestra-io/actions
-          sparse-checkout-cone-mode: true
-          path: .actions
-          sparse-checkout: |
-            composite
-            actions
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # # Checkout GitHub Actions
+      # - name: Checkout - Actions
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: kestra-io/actions
+      #     sparse-checkout-cone-mode: true
+      #     path: .actions
+      #     sparse-checkout: |
+      #       composite
+      #       actions
+      #     token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout - Actions Move
-        run: |
-          mv .actions/composite composite
-          mv .actions/actions actions
+      # - name: Checkout - Actions Move
+      #   run: |
+      #     mv .actions/composite composite
+      #     mv .actions/actions actions
 
       # Setup build
       - name: Setup - Build
-        uses: ./composite/setup-build
+        uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
 
@@ -109,7 +109,7 @@ jobs:
 
       # Publish
       - name: Publish - Java
-        uses: ./composite/publish-java
+        uses: kestra-io/actions/composite/publish-java@main
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
         with:
           secrets: ${{ toJSON(secrets) }}
@@ -117,7 +117,7 @@ jobs:
 
       # Upload JAR for PR
       - name: Publish - Jar artifacts for PR only
-        uses: ./composite/jar-upload
+        uses: kestra-io/actions/composite/jar-upload@main
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         with:
           secrets: ${{ toJSON(secrets) }}
@@ -125,13 +125,13 @@ jobs:
       # Trivy scan for PR
       - name: Trivy - Scan jar for PR only
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
-        uses: ./composite/scan-trivy
+        uses: kestra-io/actions/composite/scan-trivy@main
         with:
           secrets: ${{ toJSON(secrets) }}
 
       # GitHub Release
       - name: GitHub - Create release
-        uses: ./composite/github-release
+        uses: kestra-io/actions/composite/github-release@main
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,7 +139,7 @@ jobs:
 
       # Report Java
       - name: Report - Java
-        uses: ./composite/report-java
+        uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() && inputs.skip-test == false }}
         with:
           secrets: ${{ toJSON(secrets) }}
@@ -148,14 +148,14 @@ jobs:
       - name: Slack - Notify on failure
         id: send-ci-failed
         if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && job.status == 'failure'
-        uses: ./composite/slack-status
+        uses: kestra-io/actions/composite/slack-status@main
         with:
           channel: "C09FE0QCN2E"
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
       
       # Index release
       - name: Index release
-        uses: ./composite/plugin-release-index
+        uses: kestra-io/actions/composite/plugin-release-index@main
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
