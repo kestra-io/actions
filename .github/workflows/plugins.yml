@@ -90,48 +90,10 @@ jobs:
             ./.github/cleanup-unit.sh
           fi
 
-      # Check if artifact already exists
-      - name: Check if artifact already exists
-        id: check_artifact
-        if: ${{ inputs.sonatype-publish == false }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
-          GROUP=$(./gradlew properties -q | grep "^group:" | awk '{print $2}')
-          ARTIFACT=$(basename "$(pwd)")
-
-          ARTIFACT_PATH=$(printf "%s/%s/%s/%s-%s.jar" "${GROUP//.//}" "${ARTIFACT}" "${VERSION}" "${ARTIFACT}" "${VERSION}" | sed 's/\//%2F/g')
-
-          TOKEN=$(gcloud auth print-access-token)
-
-          BASE_URL="https://artifactregistry.googleapis.com/v1/projects/kestra-host/locations/europe-west1/repositories/maven/files"
-          FULL_URL="${BASE_URL}/${ARTIFACT_PATH}"
-
-          echo "🔍 Checking if artifact exists at:"
-          echo "    ${FULL_URL}"
-          echo
-
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $TOKEN" \
-            "$FULL_URL")
-
-          if [ "$STATUS" = "200" ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "✅ Artifact already exists at version ${VERSION}. Skipping publish."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "🚀 Artifact does not exist yet (status: ${STATUS}). Proceeding with publish."
-          fi
-
       # Publish
       - name: Publish - Java
         uses: kestra-io/actions/composite/publish-java@main
-        if: >
-          steps.check_artifact.outputs.exists == 'false' &&
-          (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') &&
-          startsWith(github.repository, 'kestra-io/')
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
         with:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
