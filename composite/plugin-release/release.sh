@@ -78,8 +78,7 @@ RELEASE_MINOR=$(echo "$RELEASE_VERSION" | cut -d'.' -f2)
 # Validate MINOR/PATCH coherence relative to the current development state.
 # - If NEXT_VERSION is provided -> MINOR/MAJOR flow: releaseVersion must match current SNAPSHOT base (e.g., 1.2.0-SNAPSHOT -> 1.2.0).
 # - If PATCH (no NEXT_VERSION):
-#     * If current is SNAPSHOT -> cannot patch the same or any future minor.
-#       (e.g., current 1.2.0-SNAPSHOT => 1.2.x disallowed, 1.3.x disallowed, but 1.1.x allowed)
+#     * If current is SNAPSHOT -> allow patching same minor, disallow future minors.
 #     * If current is stable (non-SNAPSHOT) -> can patch same or older minors, but not future minors.
 if [[ -n "$NEXT_VERSION" ]]; then
   # MINOR/MAJOR consistency when in SNAPSHOT
@@ -94,16 +93,15 @@ if [[ -n "$NEXT_VERSION" ]]; then
 else
   # PATCH rules
   if [[ "$CURRENT_VERSION" =~ SNAPSHOT$ ]]; then
-    # Disallow patching same or future minor while current minor isn't released yet.
+    # Allow patching same minor when in SNAPSHOT, disallow future minors
     if (( RELEASE_MAJOR > CURRENT_MAJOR )) || \
-       (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR >= CURRENT_MINOR )); then
+       (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR > CURRENT_MINOR )); then
       echo "❌ Invalid PATCH release: ${RELEASE_VERSION}"
-      echo "   Current development version (${CURRENT_VERSION}) indicates ${CURRENT_MAJOR}.${CURRENT_MINOR}.0 is not released yet."
-      echo "   You may only patch older maintenance branches (e.g., ${CURRENT_MAJOR}.$((CURRENT_MINOR-1)).x)."
+      echo "   You may only patch the current or older minors (<= ${CURRENT_MAJOR}.${CURRENT_MINOR}.x)."
       exit 1
     fi
   else
-    # Disallow patching a future minor when current is already stable.
+    # Disallow patching a future minor when current is already stable
     if (( RELEASE_MAJOR > CURRENT_MAJOR )) || \
        (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR > CURRENT_MINOR )); then
       echo "❌ Invalid PATCH release: cannot release a future minor (${RELEASE_VERSION})"
@@ -205,6 +203,33 @@ if [[ -z "$NEXT_VERSION" ]]; then
     git tag -a "$TAG" -m "$TAG"
     git push origin "$RELEASE_BRANCH"
     git push origin "$TAG"
+  fi
+
+  # Increment to next snapshot on release branch and main
+  PATCH_PART=$(echo "$RELEASE_VERSION" | cut -d'.' -f3)
+  NEXT_PATCH=$((PATCH_PART + 1))
+  NEXT_SNAPSHOT="${RELEASE_MAJOR}.${RELEASE_MINOR}.${NEXT_PATCH}-SNAPSHOT"
+
+  echo "🔧 Updating gradle.properties with version=${NEXT_SNAPSHOT}"
+  sed -i "s/^version=.*/version=${NEXT_SNAPSHOT}/" gradle.properties
+  git add gradle.properties
+  git commit -m "chore(version): bump to ${NEXT_SNAPSHOT}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
+  else
+    git push origin "$RELEASE_BRANCH"
+  fi
+
+  echo "🔁 Syncing ${NEXT_SNAPSHOT} to $DEFAULT_BRANCH"
+  git checkout "$DEFAULT_BRANCH"
+  git pull origin "$DEFAULT_BRANCH"
+  sed -i "s/^version=.*/version=${NEXT_SNAPSHOT}/" gradle.properties
+  git add gradle.properties
+  git commit -m "chore(version): bump to ${NEXT_SNAPSHOT}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Skipping: git push origin $DEFAULT_BRANCH"
+  else
+    git push origin "$DEFAULT_BRANCH"
   fi
 
   echo "✅ Patch release $RELEASE_VERSION$DRY_RUN_SUFFIX completed!"
