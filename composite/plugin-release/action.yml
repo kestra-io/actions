@@ -1,10 +1,17 @@
+# ==============================================================================
+# Release Kestra Plugin
+#
 # This workflow handles manual release preparation (version bump, tag, branch).
 # When the tag (e.g. v1.2.0) is pushed, it automatically triggers main.yml,
 # which runs the full CI/CD pipeline via plugins.yml (build, publish, GitHub Release).
-# The two workflows are complementary: release.yml = prepare, main.yml = execute.
+#
+# The two workflows are complementary:
+#   - release.yml = prepare (manual or CI-triggered release)
+#   - main.yml    = execute (build, publish, release)
+# ==============================================================================
 
 name: Release Kestra Plugin
-description: "Release logic for Kestra plugins (MAJOR, MINOR, PATCH)"
+description: "Release logic for Kestra plugins (MAJOR, MINOR, PATCH, HOTFIX)"
 
 inputs:
   releaseVersion:
@@ -20,6 +27,9 @@ inputs:
     required: false
     default: "false"
     description: "If true, simulate the release without pushing or tagging and log the actions"
+  commitsList:
+    required: false
+    description: "(ONLY FOR HOTFIXES) Comma-separated list of commit SHA1s to cherry-pick for a hotfix release (e.g. abc123,def456). If provided, release.sh runs in hotfix mode."
 
 runs:
   using: composite
@@ -48,4 +58,9 @@ runs:
         GITHUB_PAT: ${{ env.GITHUB_PAT }}
       run: |
         chmod +x ${{ github.action_path }}/release.sh
-        ${{ github.action_path }}/release.sh "${{ inputs.releaseVersion }}" "${{ inputs.nextVersion }}" "${{ inputs.kestraVersion }}" "${{ inputs.dryRun }}"
+        ${{ github.action_path }}/release.sh \
+          "${{ inputs.releaseVersion }}" \
+          "${{ inputs.nextVersion }}" \
+          "${{ inputs.kestraVersion }}" \
+          "${{ inputs.dryRun }}" \
+          "${{ inputs.commitsList }}"

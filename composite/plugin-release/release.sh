@@ -3,296 +3,233 @@
 # RELEASE SCRIPT FOR KESTRA PLUGINS
 #
 # This script automates the release process for Kestra plugin repositories.
-# It supports MAJOR, MINOR, and PATCH version releases based on Git branches.
+# It relies only on Git tags (no release branches) and runs `./gradlew release`.
 #
-# MAJOR and MINOR releases (e.g., 2.0.0 or 1.3.0):
-# - Performed from the default branch (main or master)
-# - Creates a new release branch if not already present (e.g., releases/v1.3.x)
-# - Runs `./gradlew release`, which automatically creates a Git tag
-# - Updates gradle.properties to the NEXT snapshot version (e.g., 1.4.0-SNAPSHOT)
+# It validates that the provided RELEASE_VERSION matches the expected semantic
+# version bump (major/minor/patch) according to Conventional Commits since the
+# latest tag.
 #
-# PATCH releases (e.g., 1.3.2):
-# - Performed directly on an existing maintenance branch (e.g., releases/v1.3.x)
-# - Updates gradle.properties to the patch version
-# - Commits the change
-# - Creates an annotated Git tag (e.g., v1.3.2)
-# - Pushes the commit and the tag
+# Rules:
+# - If commits contain "BREAKING CHANGE" or "feat!" → expect MAJOR bump (X++)
+# - Else if commits contain "feat" → expect MINOR bump (Y++)
+# - Else → expect PATCH bump (Z++)
+#
+# In addition, it supports a "hotfix" mode for older releases:
+# - Provide a list of SHA1s as the 5th argument.
+# - The script will switch to the previous tag (vX.Y.Z-1),
+#   apply the cherry-picks, and create a new annotated tag (vX.Y.Z).
+# - In case of conflict, it aborts immediately without tagging.
 #
 # USAGE:
-#   ./release.sh <releaseVersion> [nextVersion] [dry-run]
+#   ./release.sh <releaseVersion> [nextVersion] [kestraVersion] [dry-run] [commitsList]
 #
 # EXAMPLES:
-#   # MAJOR release (with next version)
-#   ./release.sh 2.0.0 2.1.0-SNAPSHOT 1.1.0
 #
-#   # MINOR release (with next version)
-#   ./release.sh 1.3.0 1.4.0-SNAPSHOT 1.1.0
+# 🧱 Normal releases (Gradle-managed)
 #
-#   # PATCH release (no next version)
-#   ./release.sh 1.3.2 "" 1.1.0
+#   # Major release: 2.0.0 → next 2.0.1-SNAPSHOT
+#   ./release.sh 2.0.0
 #
-#   # DRY RUN
-#   ./release.sh 1.3.2 "" 1.1.0 true
+#   # Minor release: 1.2.0 → next 1.2.1-SNAPSHOT
+#   ./release.sh 1.2.0 "" 1.1.0
+#
+#   # Patch release: 1.1.1 → next 1.1.2-SNAPSHOT
+#   ./release.sh 1.1.1
+#
+#   # With explicit next version and Kestra version override
+#   ./release.sh 1.3.0 1.3.1-SNAPSHOT 1.2.0
+#
+#   # Dry run simulation (no push, no tag)
+#   ./release.sh 1.3.0 "" 1.1.0 true
+#
+# 🛠 Hotfix releases (manual cherry-picks on older major/minor)
+#
+#   # Apply commits abc123 and def456 on top of v1.0.1, then tag v1.0.2
+#   ./release.sh 1.0.2 "" "" false "abc123,def456"
+#
+#   # Dry-run of the same hotfix (no cherry-pick or tag created)
+#   ./release.sh 1.0.2 "" "" true "abc123,def456"
 # ==============================================================================
 
 set -euo pipefail
+rm -f .git/index.lock || true
 
 RELEASE_VERSION=$1
 NEXT_VERSION=${2:-}
 KESTRA_VERSION=${3:-}
 DRY_RUN=${4:-false}
+COMMITS_LIST=${5:-}
 
-# Validate kestraVersion if explicitly provided
-if [[ -n "$KESTRA_VERSION" ]]; then
-  if [[ "$KESTRA_VERSION" == *"-SNAPSHOT" ]]; then
-    echo "❌ Invalid kestraVersion: '$KESTRA_VERSION' must not end with -SNAPSHOT"
+# ------------------------------------------------------------------------------
+# Find the latest tag and extract current version
+# ------------------------------------------------------------------------------
+echo "🔍 Detecting latest tag..."
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+CURRENT_VERSION=${LAST_TAG#v}
+IFS='.' read -r CUR_MAJOR CUR_MINOR CUR_PATCH <<< "$CURRENT_VERSION"
+
+IFS='.' read -r REL_MAJOR REL_MINOR REL_PATCH <<< "$RELEASE_VERSION"
+
+echo "🔖 Last tag: ${LAST_TAG}"
+echo "📦 Proposed release: ${RELEASE_VERSION}"
+echo "📦 Proposed next version: ${NEXT_VERSION:-<none>}"
+
+# ------------------------------------------------------------------------------
+# Mode HOTFIX (if SHA list provided)
+# ------------------------------------------------------------------------------
+if [[ -n "$COMMITS_LIST" ]]; then
+  echo "🧩 Hotfix mode detected — applying fixes for ${RELEASE_VERSION}"
+  IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
+  PREV_PATCH=$((PATCH - 1))
+  BASE_TAG="v${MAJOR}.${MINOR}.${PREV_PATCH}"
+
+  echo "🔎 Base tag: ${BASE_TAG}"
+  if ! git rev-parse "$BASE_TAG" >/dev/null 2>&1; then
+    echo "❌ Base tag '$BASE_TAG' not found. Cannot perform hotfix."
     exit 1
   fi
-  echo "🔧 Using provided kestraVersion: $KESTRA_VERSION"
-else
-  echo "ℹ️ No kestraVersion provided — keeping existing value from gradle.properties"
-fi
 
-# Enforce nextVersion to end with -SNAPSHOT (only when provided).
-if [[ -n "$NEXT_VERSION" && ! "$NEXT_VERSION" =~ -SNAPSHOT$ ]]; then
-  echo "❌ Invalid nextVersion: '$NEXT_VERSION' must end with -SNAPSHOT (e.g., 1.4.0-SNAPSHOT)"
-  exit 1
-fi
+  echo "🔀 Switching to detached HEAD at ${BASE_TAG}"
+  git switch --detach "$BASE_TAG"
 
-DRY_RUN_SUFFIX=""
-if [[ "$DRY_RUN" == "true" ]]; then
-  DRY_RUN_SUFFIX=" (dry-run)"
-fi
-
-# Read and normalize the current project version from gradle.properties.
-CURRENT_VERSION_LINE=$(grep '^version=' gradle.properties || echo "")
-CURRENT_VERSION=$(echo "$CURRENT_VERSION_LINE" | cut -d'=' -f2 | tr -d '[:space:]')
-CURRENT_BASE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-SNAPSHOT//')
-
-# Extract version components for rule checks.
-CURRENT_MAJOR=$(echo "$CURRENT_BASE_VERSION" | cut -d'.' -f1)
-CURRENT_MINOR=$(echo "$CURRENT_BASE_VERSION" | cut -d'.' -f2)
-RELEASE_MAJOR=$(echo "$RELEASE_VERSION" | cut -d'.' -f1)
-RELEASE_MINOR=$(echo "$RELEASE_VERSION" | cut -d'.' -f2)
-
-# Validate MINOR/PATCH coherence relative to the current development state.
-# - If NEXT_VERSION is provided -> MINOR/MAJOR flow: releaseVersion must match current SNAPSHOT base (e.g., 1.2.0-SNAPSHOT -> 1.2.0).
-# - If PATCH (no NEXT_VERSION):
-#     * If current is SNAPSHOT -> allow patching same minor, disallow future minors.
-#     * If current is stable (non-SNAPSHOT) -> can patch same or older minors, but not future minors.
-if [[ -n "$NEXT_VERSION" ]]; then
-  # MINOR/MAJOR consistency when in SNAPSHOT
-  if [[ "$CURRENT_VERSION" =~ SNAPSHOT$ ]]; then
-    EXPECTED_RELEASE="${CURRENT_BASE_VERSION}"
-    if [[ "$RELEASE_VERSION" != "$EXPECTED_RELEASE" ]]; then
-      echo "❌ Inconsistent MINOR release: gradle.properties=${CURRENT_VERSION}"
-      echo "   You can only release version ${EXPECTED_RELEASE}"
-      exit 1
+  echo "🔧 Applying cherry-picks..."
+  IFS=',' read -ra SHAS <<< "$COMMITS_LIST"
+  for SHA in "${SHAS[@]}"; do
+    echo "➡️  Cherry-picking $SHA"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "🚫 [DRY RUN] Skipping cherry-pick of $SHA"
+    else
+      if ! git cherry-pick "$SHA"; then
+        echo "❌ Conflict during cherry-pick of $SHA"
+        echo "   Aborting cherry-pick and reverting state to ${BASE_TAG}."
+        git cherry-pick --abort || true
+        git reset --hard "$BASE_TAG"
+        exit 1
+      fi
     fi
-  fi
-else
-  # PATCH rules
-  if [[ "$CURRENT_VERSION" =~ SNAPSHOT$ ]]; then
-    # Allow patching same minor when in SNAPSHOT, disallow future minors
-    if (( RELEASE_MAJOR > CURRENT_MAJOR )) || \
-       (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR > CURRENT_MINOR )); then
-      echo "❌ Invalid PATCH release: ${RELEASE_VERSION}"
-      echo "   You may only patch the current or older minors (<= ${CURRENT_MAJOR}.${CURRENT_MINOR}.x)."
-      exit 1
-    fi
+  done
+
+  echo "🏷 Creating annotated hotfix tag v${RELEASE_VERSION}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Would create and push tag v${RELEASE_VERSION}"
   else
-    # Disallow patching a future minor when current is already stable
-    if (( RELEASE_MAJOR > CURRENT_MAJOR )) || \
-       (( RELEASE_MAJOR == CURRENT_MAJOR && RELEASE_MINOR > CURRENT_MINOR )); then
-      echo "❌ Invalid PATCH release: cannot release a future minor (${RELEASE_VERSION})"
-      echo "   Current version: ${CURRENT_VERSION}"
-      echo "   You may only patch the current or older minors."
-      exit 1
-    fi
+    git tag -a "v${RELEASE_VERSION}" -m "v${RELEASE_VERSION}"
+    git push origin "v${RELEASE_VERSION}"
   fi
+
+  echo "✅ Hotfix v${RELEASE_VERSION} successfully created and pushed."
+  exit 0
 fi
 
-# Determine release type
-if [[ -z "$NEXT_VERSION" ]]; then
-  RELEASE_TYPE="PATCH"
-elif [[ "$RELEASE_VERSION" =~ ^[0-9]+\.0\.0$ ]]; then
-  RELEASE_TYPE="MAJOR"
-elif [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[1-9][0-9]*\.0$ ]]; then
-  RELEASE_TYPE="MINOR"
+# ------------------------------------------------------------------------------
+# Analyze commits since last tag (for normal Gradle releases)
+# ------------------------------------------------------------------------------
+echo "🔎 Analyzing commits since ${LAST_TAG}..."
+COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s%n%b" | tr '[:upper:]' '[:lower:]')
+
+HAS_BREAKING=false
+HAS_FEAT=false
+
+if echo "$COMMITS" | grep -qE 'breaking change|feat!'; then
+  HAS_BREAKING=true
+elif echo "$COMMITS" | grep -qE '^feat| feat'; then
+  HAS_FEAT=true
+fi
+
+# ------------------------------------------------------------------------------
+# Determine expected version bump
+# ------------------------------------------------------------------------------
+EXP_MAJOR=$CUR_MAJOR
+EXP_MINOR=$CUR_MINOR
+EXP_PATCH=$CUR_PATCH
+
+if [[ "$HAS_BREAKING" == true ]]; then
+  ((EXP_MAJOR++)); EXP_MINOR=0; EXP_PATCH=0
+  EXPECTED_TYPE="MAJOR"
+elif [[ "$HAS_FEAT" == true ]]; then
+  ((EXP_MINOR++)); EXP_PATCH=0
+  EXPECTED_TYPE="MINOR"
 else
-  RELEASE_TYPE="UNKNOWN"
+  ((EXP_PATCH++))
+  EXPECTED_TYPE="PATCH"
 fi
 
-if [[ "$RELEASE_TYPE" == "UNKNOWN" ]]; then
-  echo "❌ Unable to determine release type from version '$RELEASE_VERSION' with next version '$NEXT_VERSION'"
+EXPECTED_VERSION="${EXP_MAJOR}.${EXP_MINOR}.${EXP_PATCH}"
+
+# ------------------------------------------------------------------------------
+# Validate the provided release version
+# ------------------------------------------------------------------------------
+if [[ "$RELEASE_VERSION" != "$EXPECTED_VERSION" ]]; then
+  echo "❌ Version mismatch detected!"
+  echo "   → Commits since ${LAST_TAG} suggest a *${EXPECTED_TYPE}* bump"
+  echo "   → Expected version: ${EXPECTED_VERSION}"
+  echo "   → Provided version: ${RELEASE_VERSION}"
+  echo ""
+  echo "💡 Fix: adjust your release version accordingly or review commits."
   exit 1
 fi
 
-# Prevent invalid PATCH releases like 2.0.0 or 3.1.0 (where Z == 0)
+echo "✅ Version check passed — ${RELEASE_VERSION} is consistent with commit history (${EXPECTED_TYPE} bump)."
+
+# ------------------------------------------------------------------------------
+# Auto-set NEXT_VERSION if not provided
+# ------------------------------------------------------------------------------
 if [[ -z "$NEXT_VERSION" ]]; then
-  PATCH_PART=$(echo "$RELEASE_VERSION" | cut -d'.' -f3)
-  if [[ "$PATCH_PART" == "0" ]]; then
-    echo "❌ Invalid PATCH release: ${RELEASE_VERSION}"
-    echo "   Patch releases must increment the last component (Z > 0)."
-    echo "   Example of valid patch: 2.0.1 or 3.1.5"
-    exit 1
-  fi
+  IFS='.' read -r MAJ MIN PATCH <<< "$RELEASE_VERSION"
+  NEXT_PATCH=$((PATCH + 1))
+  NEXT_VERSION="${MAJ}.${MIN}.${NEXT_PATCH}-SNAPSHOT"
+  echo "ℹ️ No nextVersion provided — automatically set to ${NEXT_VERSION}"
 fi
 
-echo "📦 Release Version: $RELEASE_VERSION"
-echo "📦 Next Version: $NEXT_VERSION"
-echo "🧪 Dry Run: $DRY_RUN"
-
-# Override Git remote with PAT to allow pushing to protected branches
+# ------------------------------------------------------------------------------
+# Configure Git authentication if GITHUB_PAT is provided
+# ------------------------------------------------------------------------------
 if [[ -n "${GITHUB_PAT:-}" ]]; then
-  echo "🔐 Using GITHUB_PAT for authentication"
+  echo "🔐 Configuring authentication with GITHUB_PAT"
   REMOTE_URL=$(git config --get remote.origin.url | sed -E 's#https://([^@]*@)?#https://#')
   AUTHED_URL="https://x-access-token:${GITHUB_PAT}@${REMOTE_URL#https://}"
   git remote set-url origin "$AUTHED_URL"
 fi
 
-# Tag to be created
+# ------------------------------------------------------------------------------
+# Override kestraVersion if provided
+# ------------------------------------------------------------------------------
+if [[ -n "$KESTRA_VERSION" ]]; then
+  echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
+  sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
+  git add gradle.properties
+  if ! git diff --cached --quiet; then
+    git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# Run Gradle release (automatic tagging & snapshot bump)
+# ------------------------------------------------------------------------------
 TAG="v${RELEASE_VERSION}"
-
-# Extract X.Y for the maintenance branch
-BASE_VERSION=$(echo "$RELEASE_VERSION" | grep -Eo '^[0-9]+\.[0-9]+')
-
-# Branch to use for PATCH releases
-RELEASE_BRANCH="releases/v${BASE_VERSION}.x"
-
-# Detect the default branch (main or master)
 DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d ':' -f2 | tr -d ' ')
+git fetch origin --tags
 
-# Check if the tag already exists
 if git rev-parse "$TAG" >/dev/null 2>&1; then
   echo "❌ Tag '$TAG' already exists. Aborting."
   exit 1
 fi
 
-# If NEXT_VERSION is not provided, this is a PATCH release
-if [[ -z "$NEXT_VERSION" ]]; then
-  echo "🛠 Detected PATCH release mode on branch $RELEASE_BRANCH"
-
-  # Ensure the release branch exists remotely
-  if ! git ls-remote --heads origin "$RELEASE_BRANCH" &>/dev/null; then
-    echo "❌ Branch $RELEASE_BRANCH does not exist."
-    exit 1
-  fi
-
-  # Checkout and update the release branch
-  git checkout "$RELEASE_BRANCH"
-  git pull origin "$RELEASE_BRANCH"
-
-  echo "🔧 Updating gradle.properties with version=$RELEASE_VERSION"
-  sed -i "s/^version=.*/version=${RELEASE_VERSION}/" gradle.properties
-
-  if [[ -n "$KESTRA_VERSION" ]]; then
-    echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
-    sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
-  fi
-
-  git add gradle.properties
-  git diff --cached --quiet || git commit -m "chore(version): update to version '${RELEASE_VERSION}'"
-
-  # Create the tag
-  echo "🏷 Creating annotated tag: $TAG"
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "🚫 [DRY RUN] Skipping: git tag -a $TAG -m \"$TAG\""
-    echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH && git push origin $TAG"
-  else
-    git tag -a "$TAG" -m "$TAG"
-    git push origin "$RELEASE_BRANCH"
-    git push origin "$TAG"
-  fi
-
-  # Increment to next snapshot on release branch and main
-  PATCH_PART=$(echo "$RELEASE_VERSION" | cut -d'.' -f3)
-  NEXT_PATCH=$((PATCH_PART + 1))
-  NEXT_SNAPSHOT="${RELEASE_MAJOR}.${RELEASE_MINOR}.${NEXT_PATCH}-SNAPSHOT"
-
-  echo "🔧 Updating gradle.properties with version=${NEXT_SNAPSHOT}"
-  sed -i "s/^version=.*/version=${NEXT_SNAPSHOT}/" gradle.properties
-  git add gradle.properties
-  git commit -m "chore(version): bump to ${NEXT_SNAPSHOT}"
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
-  else
-    git push origin "$RELEASE_BRANCH"
-  fi
-
-  echo "🔁 Syncing ${NEXT_SNAPSHOT} to $DEFAULT_BRANCH"
-  git checkout "$DEFAULT_BRANCH"
-  git pull origin "$DEFAULT_BRANCH"
-  sed -i "s/^version=.*/version=${NEXT_SNAPSHOT}/" gradle.properties
-  git add gradle.properties
-  git commit -m "chore(version): bump to ${NEXT_SNAPSHOT}"
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "🚫 [DRY RUN] Skipping: git push origin $DEFAULT_BRANCH"
-  else
-    git push origin "$DEFAULT_BRANCH"
-  fi
-
-  echo "✅ Patch release $RELEASE_VERSION$DRY_RUN_SUFFIX completed!"
+echo "🚀 Running Gradle release (tag + snapshot handled automatically)..."
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "🚫 [DRY RUN] Would execute:"
+  echo "./gradlew release -Prelease.useAutomaticVersion=true -Prelease.releaseVersion='${RELEASE_VERSION}' -Prelease.newVersion='${NEXT_VERSION}'"
 else
-  echo "🚀 Detected $RELEASE_TYPE release mode on branch $DEFAULT_BRANCH"
-
-  # Checkout and pull the default branch
-  git checkout "$DEFAULT_BRANCH"
-  git pull origin "$DEFAULT_BRANCH"
-
-  if [[ -n "$KESTRA_VERSION" ]]; then
-    echo "🔧 Overriding kestraVersion with: $KESTRA_VERSION"
-    sed -i "s/^kestraVersion=.*/kestraVersion=${KESTRA_VERSION}/" gradle.properties
-    git add gradle.properties
-
-    if ! git diff --cached --quiet; then
-      git commit -m "chore(version): override kestraVersion to '${KESTRA_VERSION}'"
-      echo "⬆️  Pushing commit before Gradle release..."
-      if [[ "$DRY_RUN" == "true" ]]; then
-        echo "🚫 [DRY RUN] Skipping: git push origin $DEFAULT_BRANCH"
-      else
-        git push origin "$DEFAULT_BRANCH"
-      fi
-    else
-      echo "ℹ️  No kestraVersion change detected — skipping commit and push."
-    fi
-  fi
-
-  # This creates the vX.Y.Z tag and pushes the next SNAPSHOT version to main
-  echo "🧪 Running Gradle release..."
-  echo "ℹ️ Note: './gradlew release' will automatically create and push the Git tag '$TAG'"
-
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "🚫 [DRY RUN] Skipping: ./gradlew release -Prelease.useAutomaticVersion=true -Prelease.releaseVersion=\"$RELEASE_VERSION\" -Prelease.newVersion=\"$NEXT_VERSION\""
-  else
-    # Perform the Gradle release (this creates, pushes the tag and updates to NEXT_VERSION (SNAPSHOT) on main branch)
-    ./gradlew release \
-      -Prelease.useAutomaticVersion=true \
-      -Prelease.releaseVersion="$RELEASE_VERSION" \
-      -Prelease.newVersion="$NEXT_VERSION"
-  fi
-
-  # Ensure local tags are up-to-date (tag was just created by gradle)
-  git fetch origin --tags
-
-  # Check if remote branch exists
-  if ! git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
-    echo "🌱 Creating release branch: $RELEASE_BRANCH from tag $TAG"
-    
-    # Create the branch from the TAG
-    git checkout -b "$RELEASE_BRANCH" "$TAG"
-    
-    if [[ "$DRY_RUN" == "true" ]]; then
-      echo "🚫 [DRY RUN] Skipping: git push origin $RELEASE_BRANCH"
-    else
-      git push origin "$RELEASE_BRANCH"
-    fi
-  else
-    echo "ℹ️ Branch '$RELEASE_BRANCH' already exists on remote."
-  fi
-
-  # Return to the default branch to finish
-  git checkout "$DEFAULT_BRANCH"
-
-  echo "✅ $RELEASE_TYPE release $RELEASE_VERSION$DRY_RUN_SUFFIX completed!"
+  ./gradlew release \
+    -Prelease.useAutomaticVersion=true \
+    -Prelease.releaseVersion="${RELEASE_VERSION}" \
+    -Prelease.newVersion="${NEXT_VERSION}"
 fi
+
+echo ""
+echo "✅ Release ${RELEASE_VERSION} (${EXPECTED_TYPE}) completed successfully!"
+echo "   - Tag: v${RELEASE_VERSION}"
+echo "   - Next version: ${NEXT_VERSION}"
+echo "   - Branch: ${DEFAULT_BRANCH}"
+echo "   - Kestra version: ${KESTRA_VERSION:-<unchanged>}"
+echo "   - Dry run: ${DRY_RUN}"
