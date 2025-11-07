@@ -12,8 +12,6 @@ jobs:
   check:
     timeout-minutes: 15
     runs-on: ubuntu-latest
-    env:
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
     steps:
       - name: Login to DockerHub
         uses: docker/login-action@v3

@@ -1,0 +1,75 @@
+name: 'E2E tests'
+# 'New E2E tests implementation started by Roman. Based on playwright in npm UI project, tests Kestra OSS develop docker image. These tests are written from zero, lets make them unflaky from the start!.'
+on:
+  workflow_call:
+    secrets:
+      GOOGLE_SERVICE_ACCOUNT:
+        required: true
+      APPLICATION_SECRETS:
+        description: "applications-secrets.yml with license infos for EE Kestra, encoded as base64"
+        required: true
+    inputs:
+      noInputYet:
+        description: 'not input yet.'
+        required: false
+        type: string
+        default: "no input"
+jobs:
+  check:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+    steps:
+      - name: Login to DockerHub
+        # TODO not sure if it is needed
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Checkout - EE
+        uses: actions/checkout@v5
+        with:
+          path: kestra-ee
+
+      - name: Checkout - OSS
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+
+      - name: setup init
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: 'true'
+          node-enabled: 'true'
+
+      - name: OSS npm ci
+        shell: bash
+        working-directory: kestra/ui
+        run: npm ci
+
+      - name: EE npm ci
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run EE E2E Tests
+        working-directory: kestra-ee
+        env:
+          APPLICATION_SECRETS: ${{ secrets.APPLICATION_SECRETS }}
+        run: |
+          echo $APPLICATION_SECRETS | base64 -d > ./ui-ee/tests/e2e/data/application-secrets.yml
+          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
+          sh build-and-start-e2e-tests.sh
+
+      - name: Upload Playwright Report as Github artifact
+        # 'With this report, you can analyze locally the results of the tests. see https://playwright.dev/docs/ci-intro#html-report'
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: kestra-ee/ui-ee/playwright-report/
+          retention-days: 7
