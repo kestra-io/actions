@@ -37675,6 +37675,7 @@ class CommentUpdate {
     owner;
     repo;
     prId;
+    fetchUnreleasedCommits;
     constructor() {
         this.octokit = githubExports.getOctokit(coreExports.getInput('github-token'));
         this.title = coreExports.getInput('title');
@@ -37683,6 +37684,7 @@ class CommentUpdate {
         this.fetchArtifact = coreExports.getBooleanInput('fetch-artifact');
         this.addSummary = coreExports.getBooleanInput('add-summary');
         this.files = coreExports.getMultilineInput('files');
+        this.fetchUnreleasedCommits = coreExports.getBooleanInput('fetch-unreleased-commits');
         this.nunjucks = new nunjucks.Environment();
         this.nunjucks
             .addFilter('prettyDate', humanReadableDate)
@@ -37728,6 +37730,16 @@ class CommentUpdate {
                 data["files"][index] = current;
             }
         }
+        if (this.fetchUnreleasedCommits) {
+            const unreleased = await this._fetchUnreleasedCommits();
+            data["unreleased"] = unreleased;
+            coreExports.info(`Included ${unreleased.commits.length} unreleased commits since ${unreleased.latestTag}`);
+        }
+        data["owner"] = this.owner;
+        data["repo"] = this.repo;
+        data["github"] = {
+            repository: `${this.owner}/${this.repo}`,
+        };
         coreExports.debug(`Generated data:\n${JSON.stringify(data, undefined, 2)}`);
         return data;
     }
@@ -37803,6 +37815,79 @@ class CommentUpdate {
         if (this.addSummary && renderer.trim() !== '') {
             let section = `## ${this.title}\n\n${renderer}\n`;
             coreExports.summary.addRaw(section, true).write();
+        }
+    }
+    async _fetchUnreleasedCommits() {
+        try {
+            const owner = this.owner;
+            const repo = this.repo;
+            let latestTag = null;
+            try {
+                const release = await this.octokit.rest.repos.getLatestRelease({ owner, repo });
+                latestTag = release.data.tag_name ?? null;
+                coreExports.debug(`Latest release tag: ${latestTag}`);
+            }
+            catch (e) {
+                const tags = await this.octokit.rest.repos.listTags({ owner, repo, per_page: 5 });
+                if (tags.data.length > 0) {
+                    latestTag = tags.data[0].name ?? null;
+                }
+            }
+            if (!latestTag) {
+                coreExports.debug(`No tags or releases found in repository`);
+                return { latestTag: "unknown", commits: [] };
+            }
+            let defaultBranch = "main";
+            try {
+                const repoInfo = await this.octokit.rest.repos.get({ owner, repo });
+                defaultBranch = repoInfo.data.default_branch ?? "main";
+            }
+            catch (err) {
+                coreExports.debug(`Could not determine default branch, fallback to 'main'`);
+            }
+            let normalizedTag = latestTag;
+            if (!normalizedTag.startsWith("v")) {
+                normalizedTag = `v${normalizedTag}`;
+            }
+            let compare;
+            try {
+                compare = await this.octokit.rest.repos.compareCommits({
+                    owner,
+                    repo,
+                    base: `refs/tags/${latestTag}`,
+                    head: defaultBranch,
+                });
+                if (!compare?.data?.commits?.length) {
+                    compare = await this.octokit.rest.repos.compareCommits({
+                        owner,
+                        repo,
+                        base: latestTag,
+                        head: defaultBranch,
+                    });
+                }
+            }
+            catch (err) {
+                coreExports.warning(`Compare failed: ${err.message}`);
+            }
+            const commits = (compare.data.commits ?? [])
+                .filter((c) => {
+                const msg = (c.commit?.message ?? '').trim().toLowerCase();
+                return !(msg.startsWith('chore(version): bump to') ||
+                    msg.startsWith('chore(version): update snapshot') ||
+                    msg.startsWith('chore(version): update to version'));
+            })
+                .map((c) => ({
+                sha: c.sha,
+                message: c.commit?.message?.split('\n')[0],
+                author: c.commit?.author?.name ?? c.author?.login ?? 'unknown',
+                date: c.commit?.author?.date ?? c.commit?.committer?.date,
+            }));
+            coreExports.debug(`Comparing ${latestTag} -> ${defaultBranch}`);
+            coreExports.debug(`Found ${commits.length} unreleased commits since ${latestTag}`);
+            return { latestTag, commits };
+        }
+        catch (err) {
+            return { latestTag: "unknown", commits: [] };
         }
     }
 }

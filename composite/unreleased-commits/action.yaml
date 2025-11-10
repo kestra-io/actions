@@ -1,0 +1,39 @@
+name: 'Unreleased Commits'
+description: 'Comment unreleased commits since latest tag'
+
+inputs:
+  secrets:
+    description: 'Secrets passed as toJSON'
+    required: true
+
+  # If you later add target-owner / target-repo, you can surface them here too
+  # target-owner:
+  #   description: 'Override GitHub owner'
+  #   required: false
+  # target-repo:
+  #   description: 'Override GitHub repo'
+  #   required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Unreleased Commits - Comment pull request
+      uses: kestra-io/actions/actions/comment-update@main
+      continue-on-error: true
+      with:
+        github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
+        title: "🔁 Unreleased Commits"
+        add-summary: 'false'
+        fetch-unreleased: 'true'
+        template: |
+          {% if unreleased and unreleased.commits | length > 0 %}
+          {{ unreleased.commits | length }} commits since [`{{ unreleased.latestTag }}`](https://github.com/${{ github.repository }}/compare/{{ unreleased.latestTag }}...main)
+          
+          | SHA | Title | Author | Date |
+          | :--- | :------ | :------ | :---- |
+          {%- for c in unreleased.commits %}
+          | [`{{ c.sha | truncate(7, true, "") }}`](https://github.com/${{ github.repository }}/commit/{{ c.sha }}) | {{ c.message | trim }} | {{ c.author }} | {{ c.date | prettyDate }} |
+          {%- endfor %}
+          {% else %}
+          ✅ No unreleased commits found — everything is up to date!
+          {% endif %}
