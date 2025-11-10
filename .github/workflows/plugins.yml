@@ -114,7 +114,7 @@ jobs:
           secrets: ${{ toJSON(secrets) }}
 
       - name: Unreleased Commits - Comment pull request
-        uses: kestra-io/actions/composite/unreleased-commits@main
+        uses: kestra-io/actions/composite/unreleased-commits@feat/unreleased-commits
         if: ${{ github.event_name == 'pull_request' }}
         with:
           secrets: ${{ toJSON(secrets) }}

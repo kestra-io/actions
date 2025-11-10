@@ -6,19 +6,11 @@ inputs:
     description: 'Secrets passed as toJSON'
     required: true
 
-  # If you later add target-owner / target-repo, you can surface them here too
-  # target-owner:
-  #   description: 'Override GitHub owner'
-  #   required: false
-  # target-repo:
-  #   description: 'Override GitHub repo'
-  #   required: false
-
 runs:
   using: composite
   steps:
     - name: Unreleased Commits - Comment pull request
-      uses: kestra-io/actions/actions/comment-update@main
+      uses: kestra-io/actions/actions/comment-update@feat/unreleased-commits
       continue-on-error: true
       with:
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
