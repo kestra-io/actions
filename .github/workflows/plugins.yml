@@ -113,12 +113,6 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      - name: Unreleased Commits - Comment pull request
-        uses: kestra-io/actions/composite/unreleased-commits@feat/unreleased-commits
-        if: ${{ github.event_name == 'pull_request' }}
-        with:
-          secrets: ${{ toJSON(secrets) }}
-
       # GitHub Release
       - name: GitHub - Create release
         uses: kestra-io/actions/composite/github-release@main
@@ -131,6 +125,13 @@ jobs:
       - name: Report - Java
         uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() && inputs.skip-test == false }}
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
+      # Unreleased commits since latest release
+      - name: Unreleased Commits - Comment pull request
+        uses: kestra-io/actions/composite/unreleased-commits@feat/unreleased-commits
+        if: ${{ github.event_name == 'pull_request' }}
         with:
           secrets: ${{ toJSON(secrets) }}
 

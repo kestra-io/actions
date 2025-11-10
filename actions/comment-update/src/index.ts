@@ -198,17 +198,17 @@ class CommentUpdate {
     }
 
     async _fetchUnreleasedCommits(): Promise<{ latestTag: string; commits: any[] }> {
+        let latestTag: string | null = null;
         try {
             const owner = this.owner;
             const repo = this.repo;
 
-            let latestTag: string | null = null;
             try {
                 const release = await this.octokit.rest.repos.getLatestRelease({ owner, repo });
                 latestTag = release.data.tag_name ?? null;
                 core.debug(`Latest release tag: ${latestTag}`);
-            } catch (e: any) {
-                const tags = await this.octokit.rest.repos.listTags({ owner, repo, per_page: 5 });
+            } catch {
+                const tags = await this.octokit.rest.repos.listTags({ owner, repo, per_page: 20 });
                 if (tags.data.length > 0) {
                     latestTag = tags.data[0].name ?? null;
                 }
@@ -223,16 +223,11 @@ class CommentUpdate {
             try {
                 const repoInfo = await this.octokit.rest.repos.get({ owner, repo });
                 defaultBranch = repoInfo.data.default_branch ?? "main";
-            } catch (err: any) {
-                core.debug(`Could not determine default branch, fallback to 'main'`);
+            } catch {
+                core.debug(`Could not determine default branch, using 'main'`);
             }
 
-            let normalizedTag = latestTag;
-            if (!normalizedTag.startsWith("v")) {
-                normalizedTag = `v${normalizedTag}`;
-            }
-
-            let compare;
+            let compare: any | null = null;
             try {
                 compare = await this.octokit.rest.repos.compareCommits({
                     owner,
@@ -249,11 +244,29 @@ class CommentUpdate {
                         head: defaultBranch,
                     });
                 }
-            } catch (err) {
-                core.warning(`Compare failed: ${err.message}`);
+            } catch (e) {
+                // try fallback branch if initial compare failed
+                if (defaultBranch === 'main') {
+                    try {
+                        compare = await this.octokit.rest.repos.compareCommits({
+                            owner,
+                            repo,
+                            base: latestTag,
+                            head: 'master',
+                        });
+                    } catch (e2) {
+                        return { latestTag: latestTag ?? "unknown", commits: [] };
+                    }
+                } else {
+                    return { latestTag: latestTag ?? "unknown", commits: [] };
+                }
             }
 
-            const commits = (compare.data.commits ?? [])
+            if (!compare?.data?.commits) {
+                return { latestTag, commits: [] };
+            }
+
+            const commits = compare.data.commits
                 .filter((c: any) => {
                     const msg = (c.commit?.message ?? '').trim().toLowerCase();
                     return !(
@@ -269,15 +282,13 @@ class CommentUpdate {
                     date: c.commit?.author?.date ?? c.commit?.committer?.date,
                 }));
 
-            core.debug(`Comparing ${latestTag} -> ${defaultBranch}`);
             core.debug(`Found ${commits.length} unreleased commits since ${latestTag}`);
 
             return { latestTag, commits };
-        } catch (err: any) {
-            return { latestTag: "unknown", commits: [] };
+        } catch (e) {
+            return { latestTag: latestTag ?? "unknown", commits: [] };
         }
     }
-
 }
 
 try {
