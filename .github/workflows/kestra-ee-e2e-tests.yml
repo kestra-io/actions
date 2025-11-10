@@ -17,7 +17,7 @@ on:
 jobs:
   check:
     timeout-minutes: 20
-    runs-on: ubuntu-latest
+    runs-on: kestra-private-standard
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
     steps:
