@@ -2,11 +2,6 @@ name: 'Unreleased Commits'
 description: 'Comment unreleased commits since latest tag'
 
 inputs:
-  fetch-unreleased-commits:
-    description: Does we fetch the unreleased commits
-    required: false
-    default: 'false'
-
   secrets:
     description: 'Secrets passed as toJSON'
     required: true
