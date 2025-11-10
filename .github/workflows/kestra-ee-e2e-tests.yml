@@ -57,6 +57,7 @@ jobs:
 
       - name: Run EE E2E Tests
         working-directory: kestra-ee
+        shell: bash
         env:
           APPLICATION_SECRETS: ${{ secrets.APPLICATION_SECRETS }}
         run: |
