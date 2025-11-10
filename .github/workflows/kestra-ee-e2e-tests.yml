@@ -55,12 +55,19 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      - name: Install make
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+
       - name: Run EE E2E Tests
         working-directory: kestra-ee
         shell: bash
         env:
           APPLICATION_SECRETS: ${{ secrets.APPLICATION_SECRETS }}
         run: |
+          make install
           echo $APPLICATION_SECRETS | base64 -d > ./ui-ee/tests/e2e/data/application-secrets.yml
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
