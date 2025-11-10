@@ -16,7 +16,7 @@ runs:
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
         title: "🔁 Unreleased Commits"
         add-summary: 'false'
-        fetch-unreleased: 'true'
+        fetch-unreleased: true
         template: |
           {% if unreleased and unreleased.commits | length > 0 %}
           {{ unreleased.commits | length }} commits since [`{{ unreleased.latestTag }}`](https://github.com/${{ github.repository }}/compare/{{ unreleased.latestTag }}...main)
