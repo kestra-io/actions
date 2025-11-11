@@ -26,5 +26,5 @@ runs:
           | [`{{ c.sha | truncate(7, true, "") }}`](https://github.com/${{ github.repository }}/commit/{{ c.sha }}) | {{ c.message | trim }} | {{ c.author }} | {{ c.date | prettyDate }} |
           {%- endfor %}
           {% else %}
-          ✅ No unreleased commits found — everything is up to date!
+          ✅ No unreleased commits found.
           {% endif %}
