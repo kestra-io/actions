@@ -19,6 +19,7 @@ class CommentUpdate {
     private readonly owner: string;
     private readonly repo: string;
     private readonly prId: number;
+    private readonly fetchUnreleasedCommits: boolean;
 
     constructor() {
         this.octokit = github.getOctokit(core.getInput('github-token'));
@@ -28,6 +29,7 @@ class CommentUpdate {
         this.fetchArtifact = core.getBooleanInput('fetch-artifact');
         this.addSummary = core.getBooleanInput('add-summary');
         this.files = core.getMultilineInput('files');
+        this.fetchUnreleasedCommits = core.getBooleanInput('fetch-unreleased-commits');
 
         this.nunjucks = new nunjucks.Environment();
         this.nunjucks
@@ -81,6 +83,18 @@ class CommentUpdate {
                 data["files"][index] = current;
             }
         }
+
+        if (this.fetchUnreleasedCommits) {
+            const unreleased = await this._fetchUnreleasedCommits();
+            data["unreleased"] = unreleased;
+            core.info(`Included ${unreleased.commits.length} unreleased commits since ${unreleased.latestTag}`);
+        }
+
+        data["owner"] = this.owner;
+        data["repo"] = this.repo;
+        data["github"] = {
+            repository: `${this.owner}/${this.repo}`,
+        };
 
         core.debug(`Generated data:\n${JSON.stringify(data, undefined, 2)}`);
 
@@ -180,6 +194,99 @@ class CommentUpdate {
         if (this.addSummary && renderer.trim() !== '') {
             let section = `## ${this.title}\n\n${renderer}\n`
             core.summary.addRaw(section, true).write();
+        }
+    }
+
+    async _fetchUnreleasedCommits(): Promise<{ latestTag: string; commits: any[] }> {
+        let latestTag: string | null = null;
+        try {
+            const owner = this.owner;
+            const repo = this.repo;
+
+            try {
+                const release = await this.octokit.rest.repos.getLatestRelease({ owner, repo });
+                latestTag = release.data.tag_name ?? null;
+                core.debug(`Latest release tag: ${latestTag}`);
+            } catch {
+                const tags = await this.octokit.rest.repos.listTags({ owner, repo, per_page: 20 });
+                if (tags.data.length > 0) {
+                    latestTag = tags.data[0].name ?? null;
+                }
+            }
+
+            if (!latestTag) {
+                core.debug(`No tags or releases found in repository`);
+                return { latestTag: "unknown", commits: [] };
+            }
+
+            let defaultBranch = "main";
+            try {
+                const repoInfo = await this.octokit.rest.repos.get({ owner, repo });
+                defaultBranch = repoInfo.data.default_branch ?? "main";
+            } catch {
+                core.debug(`Could not determine default branch, using 'main'`);
+            }
+
+            let compare: any | null = null;
+            try {
+                compare = await this.octokit.rest.repos.compareCommits({
+                    owner,
+                    repo,
+                    base: `refs/tags/${latestTag}`,
+                    head: defaultBranch,
+                });
+
+                if (!compare?.data?.commits?.length) {
+                    compare = await this.octokit.rest.repos.compareCommits({
+                        owner,
+                        repo,
+                        base: latestTag,
+                        head: defaultBranch,
+                    });
+                }
+            } catch (e) {
+                // try fallback branch if initial compare failed
+                if (defaultBranch === 'main') {
+                    try {
+                        compare = await this.octokit.rest.repos.compareCommits({
+                            owner,
+                            repo,
+                            base: latestTag,
+                            head: 'master',
+                        });
+                    } catch (e2) {
+                        return { latestTag: latestTag ?? "unknown", commits: [] };
+                    }
+                } else {
+                    return { latestTag: latestTag ?? "unknown", commits: [] };
+                }
+            }
+
+            if (!compare?.data?.commits) {
+                return { latestTag, commits: [] };
+            }
+
+            const commits = compare.data.commits
+                .filter((c: any) => {
+                    const msg = (c.commit?.message ?? '').trim().toLowerCase();
+                    return !(
+                        msg.startsWith('chore(version): bump to') ||
+                        msg.startsWith('chore(version): update snapshot') ||
+                        msg.startsWith('chore(version): update to version')
+                    );
+                })
+                .map((c: any) => ({
+                    sha: c.sha,
+                    message: c.commit?.message?.split('\n')[0],
+                    author: c.commit?.author?.name ?? c.author?.login ?? 'unknown',
+                    date: c.commit?.author?.date ?? c.commit?.committer?.date,
+                }));
+
+            core.debug(`Found ${commits.length} unreleased commits since ${latestTag}`);
+
+            return { latestTag, commits };
+        } catch (e) {
+            return { latestTag: latestTag ?? "unknown", commits: [] };
         }
     }
 }

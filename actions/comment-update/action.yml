@@ -23,6 +23,11 @@ inputs:
     required: false
     default: 'false'
 
+  fetch-unreleased-commits:
+    description: Does we fetch the unreleased commits
+    required: false
+    default: 'false'
+
   add-summary:
     description: Does we add a summary section
     required: false
