@@ -23,6 +23,3 @@ out/
 
 **/node_modules/*
 **/coverage/**
-
-## Build
-**/dist/
