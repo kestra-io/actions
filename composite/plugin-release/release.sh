@@ -125,15 +125,26 @@ fi
 # Analyze commits since last tag (for normal Gradle releases)
 # ------------------------------------------------------------------------------
 echo "🔎 Analyzing commits since ${LAST_TAG}..."
-COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s%n%b" | tr '[:upper:]' '[:lower:]')
+COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s%n%b" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+
+if [[ -z "$COMMITS" ]]; then
+  echo "⚠️  No commits found since ${LAST_TAG}! Nothing to release."
+  exit 0
+fi
 
 HAS_BREAKING=false
 HAS_FEAT=false
+HAS_FIX=false
 
+# Detection logic — unquoted $COMMITS to preserve newlines for grep
 if echo "$COMMITS" | grep -qE 'breaking change|feat!'; then
   HAS_BREAKING=true
-elif echo "$COMMITS" | grep -qE '^feat| feat'; then
+elif echo "$COMMITS" | grep -qE '^feat(\(|:|\s)'; then
   HAS_FEAT=true
+elif echo "$COMMITS" | grep -qE '^fix(\(|:|\s)'; then
+  HAS_FIX=true
+else
+  echo "ℹ️ No feat/fix/breaking commits found — treating as PATCH release (chore/refactor/docs/etc detected)."
 fi
 
 # ------------------------------------------------------------------------------
@@ -144,13 +155,13 @@ EXP_MINOR=$CUR_MINOR
 EXP_PATCH=$CUR_PATCH
 
 if [[ "$HAS_BREAKING" == true ]]; then
-  ((EXP_MAJOR++)); EXP_MINOR=0; EXP_PATCH=0
+  ((EXP_MAJOR++)) || true; EXP_MINOR=0; EXP_PATCH=0
   EXPECTED_TYPE="MAJOR"
 elif [[ "$HAS_FEAT" == true ]]; then
-  ((EXP_MINOR++)); EXP_PATCH=0
+  ((EXP_MINOR++)) || true; EXP_PATCH=0
   EXPECTED_TYPE="MINOR"
 else
-  ((EXP_PATCH++))
+  ((EXP_PATCH++)) || true
   EXPECTED_TYPE="PATCH"
 fi
 
