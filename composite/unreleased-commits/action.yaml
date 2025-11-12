@@ -10,7 +10,7 @@ runs:
   using: composite
   steps:
     - name: Unreleased Commits - Comment pull request
-      uses: kestra-io/actions/actions/comment-update@feat/unreleased-commits
+      uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}

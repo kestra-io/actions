@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
         env:
-          JAVA_OPTS: "-Xmx1g -XX:MaxMetaspaceSize=512m"
+          JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=512m"
           GITHUB_TOKEN: ${{ github.token }}
 
       # Cleanup unit tests environment
@@ -130,7 +130,7 @@ jobs:
 
       # Unreleased commits since latest release
       - name: Unreleased Commits - Comment pull request
-        uses: kestra-io/actions/composite/unreleased-commits@feat/unreleased-commits
+        uses: kestra-io/actions/composite/unreleased-commits@main
         if: ${{ github.event_name == 'pull_request' }}
         with:
           secrets: ${{ toJSON(secrets) }}
