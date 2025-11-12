@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
         env:
-          JAVA_OPTS: "-Xmx1g -XX:MaxMetaspaceSize=512m"
+          JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=512m"
           GITHUB_TOKEN: ${{ github.token }}
 
       # Cleanup unit tests environment
