@@ -147,7 +147,13 @@ fi
 # Analyze commits since last tag (for normal Gradle releases)
 # ------------------------------------------------------------------------------
 echo "🔎 Analyzing commits since ${LAST_TAG}..."
-COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s%n%b" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+if git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
+  COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s%n%b" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+else
+  echo "ℹ️ No previous tag found — treating this as the first release."
+  COMMITS=$(git log HEAD --pretty=format:"%s%n%b" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+  LAST_TAG="(none)"
+fi
 
 if [[ -z "$COMMITS" ]]; then
   echo "⚠️  No commits found since ${LAST_TAG}! Nothing to release."
