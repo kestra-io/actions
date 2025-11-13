@@ -92,6 +92,25 @@ if [[ -n "$COMMITS_LIST" ]]; then
   echo "🔀 Switching to detached HEAD at ${BASE_TAG}"
   git switch --detach "$BASE_TAG"
 
+  # ----------------------------------------------------------------------------
+  # 🔢 Bump gradle.properties version to the hotfix version
+  # ----------------------------------------------------------------------------
+  echo "📝 Updating version in gradle.properties to ${RELEASE_VERSION}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🚫 [DRY RUN] Would set version=${RELEASE_VERSION} in gradle.properties"
+  else
+    if grep -q '^version=' gradle.properties; then
+      sed -i "s/^version=.*/version=${RELEASE_VERSION}/" gradle.properties
+    else
+      echo "version=${RELEASE_VERSION}" >> gradle.properties
+    fi
+    git add gradle.properties
+    git commit -m "chore(version): bump to ${RELEASE_VERSION} for hotfix"
+  fi
+
+  # ----------------------------------------------------------------------------
+  # 🔧 Apply cherry-picks
+  # ----------------------------------------------------------------------------
   echo "🔧 Applying cherry-picks..."
   IFS=',' read -ra SHAS <<< "$COMMITS_LIST"
   for SHA in "${SHAS[@]}"; do
@@ -109,6 +128,9 @@ if [[ -n "$COMMITS_LIST" ]]; then
     fi
   done
 
+  # ----------------------------------------------------------------------------
+  # 🏷 Create and push the tag
+  # ----------------------------------------------------------------------------
   echo "🏷 Creating annotated hotfix tag v${RELEASE_VERSION}"
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "🚫 [DRY RUN] Would create and push tag v${RELEASE_VERSION}"
