@@ -10,7 +10,7 @@ on:
         default: "no input"
 jobs:
   check:
-    timeout-minutes: 15
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Login to DockerHub
