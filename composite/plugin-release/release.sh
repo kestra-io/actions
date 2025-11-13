@@ -195,17 +195,23 @@ fi
 
 EXPECTED_VERSION="${EXP_MAJOR}.${EXP_MINOR}.${EXP_PATCH}"
 
-# ------------------------------------------------------------------------------
-# Validate the provided release version
-# ------------------------------------------------------------------------------
-if [[ "$RELEASE_VERSION" != "$EXPECTED_VERSION" ]]; then
-  echo "❌ Version mismatch detected!"
-  echo "   → Commits since ${LAST_TAG} suggest a *${EXPECTED_TYPE}* bump"
-  echo "   → Expected version: ${EXPECTED_VERSION}"
-  echo "   → Provided version: ${RELEASE_VERSION}"
-  echo ""
-  echo "💡 Fix: adjust your release version accordingly or review commits."
-  exit 1
+# If first release (no previous tag), skip version validation entirely
+if [[ "$LAST_TAG" == "(none)" ]]; then
+  echo "ℹ️ First release — skipping semantic version validation."
+  EXPECTED_TYPE="MAJOR"
+else
+  # ------------------------------------------------------------------------------
+  # Validate the provided release version
+  # ------------------------------------------------------------------------------
+  if [[ "$RELEASE_VERSION" != "$EXPECTED_VERSION" ]]; then
+    echo "❌ Version mismatch detected!"
+    echo "   → Commits since ${LAST_TAG} suggest a *${EXPECTED_TYPE}* bump"
+    echo "   → Expected version: ${EXPECTED_VERSION}"
+    echo "   → Provided version: ${RELEASE_VERSION}"
+    echo ""
+    echo "💡 Fix: adjust your release version accordingly or review commits."
+    exit 1
+  fi
 fi
 
 echo "✅ Version check passed — ${RELEASE_VERSION} is consistent with commit history (${EXPECTED_TYPE} bump)."
