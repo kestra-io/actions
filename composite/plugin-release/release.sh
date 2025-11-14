@@ -51,8 +51,10 @@
 #   ./release.sh 1.0.2 "" "" true "abc123,def456"
 # ==============================================================================
 
+echo "🚫 This plugin release workflow is temporarily disabled. Aborting."
+exit 1
+
 set -euo pipefail
-rm -f .git/index.lock || true
 
 RELEASE_VERSION=$1
 NEXT_VERSION=${2:-}
