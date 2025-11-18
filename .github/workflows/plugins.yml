@@ -106,6 +106,16 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
+      # Cleanup disk space to avoid "no space left on device" errors during Trivy scan
+      - name: Cleanup - Free up disk space
+        run: |
+          echo "🧹 Freeing up disk space on the runner..."
+          sudo docker system prune -a -f --volumes
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo apt-get autoclean
+          echo "✅ Disk space cleanup complete."
+
       # Trivy scan for PR
       - name: Trivy - Scan jar for PR only
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
