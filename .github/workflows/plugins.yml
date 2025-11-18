@@ -106,26 +106,12 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # Cleanup disk space
-      - name: Cleanup - Runner disk space
-        run: |
-          echo "🧹 Cleaning Gradle caches"
-          rm -rf ~/.gradle/caches || true
-          rm -rf ~/.gradle/wrapper || true
-
-          echo "🧹 Cleaning Docker"
-          docker system prune -af || true
-
-          echo "🧹 Cleaning general /tmp"
-          rm -rf /tmp/* || true
-
-          echo "Disk usage after cleanup:"
-          df -h
-
       # Trivy scan for PR
       - name: Trivy - Scan jar for PR only
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
+        env:
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
         with:
           secrets: ${{ toJSON(secrets) }}
 
