@@ -115,11 +115,24 @@ jobs:
           sudo apt-get clean
           sudo apt-get autoclean
 
+          echo "🗑️ Deleting large pre-installed tools (Dotnet, Android, Haskell)"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android 
+          sudo rm -rf /opt/ghc
+
           echo "🔥 Deleting ~/.gradle/caches/modules-2"
           rm -rf ~/.gradle/caches/modules-2
 
-          echo "⚠️ Deleting /tmp/*"
+          echo "⚠️ Deleting tmp folders"
           sudo rm -rf /tmp/*
+          sudo rm -rf /var/tmp/*
+
+          echo "🧼 Deleting Trivy cache and temp directories"
+          rm -rf ${{ github.workspace }}/.trivy-cache
+          rm -rf ${{ github.workspace }}/trivy-tmp
+
+          echo "📊 Disk usage after cleanup:"
+          df -h
 
           echo "✅ Disk space cleanup complete."
 
