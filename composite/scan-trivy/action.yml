@@ -19,6 +19,11 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Trivy - Create custom temp directory
+      shell: bash
+      run: |
+        mkdir -p ${{ github.workspace }}/trivy-tmp
+
     - name: Trivy - Copy template and files to scan
       shell: bash
       run: |

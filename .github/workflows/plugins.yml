@@ -118,7 +118,7 @@ jobs:
           echo "🔥 Deleting ~/.gradle/caches/modules-2"
           rm -rf ~/.gradle/caches/modules-2
 
-          echo "⚠️ Deleting /tmp/* and /var/tmp/*"
+          echo "⚠️ Deleting /tmp/*"
           sudo rm -rf /tmp/*
 
           echo "✅ Disk space cleanup complete."
