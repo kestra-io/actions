@@ -114,16 +114,19 @@ jobs:
           sudo apt-get autoremove -y
           sudo apt-get clean
           sudo apt-get autoclean
-          sudo rm -rf /tmp/*
+
+          echo "🔥 Deleting ~/.gradle/caches/modules-2"
           rm -rf ~/.gradle/caches/modules-2
+
+          echo "⚠️ Deleting /tmp/* and /var/tmp/*"
+          sudo rm -rf /tmp/*
+
           echo "✅ Disk space cleanup complete."
 
       # Trivy scan for PR
       - name: Trivy - Scan jar for PR only
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
-        env:
-          TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
         with:
           secrets: ${{ toJSON(secrets) }}
 

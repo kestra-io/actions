@@ -29,6 +29,9 @@ runs:
     - name: Trivy - Run Trivy scanner
       uses: aquasecurity/trivy-action@0.28.0
       id: trivy
+      env:
+        TMPDIR: ${{ github.workspace }}/trivy-tmp
+        TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
       with:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: /tmp/trivy-scan
