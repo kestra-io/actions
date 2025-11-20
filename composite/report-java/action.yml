@@ -109,7 +109,7 @@ runs:
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       uses: gradle/actions/dependency-submission@v4
       env:
-        GRADLE_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
+        JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
 
     # Sonar
     - name: Sonar - Analyze with Sonar
