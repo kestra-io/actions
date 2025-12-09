@@ -11,6 +11,9 @@ on:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
+      GH_PERSONAL_TOKEN:
+        description: "GH token needed for triggering helm chart PR."
+        required: true
     inputs:
       retag-latest:
         description: 'Retag latest Docker images'
@@ -204,6 +207,20 @@ jobs:
           fi
           
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest-lts{0}', matrix.image.name) }}
+
+      # Trigger gha workflow to bump helm chart version
+      - name: GitHub - Trigger the Helm chart version bump
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 #v4.0.1
+        with:
+          token: ${{ secrets.GH_PERSONAL_TOKEN }}
+          repository: kestra-io/helm-charts
+          event-type: update-helm-chart-version
+          client-payload: |-
+            {
+              "new_version": "${{ github.ref_name }}",
+              "github_repository": "${{ github.repository }}",
+              "github_actor": "${{ github.actor }}"
+            }
 
   end:
     runs-on: ubuntu-latest
