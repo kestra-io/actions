@@ -32,12 +32,12 @@ jobs:
         shell: bash
         run: |
           cd kestra/ui
-          npm install
+          npm ci
 
       - name: Npm - Install
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm install
+        run: npm ci
 
       - name: Npm - Lint
         uses: reviewdog/action-eslint@v1

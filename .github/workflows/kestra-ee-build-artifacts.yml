@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           cd kestra/ui
-          npm install
+          npm ci
 
       # Shadow Jar
       - name: Gradle - Build jars

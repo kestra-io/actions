@@ -37,7 +37,7 @@ jobs:
       - name: Install Npm dependencies
         run: |
           cd kestra/ui
-          npm i
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Run E2E Tests
