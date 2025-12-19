@@ -49,12 +49,38 @@ jobs:
         shell: bash
         run: docker compose -f docker-compose-ci.yml up -d
 
+      - name: Gradle - compile and javadoc
+        shell: bash
+        run: |
+          ./gradlew compileJava javadoc --parallel
+
+      - name: Gradle - unitTest
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        shell: bash
+        run: |
+          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':unitTest'; then
+            ./gradlew unitTest --parallel
+          else
+            echo "ℹ️ unitTest task does not exist in this old release branch, skipping"
+          fi
+
       # Gradle check
       - name: Gradle - Build
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
-          ./gradlew check javadoc --parallel
+          ./gradlew check --parallel
+
+      - name: Gradle - flakyTest
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':flakyTest'; then
+            ./gradlew flakyTest
+          else
+            echo "ℹ️ flakyTest task does not exist in this old release branch, skipping"
+          fi
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
@@ -69,6 +95,7 @@ jobs:
         run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors $(pwd)
 
       # Report Java
+      # this will add a failed check if there is tests errors
       - name: Report - Java
         uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() }}
