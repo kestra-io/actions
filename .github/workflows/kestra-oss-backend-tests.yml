@@ -88,11 +88,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
         run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
 
-      - name: generate PR test report in logs on fork or not in PRs
-        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)}}
+      - name: generate test report in logs and fail if any failed tests
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
-        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors $(pwd)
+        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --fail-on-error $(pwd)
 
       # Report Java
       # this will add a failed check if there is tests errors
