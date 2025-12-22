@@ -46,16 +46,33 @@ jobs:
         run: |
           mv kestra ../kestra
 
+      - name: Gradle - compile and javadoc
+        run: |
+          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
+          ./gradlew compileJava javadoc --parallel
+
       # Services
       - name: Setup - Start docker compose
         run: docker compose -f docker-compose-ci.yml up -d
 
       # Gradle check
-      - name: Gradle - Build
+      - name: Gradle - check
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
-          ./gradlew check javadoc --parallel
+          ./gradlew check --parallel
+
+      - name: Gradle - flakyTest
+        continue-on-error: true
+        run: |
+          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
+          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':flakyTest'; then
+            ./gradlew flakyTest
+          else
+            echo "ℹ️ flakyTest task does not exist in this old release branch, skipping"
+          fi
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
@@ -63,11 +80,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
 
-      - name: display test report in Github logs
-        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+      - name: generate test report in logs and fail if any failed tests
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors $(pwd)
+        run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --fail-on-error $(pwd)
 
       # Report Java
       - name: Report - Java
