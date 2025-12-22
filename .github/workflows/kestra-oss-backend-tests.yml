@@ -44,15 +44,15 @@ jobs:
           node-enabled: true
           python-enabled: true
 
-      # Services
-      - name: Setup - Start docker compose
-        shell: bash
-        run: docker compose -f docker-compose-ci.yml up -d
-
       - name: Gradle - compile and javadoc
         shell: bash
         run: |
           ./gradlew compileJava javadoc --parallel
+
+      # Services
+      - name: Setup - Start docker compose
+        shell: bash
+        run: docker compose -f docker-compose-ci.yml up -d
 
       - name: Gradle - unitTest
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
