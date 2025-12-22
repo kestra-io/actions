@@ -65,7 +65,7 @@ jobs:
           fi
 
       # Gradle check
-      - name: Gradle - Build
+      - name: Gradle - check
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
