@@ -54,16 +54,6 @@ jobs:
         shell: bash
         run: docker compose -f docker-compose-ci.yml up -d
 
-      - name: Gradle - unitTest
-        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
-        shell: bash
-        run: |
-          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':unitTest'; then
-            ./gradlew unitTest --parallel
-          else
-            echo "ℹ️ unitTest task does not exist in this old release branch, skipping"
-          fi
-
       # Gradle check
       - name: Gradle - check
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
