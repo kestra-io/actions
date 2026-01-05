@@ -92,11 +92,3 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           secrets: ${{ toJSON(secrets) }}
-
-      - name: Slack - Notify failed CI
-        id: send-ci-failed
-        if: always() && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && job.status != 'success'
-        uses: kestra-io/actions/composite/slack-status@main
-        with:
-          webhook-url: '${{ secrets.SLACK_WEBHOOK_URL }}'
-          channel: 'C09FF36GKE1'
