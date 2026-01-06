@@ -15,7 +15,7 @@ jobs:
     name: Github - Release
     runs-on: kestra-private-standard
     # skip RCs
-    if: !contains(github.ref, '-rc')
+    if: ${{ !contains(github.ref, '-rc') }}
     steps:
       # Check out
       - name: Checkout - Repository

@@ -14,7 +14,7 @@ jobs:
     name: Publish - Maven
     runs-on: kestra-private-large
     # skip RCs
-    if: !contains(github.ref, '-rc')
+    if: ${{ !contains(github.ref, '-rc') }}
     env:
       COREPACK_INTEGRITY_KEYS: 0
     steps:
