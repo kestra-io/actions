@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':flakyTest'; then
-            ./gradlew flakyTest
+            ./gradlew flakyTest --no-parallel
           else
             echo "ℹ️ flakyTest task does not exist in this old release branch, skipping"
           fi
