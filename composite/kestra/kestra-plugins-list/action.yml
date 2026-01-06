@@ -15,7 +15,11 @@ runs:
       id: plugins
       shell: bash
       run: |
-        KESTRA_VERSION=${{ inputs.kestraVersion }}
+        RAW_VERSION=${{ inputs.kestraVersion }}
+        KESTRA_VERSION=$(echo $RAW_VERSION | sed -E 's/-rc[0-9]+$//')
+        echo "raw version: $RAW_VERSION"
+        echo "normalized version: $KESTRA_VERSION"
+        
         echo "list compatible plugins for Kestra version: $KESTRA_VERSION"
         COMPATIBLE_PLUGINS=$(npx --yes @kestra-io/kestra-devtools getCompatiblePlugins $KESTRA_VERSION) 
         echo "compatible plugins $COMPATIBLE_PLUGINS"

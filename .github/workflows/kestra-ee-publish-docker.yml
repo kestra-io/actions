@@ -138,7 +138,7 @@ jobs:
 
           echo "tag=${TAG}${{ matrix.image.tag }}" >> $GITHUB_OUTPUT
 
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
+          if [[ $GITHUB_REF == refs/tags/* && $TAG != *-rc* ]]; then
             if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               # this will remove the patch version number
               MINOR_SEMVER=${TAG%.*}
@@ -146,6 +146,8 @@ jobs:
             else
               echo "Tag '$TAG' is not a valid semver (vMAJOR.MINOR.PATCH), skipping minor_semver"
             fi
+          else
+            echo "TAG '$TAG' is not a real release, skipping minor_semver"
           fi
 
           PRIVATE_REPO="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-west1-maven.pkg.dev/kestra-host/maven"
