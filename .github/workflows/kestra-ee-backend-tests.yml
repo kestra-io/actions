@@ -23,7 +23,7 @@ jobs:
   check:
     name: Check
     runs-on: kestra-private-large
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
