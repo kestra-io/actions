@@ -1,0 +1,67 @@
+name: "Start the global after-release workflow"
+
+inputs:
+  new_version:
+    description: "New Kestra version"
+    required: false
+  secrets:
+    description: 'Secrets passed as toJSON'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Kestra version format
+      id: validate-format
+      run: |
+        set -euo pipefail
+
+        if [[ ! "${{inputs.new_version}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Kestra version '${{inputs.new_version}}' is invalid. Must be in format vX.Y.Z (e.g., v1.2.3)."
+          exit 1
+        fi
+
+        echo "Kestra version format valid: ${{inputs.new_version}}"
+
+    - name: Checkout branch
+      uses: actions/checkout@v5
+      with:
+        ref: main
+        token: ${{ fromJson(inputs.secrets).GH_PERSONAL_TOKEN }}
+
+    - name: Read versions and create missing tag
+      id: read-latest
+      run: |
+        set -euo pipefail
+
+        # Remove leading 'v' and split into parts
+        VER="${{inputs.new_version}}"
+        VER="${VER#v}"
+        IFS='.' read -r MAJOR MINOR PATCH <<< "${VER}"
+
+        # Basic numeric validation
+        if ! [[ "${MAJOR}" =~ ^[0-9]+$ ]] || ! [[ "${MINOR}" =~ ^[0-9]+$ ]]; then
+          echo "Error: Failed to parse numeric version parts from ${VER}"
+          exit 1
+        fi
+        
+        DEFAULT_TO_RELEASE_FOR_MINOR='[
+          "API",
+          "TAG_DOCS",
+          "TAG_BLUEPRINTS",
+          "HELM_CHARTS",
+          "LIBS"
+        ]'
+        DEFAULT_TO_RELEASE_FOR_PATCH='[
+          "API",
+          "HELM_CHARTS"
+        ]'
+
+        if [ "${PATCH}" -eq 0 ]; then
+          TO_RELEASE=${DEFAULT_TO_RELEASE_FOR_MINOR}
+        else
+          TO_RELEASE=${DEFAULT_TO_RELEASE_FOR_PATCH}
+        fi
+        
+        # TODO ADD WEBHOOK TO INPUTS
+        curl -X POST -H "Content-Type: application/json" -d "{\"TO_RELEASE\": \"${TO_RELEASE}\",\"RELEASED_VERSION\":\"${{ inputs.new_version }}\"}" ${{ fromJson(inputs.secrets).AFTER_RELEASE_EE_WEBHOOK }}
