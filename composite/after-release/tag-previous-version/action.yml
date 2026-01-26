@@ -3,7 +3,7 @@ name: "Tag previous version for versioning"
 inputs:
   new_version:
     description: "New Kestra version"
-    required: false
+    required: true
   secrets:
     description: 'Secrets passed as toJSON'
     required: true
@@ -11,32 +11,17 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Resolve incoming version
-      id: resolve-version
-      run: |
-        set -euo pipefail
-
-        NEW_KESTRA_VER="${{ inputs.new_version }}"
-
-        if [ -z "${NEW_KESTRA_VER}" ]; then
-          echo "No new version provided — failing workflow."
-          exit 1
-        fi
-
-        echo "NEW_KESTRA_VER=${NEW_KESTRA_VER}" >> $GITHUB_ENV
-        echo "Incoming version: ${NEW_KESTRA_VER}"
-
     - name: Validate Kestra version format
       id: validate-format
       run: |
         set -euo pipefail
 
-        if [[ ! "${NEW_KESTRA_VER}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "Error: Kestra version '${NEW_KESTRA_VER}' is invalid. Must be in format vX.Y.Z (e.g., v1.2.3)."
+        if [[ ! "${{inputs.new_version}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Kestra version '${{inputs.new_version}}' is invalid. Must be in format vX.Y.Z (e.g., v1.2.3)."
           exit 1
         fi
 
-        echo "Kestra version format valid: ${NEW_KESTRA_VER}"
+        echo "Kestra version format valid: ${{inputs.new_version}}"
 
     - name: Checkout branch
       uses: actions/checkout@v5
@@ -50,12 +35,13 @@ runs:
         set -euo pipefail
 
         # Remove leading 'v' and split into parts
-        VER="${NEW_KESTRA_VER#v}"
+        VER="${{inputs.new_version}}"
+        VER="${VER#v}"
         IFS='.' read -r MAJOR MINOR PATCH <<< "${VER}"
 
         # Basic numeric validation
         if ! [[ "${MAJOR}" =~ ^[0-9]+$ ]] || ! [[ "${MINOR}" =~ ^[0-9]+$ ]]; then
-          echo "Error: Failed to parse numeric version parts from ${NEW_KESTRA_VER}"
+          echo "Error: Failed to parse numeric version parts from ${VER}"
           exit 1
         fi
 
