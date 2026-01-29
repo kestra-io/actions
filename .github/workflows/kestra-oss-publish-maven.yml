@@ -23,7 +23,7 @@ on:
         description: "Java version"
         type: string
         default: '21'
-        required: true
+        required: false
 
 jobs:
   publish:
