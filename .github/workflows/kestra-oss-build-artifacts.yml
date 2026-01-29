@@ -1,7 +1,13 @@
 name: Build Artifacts
 
 on:
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
 
 jobs:
   build:
@@ -32,6 +38,7 @@ jobs:
         with:
           java-enabled: true
           node-enabled: true
+          java-version: ${{ inputs.java-version }}
 
       # Get Plugins List
       - name: Plugins - Get List

@@ -9,6 +9,12 @@ on:
       CODECOV_TOKEN:
         description: 'Codecov Token'
         required: true
+    inputs:
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
 
 jobs:
   build-artifacts:
@@ -40,6 +46,7 @@ jobs:
         with:
           java-enabled: 'true'
           node-enabled: 'true'
+          java-version: ${{ inputs.java-version }}
 
       - name: build OSS UI required for EE UI build
         shell: bash
