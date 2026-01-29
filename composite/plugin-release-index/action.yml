@@ -9,6 +9,10 @@ inputs:
     required: false
     default: "false"
     description: "If true, simulate the indexing without calling the webhook"
+  java-version:
+    description: "Java version"
+    default: '21'
+    required: true
 
 runs:
   using: composite
@@ -26,11 +30,11 @@ runs:
         fetch-depth: 0
         submodules: true
 
-    - name: Setup - Set Java 21
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: 21
+        java-version: ${{ inputs.java-version }}
         cache: 'gradle'
 
     - name: Run Plugin Release Indexing

@@ -1,5 +1,10 @@
 name: "Create a GitHub Release"
 description: "This action creates a GitHub release and uploads assets to it. Expect to be run on a tag following the format vX.Y.Z. Provide the environment variable `MAKE_LATEST` to `false` to avoid marking this github release as latest."
+inputs:
+  java-version:
+    description: "Java version"
+    default: '21'
+    required: true
 
 runs:
   using: composite
@@ -56,7 +61,7 @@ runs:
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: 21
+        java-version: ${{ inputs.java-version }}
 
     - name: JReleaser - Release
       uses: jreleaser/release-action@v2
