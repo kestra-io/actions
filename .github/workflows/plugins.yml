@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
 
 permissions:
   contents: write
@@ -46,6 +51,7 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
+          java-version: ${{ inputs.java-version }}
 
       # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env

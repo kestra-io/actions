@@ -5,6 +5,12 @@ on:
     secrets:
       GCP_SERVICE_ACCOUNT:
         required: true
+    inputs:
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
@@ -31,6 +37,7 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: 'true'
+          java-version: ${{ inputs.java-version }}
 
       # Google Auth
       - name: GCP - Auth with github service account

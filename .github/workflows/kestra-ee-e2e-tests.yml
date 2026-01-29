@@ -14,6 +14,12 @@ on:
         required: false
         type: string
         default: "no input"
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
+
 jobs:
   check:
     timeout-minutes: 30
@@ -42,6 +48,7 @@ jobs:
         with:
           java-enabled: 'true'
           node-enabled: 'true'
+          java-version: ${{ inputs.java-version }}
 
       - name: OSS npm ci
         shell: bash

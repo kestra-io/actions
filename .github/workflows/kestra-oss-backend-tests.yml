@@ -15,6 +15,12 @@ on:
       GOOGLE_SERVICE_ACCOUNT:
         description: 'Google Service Account'
         required: true
+    inputs:
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
 
 permissions:
   contents: write
@@ -43,6 +49,7 @@ jobs:
           java-enabled: true
           node-enabled: true
           python-enabled: true
+          java-version: ${{ inputs.java-version }}
 
       - name: Gradle - compile and javadoc
         shell: bash
