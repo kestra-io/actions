@@ -5,6 +5,13 @@ on:
     secrets:
       GOOGLE_SERVICE_ACCOUNT:
         required: true
+    inputs:
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
+
 jobs:
   # ********************************************************************************************************************
   # Build
@@ -15,6 +22,8 @@ jobs:
     secrets:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      java-version: ${{ inputs.java-version }}
 
   # ********************************************************************************************************************
   # Docker

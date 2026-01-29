@@ -2,13 +2,21 @@ name: Pull Request - Publish Docker
 
 on:
   workflow_call:
+    inputs:
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: true
 
 jobs:
   build-artifacts:
     name: Build Artifacts
     if: github.event.pull_request.head.repo.full_name == github.repository # prevent running on forks
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
-
+    with:
+      java-version: ${{ inputs.java-version }}
+      
   publish:
     name: Publish Docker
     if: github.event.pull_request.head.repo.full_name == github.repository # prevent running on forks
