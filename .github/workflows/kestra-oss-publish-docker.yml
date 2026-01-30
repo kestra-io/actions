@@ -35,6 +35,11 @@ on:
         required: false
         type: boolean
         default: false
+      java-version:
+        description: "Java version"
+        type: string
+        default: '21'
+        required: false
 
 jobs:
   plugins:
@@ -79,6 +84,8 @@ jobs:
   build-artifacts:
     name: Build Artifacts
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
+    with:
+      java-version: ${{ inputs.java-version }}
 
   docker:
     name: Publish Docker
