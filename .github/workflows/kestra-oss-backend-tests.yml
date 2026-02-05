@@ -2,21 +2,6 @@ name: Backend - Tests
 
 on:
   workflow_call:
-    secrets:
-      GITHUB_AUTH_TOKEN:
-        description: "The GitHub Token."
-        required: true
-      CODECOV_TOKEN:
-        description: 'Codecov Token'
-        required: true
-      SONAR_TOKEN:
-        description: 'Sonar Token'
-        required: true
-      GOOGLE_SERVICE_ACCOUNT:
-        description: 'Google Service Account'
-        required: true
-      DEVELOCITY_ACCESS_KEY:
-        required: false
     inputs:
       java-version:
         description: "Java version"
