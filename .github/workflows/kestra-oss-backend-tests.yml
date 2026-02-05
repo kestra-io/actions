@@ -15,6 +15,8 @@ on:
       GOOGLE_SERVICE_ACCOUNT:
         description: 'Google Service Account'
         required: true
+      DEVELOCITY_ACCESS_KEY:
+        required: false
     inputs:
       java-version:
         description: "Java version"
@@ -35,6 +37,7 @@ jobs:
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v5
         name: Checkout - Current ref
