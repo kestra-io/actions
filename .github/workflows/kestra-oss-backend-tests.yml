@@ -5,16 +5,16 @@ on:
     secrets:
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
-        required: true
+        required: false
       CODECOV_TOKEN:
         description: 'Codecov Token'
-        required: true
+        required: false
       SONAR_TOKEN:
         description: 'Sonar Token'
-        required: true
+        required: false
       GOOGLE_SERVICE_ACCOUNT:
         description: 'Google Service Account'
-        required: true
+        required: false
     inputs:
       java-version:
         description: "Java version"
