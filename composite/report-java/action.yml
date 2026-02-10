@@ -89,6 +89,16 @@ runs:
           gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
         fi
 
+    # Trunk.io
+    - name: Trunk.io - Upload Test Results
+      if: ${{ env.TRUNK_API_TOKEN != '' }}
+      continue-on-error: true
+      uses: trunk-io/analytics-uploader@main
+      with:
+        junit-paths: '**/build/test-results/test/TEST-*.xml'
+        org-slug: kestra-io
+        token: ${{ fromJSON(inputs.secrets).TRUNK_API_TOKEN }}
+
     # Codecov
     - name: Codecov - Upload coverage reports
       uses: codecov/codecov-action@v5
