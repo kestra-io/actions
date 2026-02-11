@@ -9,6 +9,9 @@ on:
       CODECOV_TOKEN:
         description: 'Codecov Token'
         required: true
+      TRUNK_API_TOKEN:
+        description: "The Trunk.io token."
+        required: false
     inputs:
       java-version:
         description: "Java version"

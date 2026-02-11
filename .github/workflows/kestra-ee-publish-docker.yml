@@ -86,6 +86,7 @@ jobs:
     secrets:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
     with:
       java-version: ${{ inputs.java-version }}
 

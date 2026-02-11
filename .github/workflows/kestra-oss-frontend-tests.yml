@@ -9,6 +9,9 @@ on:
       CODECOV_TOKEN:
         description: 'Codecov Token'
         required: true
+      TRUNK_API_TOKEN:
+        description: "The Trunk.io token."
+        required: false
 
 env:
   # to save corepack from itself
@@ -54,6 +57,7 @@ jobs:
         working-directory: ui
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
         run: npm run build
 
       - name: Run front-end unit tests
