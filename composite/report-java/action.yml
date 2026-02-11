@@ -91,7 +91,6 @@ runs:
 
     # Trunk.io
     - name: Trunk.io - Upload Test Results
-      if: ${{ env.TRUNK_API_TOKEN != '' }}
       continue-on-error: true
       uses: trunk-io/analytics-uploader@main
       with:
