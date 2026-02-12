@@ -90,8 +90,8 @@ jobs:
           pwd
           echo "ls"
           ls -l .
-          echo "tree"
-          tree
+          echo "cat"
+          cat develocity-scan-output.ndjson
           
 
       - name: comment PR with test report
