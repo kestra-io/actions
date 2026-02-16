@@ -62,6 +62,20 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           ./gradlew compileJava javadoc --parallel
 
+      - name: Check Openapi spec up to date
+        # on older Kestra versions file is not commited so the error will never be raised
+        run: |
+          if [ -n "$(git diff --name-only -- openapi.yml)" ]; then
+            git diff -- openapi.yml
+            echo ""
+            echo ""
+            echo "❌❌❌ generated openapi.yml is not up to date"
+            echo ""
+            echo "We do now ship openapi.yml spec with our code. It is mandatory to commit the updated spec generated with ./gradlew generateOpenapiSpec"
+            exit 1
+          fi
+        shell: bash
+
       # Services
       - name: Setup - Start docker compose
         run: docker compose -f docker-compose-ci.yml up -d
