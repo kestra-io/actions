@@ -27,7 +27,14 @@ runs:
     - name: Publish - Release package with Gradle
       shell: bash
       if: ${{ inputs.is-private == 'true' }}
-      run: ./gradlew publish
+      env:
+        GRADLE_OPTS: >-
+          -Dorg.gradle.internal.http.connectionTimeout=120000
+          -Dorg.gradle.internal.http.socketTimeout=120000
+          -Dorg.gradle.internal.repository.max.retries=8
+          -Dorg.gradle.internal.repository.initial.backoff=1000
+      run: |
+        ./gradlew publish --no-daemon --no-parallel --max-workers=1 --stacktrace
 
     - name: Publish - Release package to Maven Central
       if: ${{ inputs.is-private == 'false' }}
