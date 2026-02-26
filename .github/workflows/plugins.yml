@@ -44,6 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
           submodules: true
 
       # Setup build
@@ -97,10 +98,42 @@ jobs:
             ./.github/cleanup-unit.sh
           fi
 
+      # Avoid duplicate publishing on release commits:
+      # when a main/master push points to a release tag, only the tag workflow should publish.
+      - name: Publish - Guard
+        id: publish-guard
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "should-publish=true" >> "$GITHUB_OUTPUT"
+            echo "Publish enabled: tag run (${GITHUB_REF})."
+            exit 0
+          fi
+
+          RELEASE_TAGS="$(git tag --points-at HEAD | grep -E '^v[0-9]' || true)"
+          if [[ -n "${RELEASE_TAGS}" ]]; then
+            echo "should-publish=false" >> "$GITHUB_OUTPUT"
+            echo "Publish disabled on branch run because HEAD is already tagged:"
+            echo "${RELEASE_TAGS}"
+          else
+            echo "should-publish=true" >> "$GITHUB_OUTPUT"
+            echo "Publish enabled: branch run with non-tagged HEAD."
+          fi
+
+      # Refresh auth to avoid expired tokens during long test/build phases before private publish
+      - name: GCP - Refresh auth with github service account
+        uses: 'google-github-actions/auth@v3'
+        if: ${{ inputs.sonatype-publish == false && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       # Publish
       - name: Publish - Java
         uses: kestra-io/actions/composite/publish-java@main
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
         with:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
