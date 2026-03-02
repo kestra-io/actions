@@ -32,12 +32,13 @@ runs:
         ls -lh /tmp/trivy-scan/
 
     - name: Trivy - Run Trivy scanner
-      uses: aquasecurity/trivy-action@0.28.0
+      uses: aquasecurity/trivy-action@0.34.1
       id: trivy
       env:
         TMPDIR: ${{ github.workspace }}/trivy-tmp
         TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
       with:
+        version: v0.69.2
         scan-type: ${{ inputs.scan-type }}
         scan-ref: /tmp/trivy-scan
         format: 'json'
