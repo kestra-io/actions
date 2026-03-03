@@ -53,6 +53,7 @@ jobs:
         with:
           java-enabled: true
           java-version: ${{ inputs.java-version }}
+          java-enable-develocity-injection: true
 
       # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env
