@@ -60,4 +60,4 @@ runs:
         fi
         
         # TODO ADD WEBHOOK TO INPUTS
-        curl -X POST -H "Content-Type: application/json" -d "{\"TO_RELEASE\": \"${TO_RELEASE}\",\"RELEASED_VERSION\":\"${{ inputs.new_version }}\"}" ${{ fromJson(inputs.secrets).AFTER_RELEASE_EE_WEBHOOK }}
+        curl -X POST -H "Content-Type: application/json" -d "{\"TO_RELEASE\": ${TO_RELEASE},\"RELEASED_VERSION\":\"${VER}\"}" ${{ fromJson(inputs.secrets).AFTER_RELEASE_EE_WEBHOOK }}
