@@ -60,7 +60,7 @@ jobs:
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
-          ./gradlew compileJava javadoc --parallel
+          ./gradlew compileJava javadoc --no-parallel
 
       # Services
       - name: Setup - Start docker compose
