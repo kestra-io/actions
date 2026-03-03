@@ -49,7 +49,7 @@ runs:
       if: inputs.java-enabled == 'true'
       uses: gradle/actions/setup-gradle@v5
       with:
-#        develocity-injection-enabled: ${{ inputs.java-enable-develocity-injection && secrets.DEVELOCITY_ACCESS_KEY }}
+        develocity-injection-enabled: ${{ inputs.java-enable-develocity-injection == 'true' && secrets.DEVELOCITY_ACCESS_KEY != '' }}
         develocity-url: https://develocity.kestra.io/
         develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
@@ -82,4 +82,3 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
         cache-dependency-path: '**/package-lock.json'
-
