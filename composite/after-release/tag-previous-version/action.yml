@@ -13,6 +13,7 @@ runs:
   steps:
     - name: Validate Kestra version format
       id: validate-format
+      shell: bash
       run: |
         set -euo pipefail
 
@@ -31,6 +32,7 @@ runs:
 
     - name: Read versions and create missing tag
       id: read-latest
+      shell: bash
       run: |
         set -euo pipefail
 
