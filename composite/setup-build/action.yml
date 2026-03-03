@@ -15,7 +15,7 @@ inputs:
     required: true
   java-enable-develocity-injection:
     description: "Enable Develocity injection, it's a best effort way to inject Develocity in our plugins"
-    default: 'true'
+    default: 'false'
     required: true
   node-enabled:
     description: "Specify whether to setup Node"
