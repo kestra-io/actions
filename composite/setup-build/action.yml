@@ -13,6 +13,10 @@ inputs:
     description: "Java distribution"
     default: 'temurin'
     required: true
+  java-enable-develocity-injection:
+    description: "Enable Develocity injection, it's a best effort way to inject Develocity in our plugins"
+    default: 'false'
+    required: true
   node-enabled:
     description: "Specify whether to setup Node"
     default: 'false'
@@ -45,6 +49,8 @@ runs:
       if: inputs.java-enabled == 'true'
       uses: gradle/actions/setup-gradle@v5
       with:
+        develocity-injection-enabled: ${{ inputs.java-enable-develocity-injection && secrets.DEVELOCITY_ACCESS_KEY }}
+        develocity-url: https://develocity.kestra.io/
         develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
     - name: Java - SonarCloud cache
