@@ -27,6 +27,11 @@ on:
         type: string
         default: '21'
         required: false
+      skip-indexing:
+        description: "Does we skip the indexing"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -233,6 +238,6 @@ jobs:
       - name: Index release
         uses: kestra-io/actions/composite/plugin-release-index@main
         # We trigger the plugin release index only for NON SNAPSHOT version thus the if:
-        if: ${{ (startsWith(github.ref, 'releases/v') || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ (startsWith(github.ref, 'releases/v') || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/')  && inputs.skip-indexing == false }}
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
