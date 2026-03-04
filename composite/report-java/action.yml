@@ -117,6 +117,7 @@ runs:
     - name: Java - Gradle dependency graph
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       uses: gradle/actions/dependency-submission@v4
+      continue-on-error: true
       env:
         JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
 
