@@ -1,0 +1,104 @@
+name: Nightly Plugins Compatibility Check
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # ~5h Paris time (CEST)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Discover repos and resolve Kestra develop version
+  # ---------------------------------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.list.outputs.repos }}
+      kestra-version: ${{ steps.kestra-version.outputs.version }}
+    steps:
+      - name: Get Kestra version from develop branch
+        id: kestra-version
+        run: |
+          VERSION=$(curl -sS "https://raw.githubusercontent.com/kestra-io/kestra/develop/gradle.properties" \
+            | grep "^version=" | cut -d'=' -f2)
+          echo "Kestra develop version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: List plugin, storage and secret repositories
+        id: list
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+        run: |
+          REPOS=$(gh api --paginate "/orgs/kestra-io/repos?per_page=100" \
+            -q '.[].name' | grep -E "^(plugin|storage|secret)-" | sort)
+          echo "Found repos:"
+          echo "$REPOS"
+          JSON=$(echo "$REPOS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "repos=$JSON" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Build each repo with the latest Kestra develop version
+  # ---------------------------------------------------------------------------
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: ${{ fromJson(needs.setup.outputs.repos) }}
+    name: ${{ matrix.repo }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: kestra-io/${{ matrix.repo }}
+          token: ${{ secrets.GITHUB_PAT }}
+
+      - name: Checkout actions
+        uses: actions/checkout@v4
+        with:
+          repository: kestra-io/actions
+          path: .github/actions
+
+      - name: Setup build
+        uses: ./.github/actions/composite/setup-build
+        with:
+          java-enabled: true
+
+      - name: Override kestraVersion in gradle.properties
+        run: |
+          if grep -q "^kestraVersion=" gradle.properties; then
+            ORIGINAL=$(grep "^kestraVersion=" gradle.properties | cut -d'=' -f2)
+            echo "Overriding kestraVersion: $ORIGINAL -> ${{ needs.setup.outputs.kestra-version }}"
+            sed -i "s/^kestraVersion=.*/kestraVersion=${{ needs.setup.outputs.kestra-version }}/" gradle.properties
+          else
+            echo "No kestraVersion found in gradle.properties, skipping."
+          fi
+
+      - name: Compile
+        id: compile
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT }}
+        run: ./gradlew compileJava compileTestJava --parallel
+
+      - name: Test
+        if: steps.compile.outcome == 'success'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT }}
+        run: |
+          if [ -f .github/setup-unit.sh ]; then
+            ./.github/setup-unit.sh
+          fi
+          ./gradlew check --parallel
+
+      - name: Slack alert on compilation failure
+        if: steps.compile.outcome == 'failure'
+        uses: ./.github/actions/composite/slack-status
+        with:
+          channel: "C09FE0QCN2E" # #_int_alert-plugins-build
+          status: "failure"
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}

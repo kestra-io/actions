@@ -213,7 +213,7 @@ jobs:
         if: always() && env.SLACK_WEBHOOK_URL != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && job.status == 'failure'
         uses: kestra-io/actions/composite/slack-status@main
         with:
-          channel: "C09FE0QCN2E"
+          channel: "C09FE0QCN2E" # #_int_alert-plugins-build
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       # Allure report permissions
