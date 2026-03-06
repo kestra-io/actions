@@ -15,6 +15,10 @@ inputs:
     description: 'Override job status (defaults to job.status if not set)'
     required: false
 
+  message:
+    description: 'Optional extra text appended to the Slack message'
+    required: false
+
 runs:
   using: composite
   steps:
@@ -30,7 +34,7 @@ runs:
         username: GitHub Actions
         icon_emoji: ':github-actions:'
         channel: "${{ inputs.channel }}"
-        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}* ended with status `${{ env.EFFECTIVE_STATUS }}`"
+        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}* ended with status `${{ env.EFFECTIVE_STATUS }}`${{ inputs.message && format(' — {0}', inputs.message) || '' }}"
         attachments:
           - color: "${{ env.EFFECTIVE_STATUS == 'success' && '#388E3C' || '#D32F2F' }}"
             blocks:
