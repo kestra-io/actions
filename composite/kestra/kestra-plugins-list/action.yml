@@ -16,6 +16,13 @@ runs:
       shell: bash
       run: |
         RAW_VERSION=${{ inputs.kestraVersion }}
+        
+        if [ "$RAW_VERSION" = "develop" ]; then
+        KESTRA_VERSION=$(curl -s https://api.kestra.io/v1/versions/latest | jq -r '.version')
+        else
+        KESTRA_VERSION=$(echo $RAW_VERSION | sed -E 's/-rc[0-9]+$//')
+        fi
+        
         KESTRA_VERSION=$(echo $RAW_VERSION | sed -E 's/-rc[0-9]+$//')
         echo "raw version: $RAW_VERSION"
         echo "normalized version: $KESTRA_VERSION"
