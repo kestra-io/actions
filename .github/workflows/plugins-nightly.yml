@@ -1,9 +1,6 @@
 name: Nightly Plugins Compatibility Check
 
 on:
-  push:
-    branches:
-      - 'kestra-ee/issues/6653'
   schedule:
     - cron: '0 3 * * *' # ~5h Paris time (CEST)
   workflow_dispatch: {}
@@ -32,10 +29,13 @@ jobs:
       - name: List plugin, storage and secret repositories
         id: list
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
         run: |
           REPOS=$(gh api --paginate "/orgs/kestra-io/repos?per_page=100" \
-            -q '.[].name' | grep -E "^(plugin|storage|secret)-" | sort)
+            -q '.[] | select(.archived == false) | .name' \
+            | grep -E "^(plugin|storage|secret)-" \
+            | grep -v -E "^(plugin-template|plugin-template-maven)$" \
+            | sort)
           echo "Found repos:"
           echo "$REPOS"
           JSON=$(echo "$REPOS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: kestra-io/${{ matrix.repo }}
-          token: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_PAT }}
 
       - name: Checkout actions
         uses: actions/checkout@v4
@@ -84,7 +84,7 @@ jobs:
         id: compile
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT }}
         run: |
           ./gradlew compileJava compileTestJava --parallel 2>&1 | tee /tmp/compile.log
           exit ${PIPESTATUS[0]}
@@ -93,18 +93,17 @@ jobs:
         if: steps.compile.outcome == 'failure'
         id: errors
         run: |
-          ERRORS=$(grep -E "^e:|error:|FAILED" /tmp/compile.log | head -20)
-          # Escape for GH output (newlines, %, \r)
-          ERRORS="${ERRORS//'%'/'%25'}"
-          ERRORS="${ERRORS//$'\n'/'%0A'}"
-          ERRORS="${ERRORS//$'\r'/'%0D'}"
-          echo "summary=$ERRORS" >> "$GITHUB_OUTPUT"
+          {
+            echo 'summary<<ERRORS_EOF'
+            tail -50 /tmp/compile.log
+            echo 'ERRORS_EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Test
         if: steps.compile.outcome == 'success'
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT }}
         run: |
           if [ -f .github/setup-unit.sh ]; then
             ./.github/setup-unit.sh
@@ -118,7 +117,7 @@ jobs:
           if [ "${{ steps.compile.outcome }}" == "failure" ]; then
             echo "### :x: Compilation failed" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            grep -E "^e:|error:|FAILED" /tmp/compile.log | head -30 >> "$GITHUB_STEP_SUMMARY" || true
+            tail -50 /tmp/compile.log >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.compile.outcome }}" == "success" ]; then
             echo ":white_check_mark: Compilation succeeded" >> "$GITHUB_STEP_SUMMARY"
