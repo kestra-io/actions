@@ -1,6 +1,9 @@
 name: Nightly Plugins Compatibility Check
 
 on:
+  push:
+    branches:
+      - 'kestra-ee/issues/6653'
   schedule:
     - cron: '0 3 * * *' # ~5h Paris time (CEST)
   workflow_dispatch: {}
@@ -29,7 +32,7 @@ jobs:
       - name: List plugin, storage and secret repositories
         id: list
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
         run: |
           REPOS=$(gh api --paginate "/orgs/kestra-io/repos?per_page=100" \
             -q '.[].name' | grep -E "^(plugin|storage|secret)-" | sort)
@@ -54,7 +57,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: kestra-io/${{ matrix.repo }}
-          token: ${{ secrets.GITHUB_PAT }}
+          token: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Checkout actions
         uses: actions/checkout@v4
@@ -81,7 +84,7 @@ jobs:
         id: compile
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
         run: |
           ./gradlew compileJava compileTestJava --parallel 2>&1 | tee /tmp/compile.log
           exit ${PIPESTATUS[0]}
@@ -101,7 +104,7 @@ jobs:
         if: steps.compile.outcome == 'success'
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
         run: |
           if [ -f .github/setup-unit.sh ]; then
             ./.github/setup-unit.sh
