@@ -1,6 +1,9 @@
 name: Nightly Plugins Compatibility Check
 
 on:
+  push:
+    branches:
+      - 'kestra-ee/issues/6653'
   schedule:
     - cron: '0 3 * * *' # ~5h Paris time (CEST)
   workflow_dispatch: {}
