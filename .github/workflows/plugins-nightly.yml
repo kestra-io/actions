@@ -32,7 +32,7 @@ jobs:
       - name: List plugin, storage and secret repositories
         id: list
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_PAT || github.token }}
         run: |
           REPOS=$(gh api --paginate "/orgs/kestra-io/repos?per_page=100" \
             -q '.[].name' | grep -E "^(plugin|storage|secret)-" | sort)
