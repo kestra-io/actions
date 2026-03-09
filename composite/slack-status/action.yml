@@ -11,6 +11,11 @@ inputs:
     description: 'The slack incoming webhook url'
     required: true
 
+  suffix:
+    description: 'Optional suffix to append to the workflow name in the message'
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -24,7 +29,7 @@ runs:
         username: GitHub Actions
         icon_emoji: ':github-actions:'
         channel: "${{ inputs.channel }}"
-        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}* ended with status `${{ job.status }}`" 
+        text: "<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}${{ inputs.suffix && format(' ({0})', inputs.suffix) || '' }}* ended with status `${{ job.status }}`" 
         attachments:
           - color: "${{ job.status == 'success' && '#388E3C' || '#D32F2F' }}"
             blocks:

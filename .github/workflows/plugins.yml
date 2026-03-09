@@ -226,6 +226,7 @@ jobs:
         with:
           channel: "C09FE0QCN2E"
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          suffix: ${{ inputs.kestra-version }}
 
       # Allure report permissions
       - name: Allure report permissions
