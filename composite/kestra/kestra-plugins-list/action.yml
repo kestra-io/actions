@@ -22,8 +22,7 @@ runs:
         else
         KESTRA_VERSION=$(echo $RAW_VERSION | sed -E 's/-rc[0-9]+$//')
         fi
-        
-        KESTRA_VERSION=$(echo $RAW_VERSION | sed -E 's/-rc[0-9]+$//')
+
         echo "raw version: $RAW_VERSION"
         echo "normalized version: $KESTRA_VERSION"
         
