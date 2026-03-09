@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      kestra-version:
+        description: "Kestra core version to build against (overrides gradle.properties)"
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -51,6 +56,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           submodules: true
+
+      # Override kestraVersion in gradle.properties if a specific version is requested
+      - name: Setup - Override Kestra version
+        if: ${{ inputs.kestra-version != '' }}
+        shell: bash
+        run: sed -i "s/^kestraVersion=.*/kestraVersion=${{ inputs.kestra-version }}/" gradle.properties
 
       # Setup build
       - name: Setup - Build
