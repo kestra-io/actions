@@ -73,17 +73,6 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           ./gradlew check --parallel
 
-      - name: Gradle - flakyTest
-        continue-on-error: true
-        run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
-          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':flakyTest'; then
-            ./gradlew flakyTest --no-parallel
-          else
-            echo "ℹ️ flakyTest task does not exist in this old release branch, skipping"
-          fi
-
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:

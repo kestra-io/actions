@@ -74,17 +74,6 @@ jobs:
         run: |
           ./gradlew check --parallel
 
-      - name: Gradle - flakyTest
-        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':flakyTest'; then
-            ./gradlew flakyTest --no-parallel
-          else
-            echo "ℹ️ flakyTest task does not exist in this old release branch, skipping"
-          fi
-
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
         env:
