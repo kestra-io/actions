@@ -57,22 +57,17 @@ jobs:
           python-enabled: true
           java-version: ${{ inputs.java-version }}
 
-      - name: Gradle - compile and javadoc
-        shell: bash
-        run: |
-          ./gradlew compileJava javadoc --parallel
-
       # Services
       - name: Setup - Start docker compose
         shell: bash
         run: docker compose -f docker-compose-ci.yml up -d
 
       # Gradle check
-      - name: Gradle - check
+      - name: Gradle - check and javadoc
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
-          ./gradlew check --parallel
+          ./gradlew check javadoc --parallel
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
