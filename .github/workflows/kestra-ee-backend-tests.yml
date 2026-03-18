@@ -56,33 +56,16 @@ jobs:
         run: |
           mv kestra ../kestra
 
-      - name: Gradle - compile and javadoc
-        run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
-          ./gradlew compileJava javadoc --parallel
-
       # Services
       - name: Setup - Start docker compose
         run: docker compose -f docker-compose-ci.yml up -d
 
       # Gradle check
-      - name: Gradle - check
+      - name: Gradle - check and javadoc
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
-          ./gradlew check --parallel
-
-      - name: Gradle - flakyTest
-        continue-on-error: true
-        run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
-          if [ -x ./gradlew ] && ./gradlew -q tasks --all | grep -q ':flakyTest'; then
-            ./gradlew flakyTest --no-parallel
-          else
-            echo "ℹ️ flakyTest task does not exist in this old release branch, skipping"
-          fi
+          ./gradlew check javadoc --parallel
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
