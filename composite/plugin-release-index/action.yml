@@ -29,6 +29,7 @@ runs:
       with:
         fetch-depth: 0
         submodules: true
+        clean: false
 
     - name: Setup Java
       uses: actions/setup-java@v4
