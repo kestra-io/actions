@@ -53,18 +53,18 @@ runs:
       shell: bash
       run: |
         if [ -n "${PREVIOUS_TAG}" ]; then
-          awk -v previous_tag="${PREVIOUS_TAG}" '
-            /changelog:/ && !done {
-              print
-              print "      previousTagName: '\''" previous_tag "'\''"
-              done=1
-              next
-            }
-            { print }
-          ' jreleaser.yml > jreleaser.yml.tmp
+            awk -v previous_tag="${PREVIOUS_TAG}" '
+              /^[[:space:]]*github:[[:space:]]*$/ && !done {
+                print
+                print "    previousTagName: '\''" previous_tag "'\''"
+                done=1
+                next
+              }
+              { print }
+            ' jreleaser.yml > jreleaser.yml.tmp
 
-          mv jreleaser.yml.tmp jreleaser.yml
-        fi
+            mv jreleaser.yml.tmp jreleaser.yml
+          fi
     - name: Patch jreleaser.yml for major releases
       shell: bash
       run: |
