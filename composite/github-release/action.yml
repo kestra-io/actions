@@ -35,7 +35,8 @@ runs:
         current_tag="v${GITHUB_REF_NAME#v}"
 
         previous_tag=$(
-          git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
+          git tag -l \
+          | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
           | sort -V \
           | sed -n "/^$current_tag$/q;p" \
           | tail -n1
