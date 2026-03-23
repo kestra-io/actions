@@ -196,7 +196,6 @@ jobs:
         # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
         uses: docker/login-action@v3
         with:
-          registry: europe-west1-docker.pkg.dev
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
