@@ -51,7 +51,6 @@ runs:
       with:
 #        develocity-injection-enabled: ${{ inputs.java-enable-develocity-injection && secrets.DEVELOCITY_ACCESS_KEY }}
         develocity-url: https://develocity.kestra.io/
-        develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
         dependency-graph: disabled
 
     - name: Java - SonarCloud cache
