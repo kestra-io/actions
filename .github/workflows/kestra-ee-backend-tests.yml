@@ -67,6 +67,22 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           ./gradlew check javadoc --parallel
 
+      - name: Upload OOM heap dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oom-heap-dumps-${{ github.run_id }}
+          path: '**/build/oom-*.hprof'
+          retention-days: 3
+
+      - name: Upload GC logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gc-logs-${{ github.run_id }}
+          path: '**/build/gc-*.log'
+          retention-days: 3
+
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
