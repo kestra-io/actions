@@ -67,6 +67,21 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           ./gradlew check javadoc --parallel
 
+      - name: Memory snapshot
+        if: failure()
+        run: |
+          echo "=== free -h ===" && free -h
+          echo "=== Top 20 processes by RSS ===" && ps aux --sort=-%mem | head -20
+          echo "=== Docker container stats ===" && docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"
+
+      - name: Upload memory snapshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-snapshot-${{ github.run_id }}
+          path: /tmp/mem-snapshot.txt
+          retention-days: 3
+
       - name: Upload OOM heap dumps
         if: failure()
         uses: actions/upload-artifact@v4
