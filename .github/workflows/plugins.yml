@@ -72,7 +72,7 @@ jobs:
         with:
           java-enabled: true
           # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
-          java-version: ${{ inputs.kestra-version != '' && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
+          java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
 
       # Setup for setup-unit.sh, injecting secrets as env variables
