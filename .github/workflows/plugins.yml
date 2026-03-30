@@ -71,7 +71,7 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
-          # Use newer Java when testing against overridden Kestra version (nightly compatibility check)
+          # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
           java-version: ${{ inputs.kestra-version != '' && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
 
