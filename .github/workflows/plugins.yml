@@ -45,6 +45,9 @@ permissions:
   pull-requests: write
   packages: read
 
+env:
+  COMPATIBILITY_JAVA_VERSION: '25'
+
 jobs:
   main:
     runs-on: ${{ inputs.runner }}
@@ -68,7 +71,8 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
-          java-version: ${{ inputs.java-version }}
+          # Use newer Java when testing against overridden Kestra version (nightly compatibility check)
+          java-version: ${{ inputs.kestra-version != '' && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
 
       # Setup for setup-unit.sh, injecting secrets as env variables
