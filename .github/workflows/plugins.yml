@@ -37,6 +37,39 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      GOOGLE_SERVICE_ACCOUNT:
+        required: false
+      AWS_ACCESS_KEY:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AZURE_APPLICATION:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_CLIENT_SECRET:
+        required: false
+      AZURE_CONNECTION_STRING:
+        required: false
+      AZURE_COSMOS_CONNECTION_STRING:
+        required: false
+      GH_PERSONAL_TOKEN:
+        required: false
+      SLACK_BOT_TOKEN:
+        required: false
+      MS365_CREDENTIALS:
+        required: false
+      AIRTABLE_PERSONAL_ACCESS_TOKEN:
+        required: false
+      AIRTABLE_BASE_ID:
+        required: false
+      AIRTABLE_TABLE_ID:
+        required: false
+      DBT_APPLICATION:
+        required: false
 
 permissions:
   contents: write
@@ -71,12 +104,6 @@ jobs:
           java-version: ${{ inputs.java-version }}
           java-enable-develocity-injection: true
 
-      # Setup for setup-unit.sh, injecting secrets as env variables
-      - name: Setup - Secret to Env
-        uses: oNaiPs/secrets-to-env-action@v1
-        with:
-          secrets: ${{ toJSON(secrets) }}
-
       # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
       - name: GCP - Auth with github service account
         uses: 'google-github-actions/auth@v3'
@@ -90,9 +117,25 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AZURE_APPLICATION: ${{ secrets.AZURE_APPLICATION }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CONNECTION_STRING: ${{ secrets.AZURE_CONNECTION_STRING }}
+          AZURE_COSMOS_CONNECTION_STRING: ${{ secrets.AZURE_COSMOS_CONNECTION_STRING }}
+          GH_PERSONAL_TOKEN: ${{ secrets.GH_PERSONAL_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          MS365_CREDENTIALS: ${{ secrets.MS365_CREDENTIALS }}
+          AIRTABLE_PERSONAL_ACCESS_TOKEN: ${{ secrets.AIRTABLE_PERSONAL_ACCESS_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_TABLE_ID: ${{ secrets.AIRTABLE_TABLE_ID }}
+          DBT_APPLICATION: ${{ secrets.DBT_APPLICATION }}
         run: |
           if [ -f .github/setup-unit.sh ]; then
-            ./.github/setup-unit.sh 
+            ./.github/setup-unit.sh
           fi
 
       # Gradle check
