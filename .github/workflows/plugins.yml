@@ -66,6 +66,12 @@ jobs:
         shell: bash
         run: sed -i "s/^kestraVersion=.*/kestraVersion=${{ inputs.kestra-version }}/" gradle.properties
 
+      # Override Java version in build.gradle for Kestra 2.x compatibility
+      - name: Setup - Override Java version
+        if: ${{ startsWith(inputs.kestra-version, '2.') }}
+        shell: bash
+        run: find . -name "build.gradle" -exec sed -i "s/JavaVersion\.VERSION_21/JavaVersion.VERSION_${{ env.COMPATIBILITY_JAVA_VERSION }}/g" {} +
+
       # Setup build
       - name: Setup - Build
         uses: kestra-io/actions/composite/setup-build@main
