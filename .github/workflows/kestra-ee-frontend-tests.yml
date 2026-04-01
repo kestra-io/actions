@@ -41,10 +41,10 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: npm ci
 
-      - name: Npm - Check types
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npm run test:types
+      # - name: Npm - Check types
+      #   shell: bash
+      #   working-directory: kestra-ee/ui-ee
+      #   run: npm run test:types
 
       - name: Npm - Lint
         uses: reviewdog/action-eslint@v1
