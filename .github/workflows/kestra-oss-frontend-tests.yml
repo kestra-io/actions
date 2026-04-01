@@ -48,7 +48,7 @@ jobs:
     
       - name: Npm - check types
         working-directory: ui
-        run: npm run test:types
+        run: npm run check:types
 
       - name: Npm - lint
         uses: reviewdog/action-eslint@v1
