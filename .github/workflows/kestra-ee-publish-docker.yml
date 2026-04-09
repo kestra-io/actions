@@ -192,6 +192,13 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.glogin.outputs.access_token }}
 
+      - name: Docker - Login to Dockerhub
+        # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker - Build and push
         id: docker-build-push
         uses: docker/build-push-action@v6

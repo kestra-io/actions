@@ -21,6 +21,11 @@ on:
         type: string
         default: '21'
         required: false
+      java-options:
+        description: "Value for _JAVA_OPTIONS env variable passed to the Gradle check command. If empty, the variable is not set."
+        type: string
+        default: ''
+        required: false
 
 permissions:
   contents: write
@@ -65,6 +70,9 @@ jobs:
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
+          if [[ -n "${{ inputs.java-options }}" ]]; then
+            export _JAVA_OPTIONS="${{ inputs.java-options }}"
+          fi
           ./gradlew check javadoc --parallel
 
       - name: comment PR with test report

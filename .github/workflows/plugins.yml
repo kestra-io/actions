@@ -45,6 +45,9 @@ permissions:
   pull-requests: write
   packages: read
 
+env:
+  COMPATIBILITY_JAVA_VERSION: '25'
+
 jobs:
   main:
     runs-on: ${{ inputs.runner }}
@@ -63,12 +66,19 @@ jobs:
         shell: bash
         run: sed -i "s/^kestraVersion=.*/kestraVersion=${{ inputs.kestra-version }}/" gradle.properties
 
+      # Override Java version in build.gradle for Kestra 2.x compatibility
+      - name: Setup - Override Java version
+        if: ${{ startsWith(inputs.kestra-version, '2.') }}
+        shell: bash
+        run: find . -name "build.gradle" -exec sed -i "s/JavaVersion\.VERSION_21/JavaVersion.VERSION_${{ env.COMPATIBILITY_JAVA_VERSION }}/g" {} +
+
       # Setup build
       - name: Setup - Build
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
-          java-version: ${{ inputs.java-version }}
+          # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
+          java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
 
       # Setup for setup-unit.sh, injecting secrets as env variables
