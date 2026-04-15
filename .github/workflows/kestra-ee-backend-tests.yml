@@ -93,3 +93,4 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           secrets: ${{ toJSON(secrets) }}
+          run-sonar: 'false'
