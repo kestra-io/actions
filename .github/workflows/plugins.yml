@@ -60,6 +60,13 @@ jobs:
           fetch-tags: true
           submodules: true
 
+      - name: Setup - Patch Gradle JVM args
+        shell: bash
+        run: |
+          if ! grep -q "^org.gradle.jvmargs=" gradle.properties; then
+            echo "org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g" >> gradle.properties
+          fi
+
       # Override kestraVersion in gradle.properties if a specific version is requested
       - name: Setup - Override Kestra version
         if: ${{ inputs.kestra-version != '' }}
