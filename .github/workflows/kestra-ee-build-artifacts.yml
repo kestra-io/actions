@@ -62,11 +62,14 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      - name: build OSS UI required for EE UI build
+      - name: Build frontend
         shell: bash
         run: |
           cd kestra/ui
           npm ci
+          cd ../../kestra-ee/ui-ee
+          npm install
+          npm run build
 
       # Detect whether this version ships the cloud-ee module (2.0+ / develop).
       # Older versions (1.3 and earlier) don't have it, so the cloud steps are skipped.

@@ -48,10 +48,12 @@ jobs:
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Npm
-      - name: Setup - Npm install
+      - name: Setup - Npm install & build
         shell: bash
         working-directory: ui
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       # Build
       - name: Gradle - Build

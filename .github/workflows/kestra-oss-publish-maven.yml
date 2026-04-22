@@ -58,6 +58,13 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
+      - name: Build frontend
+        shell: bash
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
       # Publish
       - name: Publish - Release package to Maven Central
         shell: bash
