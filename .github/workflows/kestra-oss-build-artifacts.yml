@@ -34,10 +34,12 @@ jobs:
           java-version: ${{ inputs.java-version }}
 
       # Npm
-      - name: Setup - Npm install
+      - name: Setup - Npm install & build
         shell: bash
         working-directory: ui
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       # Build
       - name: Gradle - Build
