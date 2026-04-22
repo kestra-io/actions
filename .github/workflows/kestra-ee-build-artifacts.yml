@@ -51,11 +51,14 @@ jobs:
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
 
-      - name: build OSS UI required for EE UI build
+      - name: Build frontend
         shell: bash
         run: |
           cd kestra/ui
           npm ci
+          cd ../../kestra-ee/ui-ee
+          npm install
+          npm run build
 
       # Shadow Jar
       - name: Gradle - Build jars

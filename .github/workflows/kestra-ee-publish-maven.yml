@@ -37,6 +37,7 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: 'true'
+          node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
 
       # Google Auth
@@ -45,6 +46,15 @@ jobs:
         uses: 'google-github-actions/auth@v3'
         with:
           credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+
+      - name: Build frontend
+        shell: bash
+        run: |
+          cd kestra/ui
+          npm ci
+          cd ../../kestra-ee/ui-ee
+          npm install
+          npm run build
 
       # Publish
       - name: Publish - Release package with Gradle

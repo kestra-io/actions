@@ -26,10 +26,12 @@ jobs:
           fetch-depth: 0
 
       # Npm
-      - name: Setup - Npm install
+      - name: Setup - Npm install & build
         shell: bash
         working-directory: ui
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       # Setup build
       - uses: kestra-io/actions/composite/setup-build@main
