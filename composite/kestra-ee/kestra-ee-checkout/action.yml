@@ -24,8 +24,14 @@ runs:
 
               if [[ ! -z "$OSS_PR_REF" ]]; then
                 OSS_PR_NUMBER=$(echo "$OSS_PR_REF" | sed 's|refs/pull/||;s|/head||')
-                echo "found OSS PR #$OSS_PR_NUMBER for branch ${{ github.head_ref }}, using merge ref"
-                echo "ossBranch=refs/pull/$OSS_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+                MERGE_EXISTS=$(git ls-remote https://github.com/kestra-io/kestra.git \
+    "refs/pull/$OSS_PR_NUMBER/merge")
+                if [[ ! -z "$MERGE_EXISTS" ]]; then
+                  echo "ossBranch=refs/pull/$OSS_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+                else
+                  echo "OSS PR #$OSS_PR_NUMBER has conflicts, falling back to branch tip"
+                  echo "ossBranch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+                fi
               else
                 echo "no open OSS PR found for branch ${{ github.head_ref }}, using branch directly"
                 echo "ossBranch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
