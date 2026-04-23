@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           if ! grep -q "^org.gradle.jvmargs=" gradle.properties; then
-            echo "org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g" >> gradle.properties
+            printf "\norg.gradle.jvmargs=-Xmx1g -XX:MaxMetaspaceSize=512m\n" >> gradle.properties
           fi
 
       # Override kestraVersion in gradle.properties if a specific version is requested
