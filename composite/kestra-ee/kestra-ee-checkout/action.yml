@@ -20,12 +20,12 @@ runs:
               # Check if that branch is the head of an open OSS PR — if so use the
               # merge ref so both EE and OSS are tested at their simulated-merge state.
               OSS_PR_REF=$(git ls-remote https://github.com/kestra-io/kestra.git 'refs/pull/*/head' \
-                | grep "^$BRANCH_SHA" | head -1 | awk '{print $2}' | sort -t'/' -k3 -n -r | head -1)
+                | grep "^$BRANCH_SHA" | sort -t'/' -k3 -n -r | head -1 | awk '{print $2}')
 
               if [[ ! -z "$OSS_PR_REF" ]]; then
                 OSS_PR_NUMBER=$(echo "$OSS_PR_REF" | sed 's|refs/pull/||;s|/head||')
                 MERGE_EXISTS=$(git ls-remote https://github.com/kestra-io/kestra.git \
-    "refs/pull/$OSS_PR_NUMBER/merge")
+                  "refs/pull/$OSS_PR_NUMBER/merge")
                 if [[ ! -z "$MERGE_EXISTS" ]]; then
                   echo "ossBranch=refs/pull/$OSS_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
                 else
