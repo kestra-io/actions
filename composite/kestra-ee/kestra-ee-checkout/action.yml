@@ -13,10 +13,29 @@ runs:
         if ${{ github.event_name == 'pull_request' }}; then
       
             # try to find if there is an associated OSS branch
-            ASSOCIATED_OSS_BRANCH_FOUND=$(git ls-remote https://github.com/kestra-io/kestra.git ${{ github.head_ref }})
-            if [[ ! -z $ASSOCIATED_OSS_BRANCH_FOUND ]]; then
+            BRANCH_SHA=$(git ls-remote https://github.com/kestra-io/kestra.git refs/heads/${{ github.head_ref }} | cut -f1)
+            if [[ ! -z "$BRANCH_SHA" ]]; then
               echo "associated branch found ${{ github.head_ref }}"
-              echo "ossBranch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+
+              # Check if that branch is the head of an open OSS PR — if so use the
+              # merge ref so both EE and OSS are tested at their simulated-merge state.
+              OSS_PR_REF=$(git ls-remote https://github.com/kestra-io/kestra.git 'refs/pull/*/head' \
+                | grep "^$BRANCH_SHA" | sort -t'/' -k3 -n -r | head -1 | awk '{print $2}')
+
+              if [[ ! -z "$OSS_PR_REF" ]]; then
+                OSS_PR_NUMBER=$(echo "$OSS_PR_REF" | sed 's|refs/pull/||;s|/head||')
+                MERGE_EXISTS=$(git ls-remote https://github.com/kestra-io/kestra.git \
+                  "refs/pull/$OSS_PR_NUMBER/merge")
+                if [[ ! -z "$MERGE_EXISTS" ]]; then
+                  echo "ossBranch=refs/pull/$OSS_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+                else
+                  echo "OSS PR #$OSS_PR_NUMBER has conflicts, falling back to branch tip"
+                  echo "ossBranch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+                fi
+              else
+                echo "no open OSS PR found for branch ${{ github.head_ref }}, using branch directly"
+                echo "ossBranch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+              fi
               exit 0
             fi
         
