@@ -210,6 +210,8 @@ jobs:
             ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           network: host
+          cache-from: type=gha,scope=docker${{ matrix.image.tag }}
+          cache-to: type=gha,mode=max,scope=docker${{ matrix.image.tag }}
           build-args: |
             KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
             APT_PACKAGES=${{ matrix.image.packages }}

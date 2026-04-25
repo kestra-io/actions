@@ -62,6 +62,8 @@ jobs:
           push: true
           tags: ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # Add comment on pull request
       - name: Add comment to PR

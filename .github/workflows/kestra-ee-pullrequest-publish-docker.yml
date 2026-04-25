@@ -75,6 +75,8 @@ jobs:
           build-args: |
             KESTRA_DOCKER_BASE_VERSION: ${{ github.base_ref }})
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # Add comment on pull request
       - name: Add comment to PR

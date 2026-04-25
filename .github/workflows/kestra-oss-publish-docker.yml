@@ -155,16 +155,8 @@ jobs:
           cp build/executable/* docker/app/kestra && chmod +x docker/app/kestra
 
       # Docker setup
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Docker - Fix Qemu
-        shell: bash
-        run: |
-          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes -c yes
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Docker init
+        uses: kestra-io/actions/composite/setup-docker@main
 
       # Docker Login
       - name: Login to DockerHub
@@ -181,6 +173,8 @@ jobs:
           push: ${{ inputs.dry-run == false }}
           tags: ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }}
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=docker${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=docker${{ matrix.image.name }}
           build-args: |
             KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
             APT_PACKAGES=${{ matrix.image.packages }}
