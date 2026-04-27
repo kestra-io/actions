@@ -1,0 +1,74 @@
+name: 'Generate Configuration Schema'
+description: 'Fetch storage plugins from Kestra API, install them, and generate the configuration JSON Schema.'
+inputs:
+  kestra-version:
+    description: "Kestra version to find compatible storage plugins for"
+    required: true
+  executable-path:
+    description: "Path to the Kestra executable"
+    required: true
+  output-path:
+    description: "Output path for the generated schema file"
+    required: false
+    default: "configuration-schema.json"
+outputs:
+  schema-path:
+    description: "Path to the generated schema file"
+    value: ${{ inputs.output-path }}
+runs:
+  using: composite
+  steps:
+    - name: Fetch compatible storage plugins
+      id: storage-plugins
+      shell: bash
+      env:
+        KESTRA_VERSION_RAW: ${{ inputs.kestra-version }}
+      run: |
+        set -euo pipefail
+        KESTRA_VERSION=$(echo "$KESTRA_VERSION_RAW" | sed -E 's/^v//; s/-rc[0-9]+$//')
+        echo "Fetching storage plugins compatible with Kestra $KESTRA_VERSION"
+
+        RESPONSE=$(curl -sf "https://api.kestra.io/v1/plugins/artifacts/core-compatibility/${KESTRA_VERSION}/latest") || {
+          echo "::warning::Failed to fetch storage plugins for version $KESTRA_VERSION, continuing without storage schemas"
+          echo "plugins=" >> "$GITHUB_OUTPUT"
+          exit 0
+        }
+
+        STORAGE_PLUGINS=$(echo "$RESPONSE" \
+          | jq -r '.[] | select(.groupId == "io.kestra.storage") | "\(.groupId):\(.artifactId):\(.version)"' \
+          | tr '\n' ' ')
+
+        echo "Storage plugins: $STORAGE_PLUGINS"
+        echo "plugins=$STORAGE_PLUGINS" >> "$GITHUB_OUTPUT"
+
+    - name: Install storage plugins
+      id: install-plugins
+      if: steps.storage-plugins.outputs.plugins != ''
+      shell: bash
+      env:
+        EXECUTABLE: ${{ inputs.executable-path }}
+        PLUGINS_LIST: ${{ steps.storage-plugins.outputs.plugins }}
+      run: |
+        set -euo pipefail
+        PLUGINS_DIR=$(mktemp -d)
+        echo "Installing storage plugins to $PLUGINS_DIR"
+        chmod +x "$EXECUTABLE"
+        # Word-splitting on PLUGINS_LIST is intentional
+        $EXECUTABLE plugins install --plugins="$PLUGINS_DIR" $PLUGINS_LIST
+        echo "plugins-dir=$PLUGINS_DIR" >> "$GITHUB_OUTPUT"
+
+    - name: Generate configuration schema
+      shell: bash
+      env:
+        EXECUTABLE: ${{ inputs.executable-path }}
+        PLUGINS_DIR: ${{ steps.install-plugins.outputs.plugins-dir }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+      run: |
+        set -euo pipefail
+        PLUGINS_FLAG=""
+        if [ -n "$PLUGINS_DIR" ]; then
+          PLUGINS_FLAG="--plugins=$PLUGINS_DIR"
+        fi
+
+        "$EXECUTABLE" configuration-schema $PLUGINS_FLAG -o "$OUTPUT_PATH"
+        echo "Schema generated at $OUTPUT_PATH"
