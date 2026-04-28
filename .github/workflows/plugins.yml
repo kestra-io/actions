@@ -37,7 +37,6 @@ on:
         required: false
         type: string
         default: ''
-
 permissions:
   contents: write
   checks: write
@@ -88,12 +87,6 @@ jobs:
           java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
 
-      # Setup for setup-unit.sh, injecting secrets as env variables
-      - name: Setup - Secret to Env
-        uses: oNaiPs/secrets-to-env-action@v1
-        with:
-          secrets: ${{ toJSON(secrets) }}
-
       # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
       - name: GCP - Auth with github service account
         uses: 'google-github-actions/auth@v3'
@@ -102,14 +95,27 @@ jobs:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       # Setup unit tests environment
+      # Secrets are injected dynamically: only the variables actually referenced
+      # in the repo's setup-unit.sh are exported into the process environment.
+      # This avoids leaking unrelated secrets to test code or Docker containers.
       - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
+          UNIT_SECRETS: ${{ toJSON(secrets) }}
         run: |
           if [ -f .github/setup-unit.sh ]; then
-            ./.github/setup-unit.sh 
+            needed=$(grep -oE '\$\{?[A-Z][A-Z0-9_]+\}?' .github/setup-unit.sh \
+              | grep -oE '[A-Z][A-Z0-9_]+' \
+              | grep -vE '^(GITHUB|HOME|PATH|PWD|USER|SHELL|TERM|LANG|IFS|TMPDIR|CI)$' \
+              | sort -u)
+            for name in $needed; do
+              value=$(echo "$UNIT_SECRETS" | jq -r --arg k "$name" '.[$k] // empty')
+              [ -n "$value" ] && export "$name=$value"
+            done
+            unset UNIT_SECRETS
+            ./.github/setup-unit.sh
           fi
 
       # Gradle check
