@@ -21,6 +21,16 @@ inputs:
     required: false
     default: ''
 
+  committer-login:
+    description: 'GitHub login to mention. When unset, the action falls back to head_commit.author.username then github.actor. Set this when the responsible committer cannot be derived from the event (e.g. repository_dispatch carrying a foreign commit sha).'
+    required: false
+    default: ''
+
+  extra-text:
+    description: 'Optional extra sentence appended to the Slack message text. Used by callers to add context such as why this failure was triggered.'
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -28,7 +38,7 @@ runs:
     id: mention
     shell: bash
     env:
-      LOGIN: ${{ github.event.head_commit.author.username || github.actor }}
+      LOGIN: ${{ inputs.committer-login || github.event.head_commit.author.username || github.actor }}
       USERS_MAP: ${{ inputs.users-map }}
     run: |
       mention=""
@@ -56,7 +66,7 @@ runs:
         username: GitHub Actions
         icon_emoji: ':github-actions:'
         channel: "${{ inputs.channel }}"
-        text: "${{ steps.mention.outputs.mention && format('{0} ', steps.mention.outputs.mention) || '' }}<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}${{ inputs.suffix && format(' ({0})', inputs.suffix) || '' }}* ended with status `${{ job.status }}`"
+        text: "${{ steps.mention.outputs.mention && format('{0} ', steps.mention.outputs.mention) || '' }}<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}${{ inputs.suffix && format(' ({0})', inputs.suffix) || '' }}* ended with status `${{ job.status }}`${{ inputs.extra-text && format(' — {0}', inputs.extra-text) || '' }}"
         attachments:
           - color: "${{ job.status == 'success' && '#388E3C' || '#D32F2F' }}"
             blocks:
