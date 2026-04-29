@@ -50,6 +50,8 @@ jobs:
       - name: Create GitHub release
         uses: kestra-io/actions/composite/github-release@main
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          announce-slack: 'false'
         env:
           MAKE_LATEST: ${{ steps.is_latest.outputs.latest }}
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_TOKEN }}

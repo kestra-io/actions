@@ -5,6 +5,10 @@ inputs:
     description: "Java version"
     default: '21'
     required: true
+  announce-slack:
+    description: "Whether to announce the release on Slack via JReleaser"
+    default: 'true'
+    required: false
 
 runs:
   using: composite
@@ -69,7 +73,7 @@ runs:
         JRELEASER_BRANCH: ${{ env.BRANCH}}
         JRELEASER_GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         JRELEASER_PROJECT_VERSION: ${{ env.VERSION }}
-        JRELEASER_ANNOUNCE_SLACK_WEBHOOK: ${{ env.SLACK_RELEASES_WEBHOOK_URL }}
+        JRELEASER_ANNOUNCE_SLACK_WEBHOOK: ${{ inputs.announce-slack == 'true' && env.SLACK_RELEASES_WEBHOOK_URL || '' }}
 
     - name: JReleaser - Output properties & logs
       if: always()
