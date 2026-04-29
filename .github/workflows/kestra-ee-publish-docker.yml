@@ -13,6 +13,8 @@ on:
       DOCKERHUB_TOKEN:
         description: "The DockerHub token"
         required: true
+      SLACK_RELEASES_WEBHOOK_URL:
+        required: false
     inputs:
       retag-latest:
         description: 'Retag latest Docker images'
@@ -250,3 +252,17 @@ jobs:
 
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
+
+  end:
+    runs-on: ubuntu-latest
+    needs:
+      - docker
+    if: always()
+    env:
+      SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+    steps:
+      - name: Slack notification on success
+        if: ${{ !failure() && !cancelled() && !inputs.dry-run && env.SLACK_RELEASES_WEBHOOK_URL != 0 }}
+        uses: kestra-io/actions/composite/slack-status@main
+        with:
+          webhook-url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}

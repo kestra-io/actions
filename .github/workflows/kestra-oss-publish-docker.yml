@@ -11,6 +11,8 @@ on:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
+      SLACK_RELEASES_WEBHOOK_URL:
+        required: false
       GH_PERSONAL_TOKEN:
         description: "GH token needed for triggering helm chart PR."
         required: true
@@ -233,9 +235,15 @@ jobs:
     if: always()
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
     steps:
-      - name: Slack notification
+      - name: Slack notification on failure
         if: ${{ failure() && env.SLACK_WEBHOOK_URL != 0 }}
         uses: kestra-io/actions/composite/slack-status@main
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+      - name: Slack notification on success
+        if: ${{ !failure() && !cancelled() && !inputs.dry-run && env.SLACK_RELEASES_WEBHOOK_URL != 0 }}
+        uses: kestra-io/actions/composite/slack-status@main
+        with:
+          webhook-url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
