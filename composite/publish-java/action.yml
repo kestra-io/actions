@@ -34,7 +34,19 @@ runs:
           -Dorg.gradle.internal.repository.max.retries=8
           -Dorg.gradle.internal.repository.initial.backoff=1000
       run: |
-        ./gradlew publish --no-daemon --no-parallel --max-workers=1 --stacktrace
+        set +e
+        ./gradlew publish --no-daemon --no-parallel --max-workers=1 --stacktrace 2>&1 | tee /tmp/publish.log
+        exit_code=${PIPESTATUS[0]}
+        set -e
+
+        if [ "$exit_code" -ne 0 ]; then
+          # Tolerate duplicate-version rejection on retries; other failures still surface.
+          if grep -q "Component with package url.*already exists" /tmp/publish.log; then
+            echo "::warning::Already published; skipping."
+            exit 0
+          fi
+          exit "$exit_code"
+        fi
 
     - name: Publish - Release package to Maven Central
       if: ${{ inputs.is-private == 'false' }}
@@ -50,4 +62,17 @@ runs:
         echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
         echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
         echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
-        ./gradlew publishToMavenCentral
+
+        set +e
+        ./gradlew publishToMavenCentral 2>&1 | tee /tmp/publish.log
+        exit_code=${PIPESTATUS[0]}
+        set -e
+
+        if [ "$exit_code" -ne 0 ]; then
+          # Tolerate Sonatype duplicate-version rejection on retries; other failures still surface.
+          if grep -q "Component with package url.*already exists" /tmp/publish.log; then
+            echo "::warning::Already published to Maven Central; skipping."
+            exit 0
+          fi
+          exit "$exit_code"
+        fi
