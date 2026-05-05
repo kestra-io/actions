@@ -54,6 +54,19 @@ jobs:
         run: |
           cp build/executable/* docker/app/kestra && chmod +x docker/app/kestra
 
+      - name: Determine base image tag
+        id: base
+        shell: bash
+        run: |
+          if [[ "${{ github.base_ref }}" == "develop" ]]; then
+            echo "tag=develop" >> "$GITHUB_OUTPUT"
+          else
+            ref="${{ github.base_ref }}"
+            ref="${ref#releases/}"
+            ref="${ref%.x}"
+            echo "tag=${ref}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Docker - Build image
         uses: docker/build-push-action@v6
         with:
@@ -61,6 +74,8 @@ jobs:
           file: ./Dockerfile.pr
           push: true
           tags: ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }}
+          build-args: |
+            KESTRA_DOCKER_BASE_VERSION=${{ steps.base.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
