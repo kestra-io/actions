@@ -17,7 +17,7 @@ inputs:
     default: ''
 
   users-map:
-    description: 'JSON object mapping GitHub login to Slack member ID. When provided, the responsible committer is @-mentioned in the Slack message so the build failure is not silently ignored. Typically passed as `${{ vars.GITHUB_TO_SLACK_MAP }}` from the kestra-io org variable managed by terraform in kestra-io/infra.'
+    description: 'JSON object mapping GitHub login to Slack member ID. When provided, the responsible committer is @-mentioned in the Slack message so the build failure is not silently ignored. Typically passed as `vars.GITHUB_TO_SLACK_MAP` from the kestra-io org variable managed by terraform in kestra-io/infra.'
     required: false
     default: ''
 
