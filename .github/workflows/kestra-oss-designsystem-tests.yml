@@ -37,11 +37,11 @@ jobs:
 
       - name: Npm - install
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
-        working-directory: ui-design-system
+        working-directory: ui/packages/design-system
         run: npm ci
     
       - name: Npm - check types
-        working-directory: ui-design-system
+        working-directory: ui/packages/design-system
         run: npm run types:test
 
       - name: Npm - lint
@@ -49,17 +49,17 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
           reporter: github-pr-review
-          workdir: ui-design-system
+          workdir: ui/packages/design-system
 
       - name: Run front-end unit tests
-        working-directory: ui-design-system
+        working-directory: ui/packages/design-system
         run: npm run unit:test -- --coverage
 
       - name: Storybook - Install Playwright
-        working-directory: ui-design-system
+        working-directory: ui/packages/design-system
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps
 
       - name: Run storybook component tests
-        working-directory: ui-design-system
+        working-directory: ui/packages/design-system
         run: npm run storybook:test -- --coverage
