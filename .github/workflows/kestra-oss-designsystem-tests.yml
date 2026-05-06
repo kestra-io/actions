@@ -45,11 +45,9 @@ jobs:
         run: npm run types:test
 
       - name: Npm - lint
-        uses: reviewdog/action-eslint@v1
+        uses: oxc-project/oxlint-action@v3
         with:
-          github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          reporter: github-pr-review
-          workdir: ui/packages/design-system
+          working-directory: ui/packages/design-system
 
       - name: Run front-end unit tests
         working-directory: ui/packages/design-system

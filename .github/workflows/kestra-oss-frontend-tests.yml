@@ -48,11 +48,9 @@ jobs:
         run: npm run check:types
 
       - name: Npm - lint
-        uses: reviewdog/action-eslint@v1
+        uses: oxc-project/oxlint-action@v3
         with:
-          github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          reporter: github-pr-review
-          workdir: ui
+          working-directory: ui
 
       - name: Npm - Run build
         working-directory: ui

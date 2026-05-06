@@ -68,11 +68,9 @@ jobs:
         run: npm run check:types
 
       - name: Npm - Lint
-        uses: reviewdog/action-eslint@v1
+        uses: oxc-project/oxlint-action@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review # Change reporter.
-          workdir: "kestra-ee/ui-ee"
+          working-directory: kestra-ee/ui-ee
 
       - name: Run front-end unit tests
         shell: bash
