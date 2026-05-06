@@ -44,6 +44,13 @@ runs:
           ${{ steps.test-report.outputs.detailed_summary }}
           {% endif %}
 
+    - name: Test - Comment PR with failure details
+      if: ${{ !cancelled() && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+      run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
+
     # GCP
     - name: GCP - Auth with unit test account
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
