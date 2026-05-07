@@ -272,9 +272,28 @@ jobs:
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
 
-  codeql:
-    name: CodeQL
+  codeql-detect:
+    name: CodeQL - Detect languages
     runs-on: ubuntu-latest
+    outputs:
+      has-ui: ${{ steps.check.outputs.has-ui }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for UI folder
+        id: check
+        run: |
+          if [ -f ui/package.json ]; then
+            echo "has-ui=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-ui=false" >> $GITHUB_OUTPUT
+          fi
+
+  codeql-java:
+    name: CodeQL (Java)
+    runs-on: ubuntu-latest
+    needs: codeql-detect
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -300,3 +319,33 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: java
+
+  codeql-javascript:
+    name: CodeQL (JavaScript)
+    runs-on: ubuntu-latest
+    needs: codeql-detect
+    if: ${{ needs.codeql-detect.outputs.has-ui == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript
+
+      - name: Setup - Build
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: false
+          node-enabled: true
+          java-version: ${{ inputs.java-version }}
+          java-enable-develocity-injection: false
+
+      - name: Install UI dependencies
+        run: npm install --prefix ui
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: javascript
