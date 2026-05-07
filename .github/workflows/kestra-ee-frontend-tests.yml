@@ -67,10 +67,17 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: npm run check:types
 
-      - name: Npm - Lint
+      - name: Npm - Lint (oxlint)
         uses: oxc-project/oxlint-action@v3
         with:
           working-directory: kestra-ee/ui-ee
+
+      - name: Npm - Lint (eslint)
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          workdir: "kestra-ee/ui-ee"
 
       - name: Run front-end unit tests
         shell: bash
