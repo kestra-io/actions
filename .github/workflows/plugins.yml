@@ -44,6 +44,7 @@ permissions:
   actions: read
   pull-requests: write
   packages: read
+  security-events: write
 
 env:
   COMPATIBILITY_JAVA_VERSION: '25'
@@ -270,3 +271,32 @@ jobs:
         if: ${{ (startsWith(github.ref, 'releases/v') || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/')  && inputs.skip-indexing == false }}
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java
+
+      - name: Setup - Build
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: true
+          java-version: ${{ inputs.java-version }}
+          java-enable-develocity-injection: false
+
+      - name: Build with Gradle
+        run: ./gradlew testClasses --parallel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: java
