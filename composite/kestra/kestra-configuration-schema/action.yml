@@ -26,6 +26,12 @@ runs:
       run: |
         set -euo pipefail
         KESTRA_VERSION=$(echo "$KESTRA_VERSION_RAW" | sed -E 's/^v//; s/-rc[0-9]+$//')
+
+        if [ "$KESTRA_VERSION" = "develop" ]; then
+          KESTRA_VERSION=$(curl -sf "https://api.kestra.io/v1/versions/latest" | jq -r '.version')
+          echo "Resolved develop to latest version: $KESTRA_VERSION"
+        fi
+
         echo "Fetching storage and secret plugins compatible with Kestra $KESTRA_VERSION"
 
         RESPONSE=$(curl -sf "https://api.kestra.io/v1/plugins/artifacts/core-compatibility/${KESTRA_VERSION}/latest") || {
