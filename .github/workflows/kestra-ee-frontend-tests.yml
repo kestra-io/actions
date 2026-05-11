@@ -71,7 +71,7 @@ jobs:
       - name: Npm - Lint (oxlint)
         uses: oxc-project/oxlint-action@v2.0.1
         with:
-          working-directory: kestra-ee/ui-ee
+            config: kestra-ee/ui-ee/.oxlintrc.json
 
       - name: Npm - Lint (eslint)
         uses: reviewdog/action-eslint@v1

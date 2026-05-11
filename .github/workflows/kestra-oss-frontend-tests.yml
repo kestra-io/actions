@@ -55,7 +55,7 @@ jobs:
       - name: Npm - lint (oxlint)
         uses: oxc-project/oxlint-action@v2.0.1
         with:
-          working-directory: ui
+            config: ui/.oxlintrc.json
 
       - name: Npm - lint (eslint)
         uses: reviewdog/action-eslint@v1

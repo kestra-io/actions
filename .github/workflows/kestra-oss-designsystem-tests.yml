@@ -49,18 +49,6 @@ jobs:
         working-directory: ui/packages/design-system
         run: npm run types:test
 
-      - name: Npm - lint (oxlint)
-        uses: oxc-project/oxlint-action@v2.0.1
-        with:
-          working-directory: ui/packages/design-system
-
-      - name: Npm - lint (eslint)
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          reporter: github-pr-review
-          workdir: ui/packages/design-system
-
       - name: Run front-end unit tests
         working-directory: ui/packages/design-system
         run: npm run unit:test -- --coverage
