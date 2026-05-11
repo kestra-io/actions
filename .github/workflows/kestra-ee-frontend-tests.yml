@@ -69,7 +69,7 @@ jobs:
         run: npm run check:types
 
       - name: Npm - Lint (oxlint)
-        uses: oxc-project/oxlint-action@v2
+        uses: oxc-project/oxlint-action@v2.0.1
         with:
           working-directory: kestra-ee/ui-ee
 
