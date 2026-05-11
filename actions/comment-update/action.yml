@@ -37,6 +37,18 @@ inputs:
     description: The files to inject as data in the template
     required: false
 
+  owner:
+    description: Override repository owner (defaults to current repo owner). Required when the event is not a pull_request, e.g. repository_dispatch.
+    required: false
+
+  repo:
+    description: Override repository name (defaults to current repo). Required when the event is not a pull_request, e.g. repository_dispatch.
+    required: false
+
+  issue-number:
+    description: Override PR/issue number (defaults to context PR number). Required when the event is not a pull_request, e.g. repository_dispatch.
+    required: false
+
 outputs:
   comment-id:
     description: The comment id that was created or updated

@@ -37689,9 +37689,12 @@ class CommentUpdate {
         this.nunjucks
             .addFilter('prettyDate', humanReadableDate)
             .addFilter('prettySize', humanReadableSize);
-        this.owner = githubExports.context.payload.repository?.owner.login;
-        this.repo = githubExports.context.payload.repository?.name;
-        this.prId = githubExports.context.payload.pull_request?.number;
+        const ownerOverride = coreExports.getInput('owner');
+        const repoOverride = coreExports.getInput('repo');
+        const issueOverride = coreExports.getInput('issue-number');
+        this.owner = ownerOverride || githubExports.context.payload.repository?.owner.login;
+        this.repo = repoOverride || githubExports.context.payload.repository?.name;
+        this.prId = issueOverride ? parseInt(issueOverride, 10) : githubExports.context.payload.pull_request?.number;
     }
     async _fetchArtifact() {
         const result = await this.octokit.rest.actions
@@ -37818,17 +37821,17 @@ class CommentUpdate {
         }
     }
     async _fetchUnreleasedCommits() {
+        let latestTag = null;
         try {
             const owner = this.owner;
             const repo = this.repo;
-            let latestTag = null;
             try {
                 const release = await this.octokit.rest.repos.getLatestRelease({ owner, repo });
                 latestTag = release.data.tag_name ?? null;
                 coreExports.debug(`Latest release tag: ${latestTag}`);
             }
-            catch (e) {
-                const tags = await this.octokit.rest.repos.listTags({ owner, repo, per_page: 5 });
+            catch {
+                const tags = await this.octokit.rest.repos.listTags({ owner, repo, per_page: 20 });
                 if (tags.data.length > 0) {
                     latestTag = tags.data[0].name ?? null;
                 }
@@ -37842,14 +37845,10 @@ class CommentUpdate {
                 const repoInfo = await this.octokit.rest.repos.get({ owner, repo });
                 defaultBranch = repoInfo.data.default_branch ?? "main";
             }
-            catch (err) {
-                coreExports.debug(`Could not determine default branch, fallback to 'main'`);
+            catch {
+                coreExports.debug(`Could not determine default branch, using 'main'`);
             }
-            let normalizedTag = latestTag;
-            if (!normalizedTag.startsWith("v")) {
-                normalizedTag = `v${normalizedTag}`;
-            }
-            let compare;
+            let compare = null;
             try {
                 compare = await this.octokit.rest.repos.compareCommits({
                     owner,
@@ -37866,10 +37865,29 @@ class CommentUpdate {
                     });
                 }
             }
-            catch (err) {
-                coreExports.warning(`Compare failed: ${err.message}`);
+            catch (e) {
+                // try fallback branch if initial compare failed
+                if (defaultBranch === 'main') {
+                    try {
+                        compare = await this.octokit.rest.repos.compareCommits({
+                            owner,
+                            repo,
+                            base: latestTag,
+                            head: 'master',
+                        });
+                    }
+                    catch (e2) {
+                        return { latestTag: latestTag ?? "unknown", commits: [] };
+                    }
+                }
+                else {
+                    return { latestTag: latestTag ?? "unknown", commits: [] };
+                }
             }
-            const commits = (compare.data.commits ?? [])
+            if (!compare?.data?.commits) {
+                return { latestTag, commits: [] };
+            }
+            const commits = compare.data.commits
                 .filter((c) => {
                 const msg = (c.commit?.message ?? '').trim().toLowerCase();
                 return !(msg.startsWith('chore(version): bump to') ||
@@ -37882,12 +37900,11 @@ class CommentUpdate {
                 author: c.commit?.author?.name ?? c.author?.login ?? 'unknown',
                 date: c.commit?.author?.date ?? c.commit?.committer?.date,
             }));
-            coreExports.debug(`Comparing ${latestTag} -> ${defaultBranch}`);
             coreExports.debug(`Found ${commits.length} unreleased commits since ${latestTag}`);
             return { latestTag, commits };
         }
-        catch (err) {
-            return { latestTag: "unknown", commits: [] };
+        catch (e) {
+            return { latestTag: latestTag ?? "unknown", commits: [] };
         }
     }
 }
