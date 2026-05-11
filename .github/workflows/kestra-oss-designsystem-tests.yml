@@ -50,7 +50,7 @@ jobs:
         run: npm run types:test
 
       - name: Npm - lint (oxlint)
-        uses: oxc-project/oxlint-action@v3
+        uses: oxc-project/oxlint-action@v2
         with:
           working-directory: ui/packages/design-system
 
