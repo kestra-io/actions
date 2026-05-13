@@ -1,0 +1,78 @@
+name: Run gh / shell command (with GitHub App token)
+description: >
+  Generates a short-lived GitHub App installation token, exports it as GH_TOKEN,
+  then executes the provided shell command. Suitable for gh CLI calls, git push
+  over HTTPS, or any shell operation that needs API access.
+
+inputs:
+  gh-app-id:
+    required: true
+    description: GitHub App Client ID (pass ${{ secrets.GH_BOT_CLIENT_ID }}).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass ${{ secrets.GH_BOT_PRIVATE_KEY }}).
+  owner:
+    required: false
+    default: ''
+    description: >
+      GitHub organization or user to scope the token to. When set with an empty
+      `repositories`, creates an installation-wide (org-wide) token. If omitted,
+      the owner is derived from `repositories` or the current repository.
+  repositories:
+    required: false
+    default: ''
+    description: >
+      Comma-separated repositories (owner/repo format) the token may access.
+      Defaults to the current repository. All repositories must share the same
+      owner — the token is scoped to a single GitHub App installation (one owner).
+  run:
+    required: true
+    description: Shell command to execute with GH_TOKEN set in the environment.
+
+runs:
+  using: composite
+  steps:
+    - id: repo-meta
+      shell: bash
+      run: |
+        REPOS="${{ inputs.repositories }}"
+        OWNER_IN="${{ inputs.owner }}"
+
+        if [[ -n "$OWNER_IN" && -z "$REPOS" ]]; then
+          echo "owner=$OWNER_IN" >> "$GITHUB_OUTPUT"
+          echo "names=" >> "$GITHUB_OUTPUT"
+          echo "org_wide=true" >> "$GITHUB_OUTPUT"
+        else
+          if [[ -z "$REPOS" ]]; then
+            REPOS="${{ github.repository }}"
+          fi
+          OWNERS=$(echo "$REPOS" | tr ',' '\n' | sed 's|/.*||' | sort -u | tr '\n' ',' | sed 's/,$//')
+          OWNER=$(echo "$OWNERS" | cut -d',' -f1)
+          if [[ -n "$OWNER_IN" ]]; then OWNER="$OWNER_IN"; fi
+          NAMES=$(echo "$REPOS" | tr ',' '\n' | sed 's|.*/||' | tr '\n' ',' | sed 's/,$//')
+          echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
+          echo "names=$NAMES" >> "$GITHUB_OUTPUT"
+          echo "org_wide=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - id: app-token-org
+      if: ${{ steps.repo-meta.outputs.org_wide == 'true' }}
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ steps.repo-meta.outputs.owner }}
+
+    - id: app-token-repo
+      if: ${{ steps.repo-meta.outputs.org_wide != 'true' }}
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ steps.repo-meta.outputs.owner }}
+        repositories: ${{ steps.repo-meta.outputs.names }}
+
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token-org.outputs.token || steps.app-token-repo.outputs.token }}
+      run: ${{ inputs.run }}
