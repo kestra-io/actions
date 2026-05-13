@@ -1,0 +1,43 @@
+name: Repository Dispatch (with GitHub App token)
+description: Mints a GitHub App token scoped to the target repo, then fires repository_dispatch.
+
+inputs:
+  gh-app-id:
+    required: true
+    description: "GitHub App Client ID"
+  gh-app-private-key:
+    required: true
+    description: "GitHub App private key"
+  repository:
+    required: true
+    description: "owner/repo to dispatch to"
+  event-type:
+    required: true
+    description: "The repository_dispatch event type"
+  client-payload:
+    required: false
+    default: '{}'
+    description: "JSON client payload"
+
+runs:
+  using: composite
+  steps:
+    - id: repo-meta
+      shell: bash
+      run: |
+        REPO="${{ inputs.repository }}"
+        echo "owner=${REPO%%/*}" >> "$GITHUB_OUTPUT"
+        echo "name=${REPO##*/}" >> "$GITHUB_OUTPUT"
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ steps.repo-meta.outputs.owner }}
+        repositories: ${{ steps.repo-meta.outputs.name }}
+    - uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+        repository: ${{ inputs.repository }}
+        event-type: ${{ inputs.event-type }}
+        client-payload: ${{ inputs.client-payload }}

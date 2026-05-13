@@ -1,0 +1,60 @@
+name: Checkout and Auth (with GitHub App token)
+description: >
+  Wraps actions/checkout@v4. Generates a short-lived GitHub App installation token
+  scoped to the target repository.
+
+inputs:
+  gh-app-id:
+    required: true
+    description: GitHub App Client ID (pass ${{ secrets.GH_BOT_CLIENT_ID }}).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass ${{ secrets.GH_BOT_PRIVATE_KEY }}).
+  repository:
+    required: false
+    default: ${{ github.repository }}
+    description: Repository to check out in owner/repo format (e.g. kestra-io/kestra). Defaults to the current repository.
+  ref:
+    required: false
+    default: ''
+  path:
+    required: false
+    default: ''
+  fetch-depth:
+    required: false
+    default: '1'
+  submodules:
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - id: repo-meta
+      shell: bash
+      run: |
+        REPO="${{ inputs.repository }}"
+        if [[ "$REPO" == */* ]]; then
+          echo "owner=${REPO%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${REPO##*/}" >> "$GITHUB_OUTPUT"
+        else
+          echo "owner=${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+          echo "name=$REPO" >> "$GITHUB_OUTPUT"
+        fi
+
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ steps.repo-meta.outputs.owner }}
+        repositories: ${{ steps.repo-meta.outputs.name }}
+
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        path: ${{ inputs.path }}
+        token: ${{ steps.app-token.outputs.token }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        submodules: ${{ inputs.submodules }}

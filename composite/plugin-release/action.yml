@@ -14,6 +14,12 @@ name: Release Kestra Plugin
 description: "Release logic for Kestra plugins (MAJOR, MINOR, PATCH, HOTFIX)"
 
 inputs:
+  gh-app-id:
+    required: true
+    description: GitHub App Client ID (pass ${{ secrets.GH_BOT_CLIENT_ID }}).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass ${{ secrets.GH_BOT_PRIVATE_KEY }}).
   releaseVersion:
     required: true
     description: "Release version (e.g. 1.0.0, 1.3.0 or 1.4.2)"
@@ -40,12 +46,20 @@ runs:
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
 
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
         submodules: true
-        token: ${{ env.GITHUB_PAT }}
+        token: ${{ steps.app-token.outputs.token }}
 
     - name: Setup - Build
       uses: kestra-io/actions/composite/setup-build@main
@@ -55,7 +69,7 @@ runs:
     - name: Run Release
       shell: bash
       env:
-        GITHUB_PAT: ${{ env.GITHUB_PAT }}
+        GITHUB_PAT: ${{ steps.app-token.outputs.token }}
       run: |
         chmod +x ${{ github.action_path }}/release.sh
         ${{ github.action_path }}/release.sh \
