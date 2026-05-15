@@ -38,13 +38,12 @@ runs:
         distribution: temurin
         java-version: ${{ inputs.java-version }}
 
-    - name: Fetch compatible storage and secret plugins
+    - name: Fetch plugins
       id: schema-plugins
-      # Only needed for the default configuration-schema command which installs storage/secret plugins.
-      if: inputs.kestra-command == 'configuration-schema'
       shell: bash
       env:
         KESTRA_VERSION_RAW: ${{ inputs.kestra-version }}
+        KESTRA_COMMAND: ${{ inputs.kestra-command }}
       run: |
         set -euo pipefail
         KESTRA_VERSION=$(echo "$KESTRA_VERSION_RAW" | sed -E 's/^v//; s/-rc[0-9]+$//')
@@ -54,24 +53,32 @@ runs:
           echo "Resolved develop to latest version: $KESTRA_VERSION"
         fi
 
-        echo "Fetching storage and secret plugins compatible with Kestra $KESTRA_VERSION"
-
         RESPONSE=$(curl -sf "https://api.kestra.io/v1/plugins/artifacts/core-compatibility/${KESTRA_VERSION}/latest") || {
           echo "::warning::Failed to fetch plugins for version $KESTRA_VERSION, continuing without plugin schemas"
           echo "plugins=" >> "$GITHUB_OUTPUT"
           exit 0
         }
 
-        PLUGINS=$(echo "$RESPONSE" \
-          | jq -r '.[] | select(.groupId == "io.kestra.storage" or .groupId == "io.kestra.ee.secret") | "\(.groupId):\(.artifactId):\(.version)"' \
-          | tr '\n' ' ')
+        if [ "$KESTRA_COMMAND" = "plugins-schema" ]; then
+          # Full OSS catalog — needed to produce a complete schema bundle for editor autocompletion.
+          echo "Fetching all OSS plugins compatible with Kestra $KESTRA_VERSION"
+          PLUGINS=$(echo "$RESPONSE" \
+            | jq -r '.[] | select(.license == "OPENSOURCE") | "\(.groupId):\(.artifactId):\(.version)"' \
+            | tr '\n' ' ')
+        else
+          # configuration-schema only needs storage and secret manager plugins.
+          echo "Fetching storage and secret plugins compatible with Kestra $KESTRA_VERSION"
+          PLUGINS=$(echo "$RESPONSE" \
+            | jq -r '.[] | select(.groupId == "io.kestra.storage" or .groupId == "io.kestra.ee.secret") | "\(.groupId):\(.artifactId):\(.version)"' \
+            | tr '\n' ' ')
+        fi
 
         echo "Plugins: $PLUGINS"
         echo "plugins=$PLUGINS" >> "$GITHUB_OUTPUT"
 
     - name: Install plugins
       id: install-plugins
-      if: inputs.kestra-command == 'configuration-schema' && steps.schema-plugins.outputs.plugins != ''
+      if: steps.schema-plugins.outputs.plugins != ''
       shell: bash
       env:
         EXECUTABLE: ${{ inputs.executable-path }}
