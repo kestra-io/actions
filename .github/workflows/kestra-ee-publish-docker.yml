@@ -41,6 +41,11 @@ on:
         type: string
         default: '21'
         required: false
+      notify-in-slack-release-channel:
+        description: "notify-in-slack-release-channel"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   plugins:
@@ -262,7 +267,7 @@ jobs:
       SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
     steps:
       - name: Slack notification on success
-        if: ${{ !failure() && !cancelled() && !inputs.dry-run && env.SLACK_RELEASES_WEBHOOK_URL != 0 }}
+        if: ${{ inputs.notify-in-slack-release-channel == true && !failure() && !cancelled() && !inputs.dry-run && env.SLACK_RELEASES_WEBHOOK_URL != 0 }}
         uses: kestra-io/actions/composite/slack-status@main
         with:
           webhook-url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
