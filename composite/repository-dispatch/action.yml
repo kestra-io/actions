@@ -31,7 +31,7 @@ runs:
     - id: app-token
       uses: actions/create-github-app-token@v3
       with:
-        app-id: ${{ inputs.gh-app-id }}
+        client-id: ${{ inputs.gh-app-id }}
         private-key: ${{ inputs.gh-app-private-key }}
         owner: ${{ steps.repo-meta.outputs.owner }}
         repositories: ${{ steps.repo-meta.outputs.name }}
