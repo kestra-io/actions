@@ -11,6 +11,10 @@ inputs:
     description: "Java version for running the executable"
     required: false
     default: '25'
+  kestra-command:
+    description: "Kestra CLI command to run for schema generation (e.g. 'configuration-schema' or 'plugins-schema')"
+    required: false
+    default: "configuration-schema"
   output-path:
     description: "Output file name for the generated schema"
     required: false
@@ -34,11 +38,12 @@ runs:
         distribution: temurin
         java-version: ${{ inputs.java-version }}
 
-    - name: Fetch compatible storage and secret plugins
+    - name: Fetch plugins
       id: schema-plugins
       shell: bash
       env:
         KESTRA_VERSION_RAW: ${{ inputs.kestra-version }}
+        KESTRA_COMMAND: ${{ inputs.kestra-command }}
       run: |
         set -euo pipefail
         KESTRA_VERSION=$(echo "$KESTRA_VERSION_RAW" | sed -E 's/^v//; s/-rc[0-9]+$//')
@@ -48,17 +53,25 @@ runs:
           echo "Resolved develop to latest version: $KESTRA_VERSION"
         fi
 
-        echo "Fetching storage and secret plugins compatible with Kestra $KESTRA_VERSION"
-
         RESPONSE=$(curl -sf "https://api.kestra.io/v1/plugins/artifacts/core-compatibility/${KESTRA_VERSION}/latest") || {
           echo "::warning::Failed to fetch plugins for version $KESTRA_VERSION, continuing without plugin schemas"
           echo "plugins=" >> "$GITHUB_OUTPUT"
           exit 0
         }
 
-        PLUGINS=$(echo "$RESPONSE" \
-          | jq -r '.[] | select(.groupId == "io.kestra.storage" or .groupId == "io.kestra.ee.secret") | "\(.groupId):\(.artifactId):\(.version)"' \
-          | tr '\n' ' ')
+        if [ "$KESTRA_COMMAND" = "plugins-schema" ]; then
+          # Full OSS catalog — needed to produce a complete schema bundle for editor autocompletion.
+          echo "Fetching all OSS plugins compatible with Kestra $KESTRA_VERSION"
+          PLUGINS=$(echo "$RESPONSE" \
+            | jq -r '.[] | select(.license == "OPENSOURCE") | "\(.groupId):\(.artifactId):\(.version)"' \
+            | tr '\n' ' ')
+        else
+          # configuration-schema only needs storage and secret manager plugins.
+          echo "Fetching storage and secret plugins compatible with Kestra $KESTRA_VERSION"
+          PLUGINS=$(echo "$RESPONSE" \
+            | jq -r '.[] | select(.groupId == "io.kestra.storage" or .groupId == "io.kestra.ee.secret") | "\(.groupId):\(.artifactId):\(.version)"' \
+            | tr '\n' ' ')
+        fi
 
         echo "Plugins: $PLUGINS"
         echo "plugins=$PLUGINS" >> "$GITHUB_OUTPUT"
@@ -78,20 +91,21 @@ runs:
         $EXECUTABLE plugins install --plugins="$PLUGINS_DIR" $PLUGINS_LIST
         echo "plugins-dir=$PLUGINS_DIR" >> "$GITHUB_OUTPUT"
 
-    - name: Generate configuration schema
+    - name: Generate schema
       shell: bash
       env:
         EXECUTABLE: ${{ inputs.executable-path }}
+        KESTRA_COMMAND: ${{ inputs.kestra-command }}
         PLUGINS_DIR: ${{ steps.install-plugins.outputs.plugins-dir }}
         OUTPUT_PATH: ${{ inputs.output-path }}
       run: |
         set -euo pipefail
         PLUGINS_FLAG=""
-        if [ -n "$PLUGINS_DIR" ]; then
+        if [ -n "${PLUGINS_DIR:-}" ]; then
           PLUGINS_FLAG="--plugins=$PLUGINS_DIR"
         fi
 
-        "$EXECUTABLE" configuration-schema $PLUGINS_FLAG -o "$OUTPUT_PATH"
+        "$EXECUTABLE" $KESTRA_COMMAND $PLUGINS_FLAG -o "$OUTPUT_PATH"
         echo "Schema generated at $OUTPUT_PATH"
 
     - name: GCP - Auth
@@ -104,4 +118,3 @@ runs:
       with:
         path: ${{ inputs.output-path }}
         destination: ${{ inputs.gcs-destination }}
-
