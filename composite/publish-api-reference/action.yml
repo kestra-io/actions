@@ -2,20 +2,31 @@ name: "Push API Reference to website"
 description: "This action pushes the API reference changes to the website."
 
 inputs:
-  gh_personal_token:
-    description: 'Github token'
+  gh-app-id:
     required: true
+    description: GitHub App Client ID (pass ${{ secrets.GH_BOT_CLIENT_ID }}).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass ${{ secrets.GH_BOT_PRIVATE_KEY }}).
 
 runs:
   using: composite
   steps:
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: kestra-io
+        repositories: docs
+
     - name: Checkout - Docs
       uses: actions/checkout@v5
       with:
         repository: kestra-io/docs
         path: docs
         ref: "main"
-        token: ${{ inputs.gh_personal_token }}
+        token: ${{ steps.app-token.outputs.token }}
 
     - name: Artifacts - Download swagger
       uses: actions/download-artifact@v5

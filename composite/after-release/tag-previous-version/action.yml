@@ -1,16 +1,27 @@
 name: "Tag previous version for versioning"
 
 inputs:
+  gh-app-id:
+    required: true
+    description: GitHub App Client ID (pass ${{ secrets.GH_BOT_CLIENT_ID }}).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass ${{ secrets.GH_BOT_PRIVATE_KEY }}).
   new_version:
     description: "New Kestra version"
-    required: true
-  secrets:
-    description: 'Secrets passed as toJSON'
     required: true
 
 runs:
   using: composite
   steps:
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+
     - name: Validate Kestra version format
       id: validate-format
       shell: bash
@@ -28,7 +39,7 @@ runs:
       uses: actions/checkout@v5
       with:
         ref: main
-        token: ${{ fromJson(inputs.secrets).GH_PERSONAL_TOKEN }}
+        token: ${{ steps.app-token.outputs.token }}
 
     - name: Read versions and create missing tag
       id: read-latest
