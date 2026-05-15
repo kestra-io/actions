@@ -89,4 +89,6 @@ jobs:
         uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}

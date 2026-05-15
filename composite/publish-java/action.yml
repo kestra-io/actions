@@ -6,9 +6,25 @@ inputs:
     description: 'Does we push to private maven registry'
     required: true
 
-  secrets:
-    description: 'Secrets passed as toJSON'
-    required: true
+  sonatype-user:
+    description: 'Sonatype username for Maven Central publishing'
+    required: false
+
+  sonatype-password:
+    description: 'Sonatype password for Maven Central publishing'
+    required: false
+
+  sonatype-gpg-keyid:
+    description: 'GPG key ID for signing Maven Central artifacts'
+    required: false
+
+  sonatype-gpg-password:
+    description: 'GPG key passphrase for signing Maven Central artifacts'
+    required: false
+
+  sonatype-gpg-file:
+    description: 'Base64-encoded GPG secret keyring for signing Maven Central artifacts'
+    required: false
 
 runs:
   using: composite
@@ -51,11 +67,11 @@ runs:
     - name: Publish - Release package to Maven Central
       if: ${{ inputs.is-private == 'false' }}
       env:
-        ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ fromJson(inputs.secrets).SONATYPE_USER }}
-        ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ fromJson(inputs.secrets).SONATYPE_PASSWORD }}
-        SONATYPE_GPG_KEYID: ${{ fromJson(inputs.secrets).SONATYPE_GPG_KEYID }}
-        SONATYPE_GPG_PASSWORD: ${{ fromJson(inputs.secrets).SONATYPE_GPG_PASSWORD }}
-        SONATYPE_GPG_FILE: ${{ fromJson(inputs.secrets).SONATYPE_GPG_FILE }}
+        ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ inputs.sonatype-user }}
+        ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ inputs.sonatype-password }}
+        SONATYPE_GPG_KEYID: ${{ inputs.sonatype-gpg-keyid }}
+        SONATYPE_GPG_PASSWORD: ${{ inputs.sonatype-gpg-password }}
+        SONATYPE_GPG_FILE: ${{ inputs.sonatype-gpg-file }}
       shell: bash
       run: |
         echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
