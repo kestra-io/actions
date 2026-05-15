@@ -4,10 +4,10 @@ description: "This action pushes the API reference changes to the website."
 inputs:
   gh-app-id:
     required: true
-    description: GitHub App Client ID (pass ${{ secrets.GH_BOT_CLIENT_ID }}).
+    description: GitHub App Client ID (pass secrets.GH_BOT_CLIENT_ID from the caller workflow).
   gh-app-private-key:
     required: true
-    description: GitHub App private key (pass ${{ secrets.GH_BOT_PRIVATE_KEY }}).
+    description: GitHub App private key (pass secrets.GH_BOT_PRIVATE_KEY from the caller workflow).
 
 runs:
   using: composite
