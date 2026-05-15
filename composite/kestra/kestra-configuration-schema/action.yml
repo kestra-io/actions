@@ -11,6 +11,10 @@ inputs:
     description: "Java version for running the executable"
     required: false
     default: '25'
+  kestra-command:
+    description: "Kestra CLI command to run for schema generation (e.g. 'configuration-schema' or 'plugins-schema')"
+    required: false
+    default: "configuration-schema"
   output-path:
     description: "Output file name for the generated schema"
     required: false
@@ -36,6 +40,8 @@ runs:
 
     - name: Fetch compatible storage and secret plugins
       id: schema-plugins
+      # Only needed for the default configuration-schema command which installs storage/secret plugins.
+      if: inputs.kestra-command == 'configuration-schema'
       shell: bash
       env:
         KESTRA_VERSION_RAW: ${{ inputs.kestra-version }}
@@ -65,7 +71,7 @@ runs:
 
     - name: Install plugins
       id: install-plugins
-      if: steps.schema-plugins.outputs.plugins != ''
+      if: inputs.kestra-command == 'configuration-schema' && steps.schema-plugins.outputs.plugins != ''
       shell: bash
       env:
         EXECUTABLE: ${{ inputs.executable-path }}
@@ -78,20 +84,21 @@ runs:
         $EXECUTABLE plugins install --plugins="$PLUGINS_DIR" $PLUGINS_LIST
         echo "plugins-dir=$PLUGINS_DIR" >> "$GITHUB_OUTPUT"
 
-    - name: Generate configuration schema
+    - name: Generate schema
       shell: bash
       env:
         EXECUTABLE: ${{ inputs.executable-path }}
+        KESTRA_COMMAND: ${{ inputs.kestra-command }}
         PLUGINS_DIR: ${{ steps.install-plugins.outputs.plugins-dir }}
         OUTPUT_PATH: ${{ inputs.output-path }}
       run: |
         set -euo pipefail
         PLUGINS_FLAG=""
-        if [ -n "$PLUGINS_DIR" ]; then
+        if [ -n "${PLUGINS_DIR:-}" ]; then
           PLUGINS_FLAG="--plugins=$PLUGINS_DIR"
         fi
 
-        "$EXECUTABLE" configuration-schema $PLUGINS_FLAG -o "$OUTPUT_PATH"
+        "$EXECUTABLE" $KESTRA_COMMAND $PLUGINS_FLAG -o "$OUTPUT_PATH"
         echo "Schema generated at $OUTPUT_PATH"
 
     - name: GCP - Auth
@@ -104,4 +111,3 @@ runs:
       with:
         path: ${{ inputs.output-path }}
         destination: ${{ inputs.gcs-destination }}
-
