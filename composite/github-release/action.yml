@@ -36,19 +36,6 @@ runs:
         else
           echo "BRANCH=develop" >> $GITHUB_ENV
         fi
-        current_tag="v${GITHUB_REF_NAME#v}"
-
-        previous_tag=$(
-          git tag -l \
-          | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-          | sort -V \
-          | sed -n "/^$current_tag$/q;p" \
-          | tail -n1
-        )
-
-        echo "PREVIOUS_TAG=$previous_tag" >> $GITHUB_ENV
-        echo "Current tag: $current_tag"
-        echo "Previous stable tag: $previous_tag"
 
     - name: Setup - Copy jreleaser.yml
       shell: bash
@@ -57,8 +44,19 @@ runs:
     - name: Patch jreleaser.yml for changelog base
       shell: bash
       run: |
-        if [ -n "${PREVIOUS_TAG}" ]; then
-            awk -v previous_tag="${PREVIOUS_TAG}" '
+        current_tag="v${GITHUB_REF_NAME#v}"
+        previous_tag=$(
+          git tag -l \
+          | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+          | sort -V \
+          | sed -n "/^$current_tag$/q;p" \
+          | tail -n1
+        )
+        echo "Current tag: $current_tag"
+        echo "Previous stable tag: $previous_tag"
+
+        if [ -n "$previous_tag" ]; then
+            awk -v previous_tag="$previous_tag" '
               /^[[:space:]]*github:[[:space:]]*$/ && !done {
                 print
                 print "    previousTagName: '\''" previous_tag "'\''"
