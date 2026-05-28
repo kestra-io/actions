@@ -6,9 +6,7 @@ on:
       CODECOV_TOKEN:
         description: "The Codecov token."
         required: false
-      TRUNK_API_TOKEN:
-        description: "The Trunk.io token."
-        required: false
+
 jobs:
   check:
     name: Check
@@ -28,15 +26,39 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           node-enabled: true
+          node-version: '22.18.0'
+
+      - name: Cache - OSS Node Modules
+        id: cache-oss-node-modules
+        uses: actions/cache@v4
+        with:
+          path: kestra/ui/node_modules
+          key: modules-oss-${{ hashFiles('kestra/ui/package-lock.json') }}
+
+      - name: Cache - EE Node Modules
+        id: cache-ee-node-modules
+        uses: actions/cache@v4
+        with:
+          path: kestra-ee/ui-ee/node_modules
+          key: modules-ee-${{ hashFiles('kestra-ee/ui-ee/package-lock.json') }}
+
+      - name: Cache - Playwright Binaries
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('kestra-ee/ui-ee/package-lock.json') }}
 
       # Hack npm install install from oss
       - name: Npm - Hack install from oss
+        if: steps.cache-oss-node-modules.outputs.cache-hit != 'true'
         shell: bash
         run: |
           cd kestra/ui
           npm ci
 
       - name: Npm - Install
+        if: steps.cache-ee-node-modules.outputs.cache-hit != 'true'
         shell: bash
         working-directory: kestra-ee/ui-ee
         run: npm ci
@@ -46,11 +68,16 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: npm run check:types
 
-      - name: Npm - Lint
+      - name: Npm - Lint (oxlint)
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npx oxlint@latest
+
+      - name: Npm - Lint (eslint)
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review # Change reporter.
+          reporter: github-pr-review
           workdir: "kestra-ee/ui-ee"
 
       - name: Run front-end unit tests
@@ -59,6 +86,7 @@ jobs:
         run: npm run test:unit -- --coverage
 
       - name: Storybook - Install Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
         shell: bash
         working-directory: kestra-ee/ui-ee
         run: npx playwright install --with-deps

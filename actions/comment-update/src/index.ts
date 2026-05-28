@@ -36,9 +36,12 @@ class CommentUpdate {
             .addFilter('prettyDate', humanReadableDate)
             .addFilter('prettySize', humanReadableSize)
 
-        this.owner = github.context.payload.repository?.owner.login as string;
-        this.repo = github.context.payload.repository?.name as string;
-        this.prId = github.context.payload.pull_request?.number as number;
+        const ownerOverride = core.getInput('owner');
+        const repoOverride = core.getInput('repo');
+        const issueOverride = core.getInput('issue-number');
+        this.owner = ownerOverride || (github.context.payload.repository?.owner.login as string);
+        this.repo = repoOverride || (github.context.payload.repository?.name as string);
+        this.prId = issueOverride ? parseInt(issueOverride, 10) : (github.context.payload.pull_request?.number as number);
     }
 
     async _fetchArtifact(): Promise<any> {

@@ -1,0 +1,118 @@
+name: 'Generate and Publish Configuration Schema'
+description: 'Set up Java, fetch storage and secret plugins, generate the configuration JSON Schema, and optionally upload to GCS.'
+inputs:
+  kestra-version:
+    description: "Kestra version to find compatible plugins for"
+    required: true
+  executable-path:
+    description: "Path to the Kestra executable"
+    required: true
+  java-version:
+    description: "Java version for running the executable"
+    required: false
+    default: '25'
+  output-path:
+    description: "Output file name for the generated schema"
+    required: false
+    default: "configuration-schema.json"
+  edition:
+    description: "Kestra edition: 'oss' or 'ee'. EE includes EE only plugins."
+    required: false
+    default: 'oss'
+  gcs-destination:
+    description: "GCS destination path for the schema file"
+    required: true
+  gcp-credentials-json:
+    description: "GCP service account credentials JSON"
+    required: true
+outputs:
+  schema-path:
+    description: "Path to the generated schema file"
+    value: ${{ inputs.output-path }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - name: GCP - Auth
+      id: gcp-auth
+      uses: google-github-actions/auth@v3
+      with:
+        token_format: ${{ inputs.edition == 'ee' && 'access_token' || '' }}
+        credentials_json: ${{ inputs.gcp-credentials-json }}
+
+    - name: Fetch and install plugins
+      id: install-plugins
+      shell: bash
+      env:
+        KESTRA_VERSION_RAW: ${{ inputs.kestra-version }}
+        EDITION: ${{ inputs.edition }}
+        EXECUTABLE: ${{ inputs.executable-path }}
+        GCP_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
+      run: |
+        set -euo pipefail
+        KESTRA_VERSION=$(echo "$KESTRA_VERSION_RAW" | sed -E 's/^v//; s/-rc[0-9]+$//')
+
+        if [ "$KESTRA_VERSION" = "develop" ]; then
+          KESTRA_VERSION=$(curl -sf "https://api.kestra.io/v1/versions/latest" | jq -r '.version')
+          echo "Resolved develop to latest version: $KESTRA_VERSION"
+        fi
+
+        echo "Fetching plugins compatible with Kestra $KESTRA_VERSION (edition: $EDITION)"
+
+        RESPONSE=$(curl -sf "https://api.kestra.io/v1/plugins/artifacts/core-compatibility/${KESTRA_VERSION}/latest") || {
+          echo "::warning::Failed to fetch plugins for version $KESTRA_VERSION, continuing without plugin schemas"
+          exit 0
+        }
+
+        if [ "$EDITION" = "ee" ]; then
+          JQ_FILTER='.[] | select(.groupId == "io.kestra.storage" or .groupId == "io.kestra.ee.secret") | "\(.groupId):\(.artifactId):\(.version)"'
+        else
+          JQ_FILTER='.[] | select(.groupId == "io.kestra.storage") | "\(.groupId):\(.artifactId):\(.version)"'
+        fi
+
+        PLUGINS=$(echo "$RESPONSE" | jq -r "$JQ_FILTER" | tr '\n' ' ')
+
+        if [ -z "$PLUGINS" ]; then
+          echo "No plugins found"
+          exit 0
+        fi
+
+        echo "Plugins: $PLUGINS"
+        PLUGINS_DIR=$(mktemp -d)
+        chmod +x "$EXECUTABLE"
+
+        REPO_FLAGS=""
+        if [ "$EDITION" = "ee" ]; then
+          echo "::add-mask::${GCP_ACCESS_TOKEN}"
+          REPO_FLAGS="--repositories=https://oauth2accesstoken:${GCP_ACCESS_TOKEN}@europe-west1-maven.pkg.dev/kestra-host/maven"
+        fi
+
+        "$EXECUTABLE" plugins install --plugins="$PLUGINS_DIR" $REPO_FLAGS $PLUGINS
+        echo "plugins-dir=$PLUGINS_DIR" >> "$GITHUB_OUTPUT"
+
+    - name: Generate configuration schema
+      shell: bash
+      env:
+        EXECUTABLE: ${{ inputs.executable-path }}
+        PLUGINS_DIR: ${{ steps.install-plugins.outputs.plugins-dir }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+      run: |
+        set -euo pipefail
+        PLUGINS_FLAG=""
+        if [ -n "$PLUGINS_DIR" ]; then
+          PLUGINS_FLAG="--plugins=$PLUGINS_DIR"
+        fi
+
+        "$EXECUTABLE" configuration-schema $PLUGINS_FLAG -o "$OUTPUT_PATH"
+        echo "Schema generated at $OUTPUT_PATH"
+
+    - name: Upload schema to GCS
+      uses: google-github-actions/upload-cloud-storage@v2
+      with:
+        path: ${{ inputs.output-path }}
+        destination: ${{ inputs.gcs-destination }}

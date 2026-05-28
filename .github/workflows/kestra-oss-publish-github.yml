@@ -3,8 +3,11 @@ name: Github - Release
 on:
   workflow_call:
     secrets:
-      GH_PERSONAL_TOKEN:
-        description: "The Github personal token."
+      GH_BOT_APP_ID:
+        description: "GitHub App Client ID."
+        required: true
+      GH_BOT_PRIVATE_KEY:
+        description: "GitHub App private key."
         required: true
       SLACK_RELEASES_WEBHOOK_URL:
         description: "The Slack webhook URL."
@@ -23,6 +26,15 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GH_BOT_APP_ID }}
+          private-key: ${{ secrets.GH_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
 
       # Download Exec
       # Must be done after checkout actions
@@ -50,14 +62,16 @@ jobs:
       - name: Create GitHub release
         uses: kestra-io/actions/composite/github-release@main
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          announce-slack: 'false'
         env:
           MAKE_LATEST: ${{ steps.is_latest.outputs.latest }}
-          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
 
       - name: Merge Release Notes
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: kestra-io/actions/composite/github-release-note-merge@main
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASE_TAG: ${{ github.ref_name }}

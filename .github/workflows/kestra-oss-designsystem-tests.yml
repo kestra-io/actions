@@ -1,13 +1,10 @@
-name: Frontend - Tests
+name: Frontend - Design System Tests
 
 on:
   workflow_call:
     secrets:
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
-        required: true
-      CODECOV_TOKEN:
-        description: 'Codecov Token'
         required: true
 
 env:
@@ -16,7 +13,7 @@ env:
 
 jobs:
   test:
-    name: Frontend - Tests
+    name: Frontend - Design System Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,37 +46,18 @@ jobs:
         run: npm ci
     
       - name: Npm - check types
-        working-directory: ui
-        run: npm run check:types
-
-      - name: Npm - lint (oxlint)
-        uses: oxc-project/oxlint-action@v3.0.0
-        with:
-            working-directory: ui
-            all-files: true
-
-      - name: Npm - lint (eslint)
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          reporter: github-pr-review
-          workdir: ui
-
-      - name: Npm - Run build
-        working-directory: ui
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-        run: npm run build
+        working-directory: ui/packages/design-system
+        run: npm run types:test
 
       - name: Run front-end unit tests
-        working-directory: ui
-        run: npm run test:unit -- --coverage
+        working-directory: ui/packages/design-system
+        run: npm run unit:test -- --coverage
 
       - name: Storybook - Install Playwright
-        working-directory: ui
+        working-directory: ui/packages/design-system
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps
 
       - name: Run storybook component tests
-        working-directory: ui
-        run: npm run test:storybook -- --coverage
+        working-directory: ui/packages/design-system
+        run: npm run storybook:test -- --coverage

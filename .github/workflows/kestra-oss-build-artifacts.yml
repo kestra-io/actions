@@ -25,12 +25,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Npm
-      - name: Setup - Npm install
-        shell: bash
-        working-directory: ui
-        run: npm ci
-
       # Setup build
       - uses: kestra-io/actions/composite/setup-build@main
         name: Setup - Build
@@ -39,6 +33,12 @@ jobs:
           java-enabled: true
           node-enabled: true
           java-version: ${{ inputs.java-version }}
+
+      # Npm
+      - name: Setup - Npm install
+        shell: bash
+        working-directory: ui
+        run: npm ci
 
       # Get Plugins List
       - name: Plugins - Get List
