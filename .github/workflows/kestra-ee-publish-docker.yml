@@ -121,8 +121,7 @@ jobs:
     env:
       GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
       GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee
-      # cloud image is internal-only: published to GCP Artifact Registry, not GHCR
-      CLOUD_GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-cloud
+      CLOUD_GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker-private/kestra-cloud
     steps:
       - name: echo inputs.dry-run ON
         if: ${{ inputs.dry-run == true }}
