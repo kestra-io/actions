@@ -121,6 +121,8 @@ jobs:
     env:
       GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
       GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee
+      CLOUD_GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-cloud
+      CLOUD_GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-cloud
     steps:
       - name: echo inputs.dry-run ON
         if: ${{ inputs.dry-run == true }}
@@ -223,6 +225,29 @@ jobs:
             APT_PACKAGES=${{ matrix.image.packages }}
             PYTHON_LIBRARIES=${{ matrix.image.python-libraries }}
 
+      - name: Cloud - Download cloud-ee libs
+        if: ${{ matrix.image.tag == '' && inputs.dry-run == false && github.event.client_payload.ref == '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: cloud-libs
+          path: kestra-ee/docker/app/libs
+
+      - name: Cloud - Build and push
+        if: ${{ matrix.image.tag == '' && inputs.dry-run == false && github.event.client_payload.ref == '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: kestra-ee/.
+          file: kestra-ee/Dockerfile.cloud
+          push: true
+          tags: |
+            ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
+            ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
+          platforms: linux/amd64,linux/arm64
+          network: host
+          cache-from: type=gha,scope=docker${{ matrix.image.tag }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
+
       - name: Setup - Install regctl
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.dry-run == false)
         uses: regclient/actions/regctl-installer@main
@@ -257,6 +282,24 @@ jobs:
 
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
+
+      - name: Cloud - Retag to minor semver version
+        if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != '' && (inputs.dry-run == false) && matrix.image.tag == ''
+        run: |
+          regctl image copy ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}
+          regctl image copy ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}
+
+      - name: Cloud - Retag to latest
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true') && (inputs.dry-run == false) && matrix.image.tag == ''
+        run: |
+          regctl image copy ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.CLOUD_GCP_IMAGE_PATH }}:latest
+          regctl image copy ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:latest
+
+      - name: Cloud - Retag to LTS
+        if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true') && (inputs.dry-run == false) && matrix.image.tag == ''
+        run: |
+          regctl image copy ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.CLOUD_GCP_IMAGE_PATH }}:latest-lts
+          regctl image copy ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.CLOUD_GITHUB_IMAGE_PATH }}:latest-lts
 
   end:
     runs-on: ubuntu-latest

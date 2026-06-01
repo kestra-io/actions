@@ -61,13 +61,21 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           cd kestra-ee
-          ./gradlew executableJar --parallel
+          ./gradlew executableJar :cloud-ee:jar --parallel
 
       - name: Artifacts - Upload Executable
         uses: actions/upload-artifact@v4
         with:
           name: exe
           path: kestra-ee/build/executable/
+
+      - name: Artifacts - Upload cloud-ee libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-libs
+          path: |
+            kestra-ee/cloud-ee/build/libs/cloud-ee-*.jar
+            !kestra-ee/cloud-ee/build/libs/*-all.jar
 
       - name: Artifacts - Transform swagger for website
         run: |
