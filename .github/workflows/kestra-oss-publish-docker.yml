@@ -54,7 +54,7 @@ on:
         type: boolean
         default: true
       use-kestra-base-images:
-        description: 'Use kestra-base images and kestractl for plugin download. Default false preserves backward compatibility with older release branches (v0.22–v1.3).'
+        description: 'Use kestra-base images and kestractl for plugin download. Selects the correct kestra-base image variant based on java-version. Set to true for new releases (v1.4+), leave false for old releases to preserve existing behavior.'
         required: false
         type: boolean
         default: false
@@ -63,6 +63,7 @@ jobs:
   plugins:
     name: List Plugins
     runs-on: ubuntu-latest
+    if: ${{ !inputs.use-kestra-base-images }}
     outputs:
       plugins: ${{ steps.plugins-outputs-step.outputs.plugins }}
     steps:
@@ -115,10 +116,14 @@ jobs:
         image:
           - name: "-no-plugins"
             plugins: ""
+            base-image-jre25: "ghcr.io/kestra-io/kestra-base:latest-no-plugins"
+            base-image-jre21: "ghcr.io/kestra-io/kestra-base:latest-jre21-no-plugins"
             packages: jattach
             python-libs: ""
           - name: ""
             plugins: ${{needs.plugins.outputs.plugins}}
+            base-image-jre25: "ghcr.io/kestra-io/kestra-base:latest"
+            base-image-jre21: "ghcr.io/kestra-io/kestra-base:latest-jre21"
             packages: python3 python-is-python3 python3-pip curl jattach
             python-libs: kestra
     steps:
@@ -225,6 +230,7 @@ jobs:
           cache-from: type=gha,scope=docker${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=docker${{ matrix.image.name }}
           build-args: |
+            BASE_IMAGE=${{ inputs.use-kestra-base-images && (inputs.java-version == '21' && matrix.image.base-image-jre21 || matrix.image.base-image-jre25) || 'ghcr.io/kestra-io/kestra-base:latest-no-plugins' }}
             KESTRA_PLUGINS=${{ !inputs.use-kestra-base-images && steps.vars.outputs.plugins || '' }}
             APT_PACKAGES=${{ matrix.image.packages }}
             PYTHON_LIBRARIES=${{ matrix.image.python-libs }}
