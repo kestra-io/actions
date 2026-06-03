@@ -1,0 +1,95 @@
+name: "Create release branch for previous version"
+
+inputs:
+  gh-app-id:
+    required: true
+    description: GitHub App Client ID (pass secrets.GH_BOT_CLIENT_ID from the caller workflow).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass secrets.GH_BOT_PRIVATE_KEY from the caller workflow).
+  new_version:
+    description: "New Kestra version"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+
+    - name: Validate Kestra version format
+      id: validate-format
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ ! "${{inputs.new_version}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Kestra version '${{inputs.new_version}}' is invalid. Must be in format vX.Y.Z (e.g., v1.2.3)."
+          exit 1
+        fi
+
+        echo "Kestra version format valid: ${{inputs.new_version}}"
+
+    - name: Checkout branch
+      uses: actions/checkout@v5
+      with:
+        ref: main
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: Read versions and create missing release branch
+      id: read-latest
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Remove leading 'v' and split into parts
+        VER="${{inputs.new_version}}"
+        VER="${VER#v}"
+        IFS='.' read -r MAJOR MINOR PATCH <<< "${VER}"
+
+        # Basic numeric validation
+        if ! [[ "${MAJOR}" =~ ^[0-9]+$ ]] || ! [[ "${MINOR}" =~ ^[0-9]+$ ]]; then
+          echo "Error: Failed to parse numeric version parts from ${VER}"
+          exit 1
+        fi
+
+        # If minor is 0, derive next minor from latest existing releases/vMAJOR.Y.x branches
+        if [ "${MINOR}" -eq 0 ]; then
+          echo "Minor version is 0 — fetching latest releases/v*.Y.x branches to compute next minor."
+
+          # List all release branches matching the strict releases/vN.M.x format, semver-sort and take the latest regardless of MAJOR
+          LATEST_BRANCH=$(git ls-remote --heads origin 'releases/v*' | awk '{print $2}' | sed 's|^refs/heads/||' | grep -E "^releases/v[0-9]+\.[0-9]+\.x$" | sort -V | tail -n1 || true)
+
+          if [ -z "${LATEST_BRANCH}" ]; then
+            echo "No previous releases/v*.*.x branches found, couldn't compute the branch to create"
+            exit 1
+          else
+            # Extract numeric major and minor from the latest branch in one pass
+            read -r LATEST_MAJOR LATEST_MINOR <<< "$(printf '%s' "${LATEST_BRANCH}" | sed -E 's|^releases/v([0-9]+)\.([0-9]+)\.x$|\1 \2|')"
+
+            NEXT_MINOR=$((LATEST_MINOR + 1))
+            TARGET_BRANCH="releases/v${LATEST_MAJOR}.${NEXT_MINOR}.x"
+          fi
+        else
+          PREVIOUS_MINOR=$((MINOR - 1))
+          TARGET_BRANCH="releases/v${MAJOR}.${PREVIOUS_MINOR}.x"
+        fi
+
+        echo "Computed target branch: ${TARGET_BRANCH}"
+        echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
+
+        # Check remote
+        if git ls-remote --heads origin "${TARGET_BRANCH}" | grep -q "${TARGET_BRANCH}"; then
+          echo "Branch ${TARGET_BRANCH} already exists on remote. Nothing to do."
+          exit 0
+        fi
+
+        # Create the release branch at current main HEAD and push it
+        git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+        echo "Branch ${TARGET_BRANCH} created and pushed."
