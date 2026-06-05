@@ -46,6 +46,11 @@ on:
         required: false
         type: boolean
         default: true
+      use-kestra-base-images:
+        description: 'Use kestra-base images and kestractl for plugin download. Default false preserves backward compatibility with older EE release branches.'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   plugins:
@@ -185,6 +190,37 @@ jobs:
             echo "plugins=$PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           fi
 
+      # Plugins — new path (use-kestra-base-images: true)
+      - name: Install kestractl
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        run: curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+
+      - name: Download EE plugins
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        run: |
+          kestractl plugins download ${{ github.ref_name }} \
+            --edition EE \
+            --maven-repository "https://europe-west1-maven.pkg.dev/kestra-host/maven" \
+            --maven-username oauth2accesstoken \
+            --maven-password "${{ steps.glogin.outputs.access_token }}" \
+            --plugins-dir kestra-ee/plugins \
+            --concurrency 10
+
+      - name: Download OSS plugins
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        run: |
+          kestractl plugins download ${{ github.ref_name }} \
+            --edition OSS \
+            --maven-repository "https://europe-maven.pkg.dev/kestra-host/maven-remote" \
+            --maven-username oauth2accesstoken \
+            --maven-password "${{ steps.glogin.outputs.access_token }}" \
+            --plugins-dir kestra-ee/plugins \
+            --concurrency 10
+
+      - name: Create empty plugins dir
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
+        run: mkdir -p kestra-ee/plugins
+
       # Download executable from artifact
       - name: Artifacts - Download executable
         uses: actions/download-artifact@v5
@@ -232,7 +268,7 @@ jobs:
           cache-from: type=gha,scope=docker${{ matrix.image.tag }}
           cache-to: type=gha,mode=max,scope=docker${{ matrix.image.tag }}
           build-args: |
-            KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
+            KESTRA_PLUGINS=${{ !inputs.use-kestra-base-images && steps.vars.outputs.plugins || '' }}
             APT_PACKAGES=${{ matrix.image.packages }}
             PYTHON_LIBRARIES=${{ matrix.image.python-libraries }}
 
