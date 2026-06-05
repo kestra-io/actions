@@ -175,7 +175,7 @@ jobs:
       # Plugins
       - name: Authenticate to Google Cloud
         if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
@@ -197,7 +197,7 @@ jobs:
             --maven-password "$(gcloud auth print-access-token)" \
             --plugins-dir ./plugins \
             --plugins "${{ matrix.image.plugins }}" \
-            --concurrency 30
+            --concurrency 50
 
       - name: Create empty plugins dir
         if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
