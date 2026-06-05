@@ -43,8 +43,8 @@ runs:
         
         DEFAULT_TO_RELEASE_FOR_MINOR='[
           "API",
-          "TAG_DOCS",
-          "TAG_BLUEPRINTS",
+          "BRANCH_DOCS",
+          "BRANCH_BLUEPRINTS",
           "HELM_CHARTS",
           "LIBS"
         ]'
