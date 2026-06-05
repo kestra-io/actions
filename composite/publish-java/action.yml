@@ -74,7 +74,7 @@ runs:
             exit 0
           fi
 
-          if [ "$attempt" -lt "$max_attempts" ] && grep -q "Received status code 403 from server" /tmp/publish.log; then
+          if [ "$attempt" -lt "$max_attempts" ] && grep -qE "Received status code 403|403 Forbidden" /tmp/publish.log; then
             # Sonatype Central Portal throttles snapshot/metadata requests under load and
             # returns 403; back off exponentially with jitter to outlast the throttle window.
             backoff=$(( (2 ** attempt) * 30 + RANDOM % 30 ))
