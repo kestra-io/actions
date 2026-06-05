@@ -1,8 +1,7 @@
 name: "Create release branch for previous version"
 description: |
   Creates a releases/vX.(Y-1).x branch for the previous version on a new release.
-  Only used by repos that version docs via release branches (docs, blueprints, and similar).
-  NOT used by kestra/kestra-ee — those tag the previous version via tag-previous-version instead.
+  Used by repos that version docs/content via release branches (docs, blueprints).
 
 inputs:
   gh-app-id:
