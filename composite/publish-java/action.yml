@@ -63,7 +63,8 @@ runs:
         echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
         echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
 
-        for attempt in 1 2 3; do
+        max_attempts=5
+        for attempt in $(seq 1 "$max_attempts"); do
           if ./gradlew publishToMavenCentral 2>&1 | tee /tmp/publish.log; then
             exit 0
           fi
@@ -73,9 +74,12 @@ runs:
             exit 0
           fi
 
-          if [ "$attempt" -lt 3 ] && grep -q "Received status code 403 from server" /tmp/publish.log; then
-            echo "::warning::Sonatype throttled the publish (403), retrying (attempt ${attempt}/3)."
-            sleep $(( attempt * 60 + RANDOM % 60 ))
+          if [ "$attempt" -lt "$max_attempts" ] && grep -q "Received status code 403 from server" /tmp/publish.log; then
+            # Sonatype Central Portal throttles snapshot/metadata requests under load and
+            # returns 403; back off exponentially with jitter to outlast the throttle window.
+            backoff=$(( (2 ** attempt) * 30 + RANDOM % 30 ))
+            echo "::warning::Sonatype throttled the publish (403), retrying in ${backoff}s (attempt ${attempt}/${max_attempts})."
+            sleep "$backoff"
             continue
           fi
 
