@@ -197,7 +197,7 @@ jobs:
             --maven-password "$(gcloud auth print-access-token)" \
             --plugins-dir ./plugins \
             --plugins "${{ matrix.image.plugins }}" \
-            --concurrency 10
+            --concurrency 30
 
       - name: Create empty plugins dir
         if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
