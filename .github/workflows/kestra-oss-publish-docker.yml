@@ -19,6 +19,9 @@ on:
       GH_BOT_PRIVATE_KEY:
         description: "GitHub App private key."
         required: true
+      GCP_SERVICE_ACCOUNT:
+        description: "GCP service account key JSON for Maven mirror authentication."
+        required: false
     inputs:
       retag-latest:
         description: 'Retag latest Docker images'
@@ -50,6 +53,11 @@ on:
         required: false
         type: boolean
         default: true
+      use-kestra-base-images:
+        description: 'Use kestra-base images and kestractl for plugin download. Default false preserves backward compatibility with older release branches (v0.22–v1.3).'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   plugins:
@@ -148,7 +156,7 @@ jobs:
           fi
 
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
-            echo "plugins=--repositories=https://central.sonatype.com/repository/maven-snapshots/ ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT;
+            echo "plugins=--repositories=https://central.sonatype.com/repository/maven-snapshots/ ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           else
             echo "plugins=${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           fi
@@ -163,6 +171,37 @@ jobs:
       - name: Copy exe to image
         run: |
           cp build/executable/* docker/app/kestra && chmod +x docker/app/kestra
+
+      # Plugins
+      - name: Authenticate to Google Cloud
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install kestractl
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        run: curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+
+      - name: Download Kestra plugins
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        run: |
+          if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
+            MAVEN_REPOSITORY="https://central.sonatype.com/repository/maven-snapshots/"
+          else
+            MAVEN_REPOSITORY="https://europe-maven.pkg.dev/kestra-host/maven-remote"
+          fi
+          kestractl plugins download ${{ github.ref_name }} \
+            --maven-repository "$MAVEN_REPOSITORY" \
+            --maven-username oauth2accesstoken \
+            --maven-password "$(gcloud auth print-access-token)" \
+            --plugins-dir ./plugins \
+            --plugins "${{ matrix.image.plugins }}" \
+            --concurrency 10
+
+      - name: Create empty plugins dir
+        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
+        run: mkdir -p plugins
 
       # Docker setup
       - name: Docker init
@@ -186,7 +225,7 @@ jobs:
           cache-from: type=gha,scope=docker${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=docker${{ matrix.image.name }}
           build-args: |
-            KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
+            KESTRA_PLUGINS=${{ !inputs.use-kestra-base-images && steps.vars.outputs.plugins || '' }}
             APT_PACKAGES=${{ matrix.image.packages }}
             PYTHON_LIBRARIES=${{ matrix.image.python-libs }}
 
@@ -218,7 +257,7 @@ jobs:
             echo "validation error, $TAG did not match acceptable 'latest' regex"
             exit 1
           fi
-          
+
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest-lts{0}', matrix.image.name) }}
 
   end:
