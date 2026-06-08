@@ -35,7 +35,7 @@ runs:
 
     - name: Check keys matching
       shell: bash
-      run: node ui-ee/src/translations/check.js
+      run: npx --yes tsx ui-ee/src/translations/check.ts
 
     - name: Set up Git
       shell: bash
