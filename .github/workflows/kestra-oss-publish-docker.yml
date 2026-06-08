@@ -179,17 +179,17 @@ jobs:
 
       # Plugins
       - name: Authenticate to Google Cloud
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Install kestractl
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
         run: curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
 
       - name: Download Kestra plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
         run: |
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             MAVEN_REPOSITORY="https://central.sonatype.com/repository/maven-snapshots/"
@@ -205,7 +205,7 @@ jobs:
             --concurrency 50
 
       - name: Create empty plugins dir
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name == '-no-plugins' }}
         run: mkdir -p plugins
 
       # Docker setup
