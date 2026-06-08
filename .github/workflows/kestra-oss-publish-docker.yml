@@ -201,6 +201,7 @@ jobs:
             --maven-username oauth2accesstoken \
             --maven-password "$(gcloud auth print-access-token)" \
             --plugins-dir ./plugins \
+            --plugins "${{ matrix.image.plugins }}" \
             --concurrency 50
 
       - name: Create empty plugins dir
