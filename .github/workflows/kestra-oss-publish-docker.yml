@@ -185,7 +185,9 @@ jobs:
 
       - name: Install kestractl
         if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
-        run: curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Download Kestra plugins
         if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
