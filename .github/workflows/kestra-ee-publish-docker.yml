@@ -192,13 +192,13 @@ jobs:
 
       # Plugins — new path (use-kestra-base-images: true)
       - name: Install kestractl
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Download EE plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
         run: |
           kestractl plugins download ${{ github.ref_name }} \
             --edition EE \
@@ -209,7 +209,7 @@ jobs:
             --concurrency 50
 
       - name: Download OSS plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
         run: |
           kestractl plugins download ${{ github.ref_name }} \
             --edition OSS \
@@ -220,7 +220,7 @@ jobs:
             --concurrency 50
 
       - name: Create empty plugins dir
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag == '-no-plugins' }}
         run: mkdir -p kestra-ee/plugins
 
       # Download executable from artifact
