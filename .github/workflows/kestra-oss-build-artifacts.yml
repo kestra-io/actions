@@ -16,7 +16,6 @@ jobs:
     outputs:
       docker-tag: ${{ steps.vars.outputs.tag }}
       docker-artifact-name: ${{ steps.vars.outputs.artifact }}
-      plugins: ${{ steps.plugins.outputs.plugins }}
     env:
       PLUGIN_VERSION: ${{ github.event.inputs.plugin-version != null && github.event.inputs.plugin-version || 'LATEST' }}
     steps:
@@ -39,28 +38,6 @@ jobs:
         shell: bash
         working-directory: ui
         run: npm ci
-
-      # Get Plugins List
-      - name: Plugins - Get List
-        uses: kestra-io/actions/composite/kestra-oss/kestra-oss-plugins-list@main
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        id: plugins-list
-        with:
-          plugin-version: ${{ env.PLUGIN_VERSION }}
-
-      # Set Plugins List
-      - name: Plugins - Set List
-        id: plugins
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        shell: bash
-        run: |
-          PLUGINS="${{ steps.plugins-list.outputs.plugins }}"
-          TAG=${GITHUB_REF#refs/*/}
-          if [[ $TAG = "master" || $TAG == v* ]]; then
-            echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
-          else
-            echo "plugins=--repositories=https://central.sonatype.com/repository/maven-snapshots/ $PLUGINS" >> $GITHUB_OUTPUT
-          fi
 
       # Build
       - name: Gradle - Build
