@@ -75,6 +75,13 @@ runs:
           fi
 
           if [ "$attempt" -lt "$max_attempts" ] && grep -qE "Received status code 403|403 Forbidden" /tmp/publish.log; then
+            # Dump response headers so Sonatype support can identify which WAF layer blocked the request.
+            failed_url=$(grep -oP "(?<=Could not GET ')[^']+" /tmp/publish.log | head -1)
+            if [ -n "$failed_url" ]; then
+              echo "=== 403 response headers (Sonatype diagnostic) ==="
+              curl -sv -u "${ORG_GRADLE_PROJECT_mavenCentralUsername}:${ORG_GRADLE_PROJECT_mavenCentralPassword}" \
+                -o /dev/null "$failed_url" 2>&1 | grep -E "^[<>*]"
+            fi
             # Sonatype Central Portal throttles snapshot/metadata requests under load and
             # returns 403; back off exponentially with jitter to outlast the throttle window.
             backoff=$(( (2 ** attempt) * 30 + RANDOM % 30 ))
