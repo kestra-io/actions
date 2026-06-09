@@ -267,8 +267,6 @@ jobs:
             ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           network: host
-          cache-from: type=gha,scope=docker${{ matrix.image.tag }}
-          cache-to: type=gha,mode=max,scope=docker${{ matrix.image.tag }}
           build-args: |
             KESTRA_PLUGINS=${{ !inputs.use-kestra-base-images && steps.vars.outputs.plugins || '' }}
             APT_PACKAGES=${{ matrix.image.packages }}
@@ -291,7 +289,6 @@ jobs:
           tags: ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           network: host
-          cache-from: type=gha,scope=docker${{ matrix.image.tag }}
           build-args: |
             BASE_IMAGE=${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
 
