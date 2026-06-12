@@ -6,9 +6,26 @@ inputs:
     description: 'Run Sonar analysis'
     required: false
     default: 'true'
-  secrets:
-    description: 'Secrets passed as toJSON'
-    required: true
+
+  github-token:
+    description: 'GitHub token for PR comments and test report scripts'
+    required: false
+
+  google-service-account:
+    description: 'Google Service Account JSON for Allure/Jacoco GCS uploads'
+    required: false
+
+  codecov-token:
+    description: 'Codecov token for coverage and test results upload'
+    required: false
+
+  sonar-token:
+    description: 'Sonar token for analysis'
+    required: false
+
+  github-auth-token:
+    description: 'GitHub auth token for Sonar analysis'
+    required: false
 
 runs:
   using: composite
@@ -36,7 +53,7 @@ runs:
       continue-on-error: true
       if: ${{ github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
       with:
-        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: "🧪 Java Unit Tests"
         template: |
           ${{ steps.test-report.outputs.summary }}
@@ -48,18 +65,18 @@ runs:
       if: ${{ !cancelled() && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: npx --yes @kestra-io/kestra-devtools generateTestReportSummary --only-errors --ci $(pwd)
 
     # GCP
     - name: GCP - Auth with unit test account
-      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
       uses: 'google-github-actions/auth@v3'
       with:
-        credentials_json: '${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT }}'
+        credentials_json: '${{ inputs.google-service-account }}'
 
     - name: GCP - Setup Cloud SDK
-      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
       uses: 'google-github-actions/setup-gcloud@v3'
 
     - name: GCP - Configure project and location
@@ -71,12 +88,12 @@ runs:
     # Allure
     - name: Allure - Generate reports
       shell: bash
-      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
       continue-on-error: true
       run: |
         gcloud storage cp -r gs://internal-kestra-host/${{ github.repository }}/allure/java/history build/allure-results/
-        docker run --rm -v $PWD:/work tobix/allure-cli generate /work/build/allure-results/ -o /work/build/reports/allure --clean 
-        
+        docker run --rm -v $PWD:/work tobix/allure-cli generate /work/build/allure-results/ -o /work/build/reports/allure --clean
+
         if [ -d build/reports/allure/ ]; then
           gsutil -m rsync -d -r  build/reports/allure/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'allure/java') }}
         fi
@@ -84,14 +101,14 @@ runs:
     # Jacoco
     - name: Jacoco - Copy reports
       shell: bash
-      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
       continue-on-error: true
       run: |
         if [ -d build/reports/jacoco/testCodeCoverageReport ]; then
           cp -R build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
           cp build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/test/jacocoTestReport.xml
         fi
-        
+
         if [ -d build/reports/jacoco/test/ ]; then
           gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
         fi
@@ -102,14 +119,14 @@ runs:
       if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
-        token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
+        token: ${{ inputs.codecov-token }}
 
     - name: Codecov - Upload test results
       uses: codecov/test-results-action@v1
       if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
-        token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
+        token: ${{ inputs.codecov-token }}
 
     # Gradle dependency
     - name: Java - Gradle dependency graph
@@ -123,8 +140,8 @@ runs:
     - name: Sonar - Analyze with Sonar
       if: ${{ job.status == 'success' && inputs.run-sonar == 'true' && env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
       env:
-        GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_AUTH_TOKEN }}
-        SONAR_TOKEN: ${{ fromJSON(inputs.secrets).SONAR_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.github-auth-token }}
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
       shell: bash
       continue-on-error: true
       run: ./gradlew sonar

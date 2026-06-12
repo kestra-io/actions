@@ -4,8 +4,8 @@ inputs:
   new_version:
     description: "New Kestra version"
     required: false
-  secrets:
-    description: 'Secrets passed as toJSON'
+  after-release-ee-webhook:
+    description: 'Webhook URL to trigger the after-release EE workflow'
     required: true
 
 runs:
@@ -60,4 +60,4 @@ runs:
         fi
         
         # TODO ADD WEBHOOK TO INPUTS
-        curl -X POST -H "Content-Type: application/json" -d "{\"TO_RELEASE\": ${TO_RELEASE},\"RELEASED_VERSION\":\"${VER}\"}" ${{ fromJson(inputs.secrets).AFTER_RELEASE_EE_WEBHOOK }}
+        curl -X POST -H "Content-Type: application/json" -d "{\"TO_RELEASE\": ${TO_RELEASE},\"RELEASED_VERSION\":\"${VER}\"}" ${{ inputs.after-release-ee-webhook }}
