@@ -249,7 +249,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')  && (inputs.dry-run == false)
         run: |
           TAG=${GITHUB_REF#refs/*/}
-          if [[ ! $TAG =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "validation error, $TAG did not match acceptable 'latest' regex"
             exit 1
           fi
@@ -260,7 +260,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true') && (inputs.dry-run == false)
         run: |
           TAG=${GITHUB_REF#refs/*/}
-          if [[ ! $TAG =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "validation error, $TAG did not match acceptable 'latest' regex"
             exit 1
           fi
