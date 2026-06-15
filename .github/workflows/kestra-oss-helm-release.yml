@@ -8,7 +8,7 @@ on:
         required: false
         type: string
         default: ''
-      dry_run:
+      dry-run:
         description: 'Dry run — package charts but do not upload to GCS'
         required: false
         type: boolean
@@ -61,7 +61,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
             VERSION="${TAG#v}"
           fi
-          DRY_RUN="${{ inputs.dry_run }}"
+          DRY_RUN="${{ inputs.dry-run }}"
           echo "tag=${TAG}"        >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "dry_run=${DRY_RUN}" >> $GITHUB_OUTPUT
