@@ -5,6 +5,10 @@ inputs:
   github-token:
     description: 'GitHub Token'
     required: true
+  retranslate_modified_keys:
+    description: 'If true, will retranslate modified keys'
+    required: false
+    default: false
 
 runs:
   using: composite
@@ -15,18 +19,20 @@ runs:
       with:
         ref: ${{ github.head_ref }}
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Set up Node
+      uses: actions/setup-node@v6
       with:
-        python-version: "3.x"
+        node-version: "20.x"
 
-    - name: Install Python dependencies
+    - name: Install Node dependencies
+      run: npm ci
       shell: bash
-      run: pip install gitpython openai
+      working-directory: ui-ee
 
     - name: Generate translations
+      run: npm run translations:generate -- ${{ github.event.inputs.retranslate_modified_keys }}
+      working-directory: ui-ee
       shell: bash
-      run: python ui-ee/src/translations/generate_translations.py
 
     - name: Set up Node
       uses: actions/setup-node@v4
