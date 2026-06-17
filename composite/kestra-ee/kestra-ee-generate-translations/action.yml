@@ -9,6 +9,10 @@ inputs:
     description: 'If true, will retranslate modified keys'
     required: false
     default: false
+  only_pr:
+    description: 'If true, will only translate what has changed in the PR'
+    required: false
+    default: false
 
 runs:
   using: composite
@@ -30,7 +34,7 @@ runs:
       working-directory: ui-ee
 
     - name: Generate translations
-      run: npm run translations:generate -- ${{ github.event.inputs.retranslate_modified_keys }}
+      run: npm run translations:generate -- ${{ github.event.inputs.retranslate_modified_keys }} ${{ github.event.inputs.only_pr && '--PR' }}
       working-directory: ui-ee
       shell: bash
 
