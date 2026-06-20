@@ -33824,11 +33824,11 @@ var toolCacheExports = requireToolCache();
 
 const JAVA_RELEASES = 'https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases';
 /**
- * Download & cache the OpenTelemetry Java agent jar. Auto-injects it via
- * JAVA_TOOL_OPTIONS so every JVM in the job (gradle daemon + forked JUnit) is
- * instrumented. Returns the jar path.
+ * Download & cache the OpenTelemetry Java agent jar. When `inject` is true it is
+ * also added to JAVA_TOOL_OPTIONS so every JVM in the job is instrumented — only
+ * safe for apps that do not manage their own OpenTelemetry. Returns the jar path.
  */
-async function setupJavaAgent(version) {
+async function setupJavaAgent(version, inject) {
     const cacheVersion = version === 'latest' ? 'latest' : version;
     let dir = toolCacheExports.find('opentelemetry-javaagent', cacheVersion);
     let jar = dir ? path.join(dir, 'opentelemetry-javaagent.jar') : '';
@@ -33841,19 +33841,25 @@ async function setupJavaAgent(version) {
         dir = await toolCacheExports.cacheFile(downloaded, 'opentelemetry-javaagent.jar', 'opentelemetry-javaagent', cacheVersion);
         jar = path.join(dir, 'opentelemetry-javaagent.jar');
     }
-    const existing = process.env.JAVA_TOOL_OPTIONS ?? '';
-    const flag = `-javaagent:${jar}`;
-    if (!existing.includes(flag)) {
-        coreExports.exportVariable('JAVA_TOOL_OPTIONS', existing ? `${existing} ${flag}` : flag);
+    if (inject) {
+        const existing = process.env.JAVA_TOOL_OPTIONS ?? '';
+        const flag = `-javaagent:${jar}`;
+        if (!existing.includes(flag)) {
+            coreExports.exportVariable('JAVA_TOOL_OPTIONS', existing ? `${existing} ${flag}` : flag);
+        }
+        coreExports.info(`Java agent injected via JAVA_TOOL_OPTIONS: ${jar}`);
     }
-    coreExports.info(`Java agent ready: ${jar}`);
+    else {
+        coreExports.info(`Java agent ready (not injected): ${jar}`);
+    }
     return jar;
 }
 /**
- * Install & cache the Node auto-instrumentation and auto-inject it via
- * NODE_OPTIONS. Returns the path to the `register` module.
+ * Install & cache the Node auto-instrumentation. When `inject` is true it is
+ * also wired in via NODE_OPTIONS/NODE_PATH. Returns the path to the `register`
+ * module.
  */
-async function setupNodeAgent() {
+async function setupNodeAgent(inject) {
     const pkg = '@opentelemetry/auto-instrumentations-node';
     const version = '0.55.0';
     let dir = toolCacheExports.find('otel-node-instrumentation', version);
@@ -33870,16 +33876,21 @@ async function setupNodeAgent() {
     // install dir to NODE_PATH.
     const modulesDir = path.join(dir, 'node_modules');
     const registerSpecifier = `${pkg}/register`;
-    const existingNodePath = process.env.NODE_PATH ?? '';
-    if (!existingNodePath.split(path.delimiter).includes(modulesDir)) {
-        coreExports.exportVariable('NODE_PATH', existingNodePath ? `${modulesDir}${path.delimiter}${existingNodePath}` : modulesDir);
+    if (inject) {
+        const existingNodePath = process.env.NODE_PATH ?? '';
+        if (!existingNodePath.split(path.delimiter).includes(modulesDir)) {
+            coreExports.exportVariable('NODE_PATH', existingNodePath ? `${modulesDir}${path.delimiter}${existingNodePath}` : modulesDir);
+        }
+        const existing = process.env.NODE_OPTIONS ?? '';
+        const flag = `--require ${registerSpecifier}`;
+        if (!existing.includes(registerSpecifier)) {
+            coreExports.exportVariable('NODE_OPTIONS', existing ? `${existing} ${flag}` : flag);
+        }
+        coreExports.info(`Node auto-instrumentation injected via NODE_OPTIONS: ${registerSpecifier} (NODE_PATH=${modulesDir})`);
     }
-    const existing = process.env.NODE_OPTIONS ?? '';
-    const flag = `--require ${registerSpecifier}`;
-    if (!existing.includes(registerSpecifier)) {
-        coreExports.exportVariable('NODE_OPTIONS', existing ? `${existing} ${flag}` : flag);
+    else {
+        coreExports.info(`Node auto-instrumentation ready (not injected): ${modulesDir}`);
     }
-    coreExports.info(`Node auto-instrumentation ready: ${registerSpecifier} (NODE_PATH=${modulesDir})`);
     return path.join(modulesDir, pkg, 'register.js');
 }
 
@@ -36565,6 +36576,7 @@ function readInputs() {
         mode: coreExports.getInput('mode') || 'instrument',
         javaEnabled: coreExports.getBooleanInput('java-enabled'),
         nodeEnabled: coreExports.getBooleanInput('node-enabled'),
+        injectAgent: coreExports.getBooleanInput('inject-agent'),
         hostMetricsEnabled: coreExports.getBooleanInput('host-metrics-enabled'),
         parentStepName: coreExports.getInput('parent-step-name'),
         collectorVersion: coreExports.getInput('collector-version'),
@@ -36609,11 +36621,11 @@ async function main(inputs) {
     coreExports.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs));
     coreExports.setOutput('trace-id', tId);
     if (inputs.javaEnabled) {
-        const jar = await setupJavaAgent(inputs.javaAgentVersion);
+        const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectAgent);
         coreExports.setOutput('java-agent-path', jar);
     }
     if (inputs.nodeEnabled) {
-        const register = await setupNodeAgent();
+        const register = await setupNodeAgent(inputs.injectAgent);
         coreExports.setOutput('node-agent-path', register);
     }
     if (inputs.hostMetricsEnabled) {

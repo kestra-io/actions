@@ -89,9 +89,10 @@ jobs:
           java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
 
-      # Setup OpenTelemetry: root span, host metrics, and auto-inject the Java
-      # agent so the Gradle build + JUnit tests below nest under the build step.
-      # Must run before "Test - Gradle Check" so JAVA_TOOL_OPTIONS is exported in time.
+      # Setup OpenTelemetry: root span context + background host-metrics collector.
+      # We intentionally do NOT inject the Java agent into the build: Kestra manages
+      # its own OpenTelemetry and the agent would hijack the global instance, breaking
+      # tests that call resetForTest(). Step spans + host metrics are captured regardless.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@feat/otel-collect-action
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -99,9 +100,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          java-enabled: 'true'
           host-metrics-enabled: 'true'
-          parent-step-name: 'Test - Gradle Check'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Setup for setup-unit.sh, injecting secrets as env variables

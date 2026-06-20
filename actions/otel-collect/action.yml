@@ -29,12 +29,21 @@ inputs:
     default: 'instrument'
 
   java-enabled:
-    description: Download & cache the OpenTelemetry Java agent and auto-inject it via JAVA_TOOL_OPTIONS
+    description: Download & cache the OpenTelemetry Java agent (exposed via the java-agent-path output)
     required: false
     default: 'false'
 
   node-enabled:
-    description: Download & cache the OpenTelemetry Node auto-instrumentation and auto-inject it via NODE_OPTIONS
+    description: Download & cache the OpenTelemetry Node auto-instrumentation (exposed via the node-agent-path output)
+    required: false
+    default: 'false'
+
+  inject-agent:
+    description: >
+      Auto-inject the downloaded agents into every JVM/Node process via JAVA_TOOL_OPTIONS / NODE_OPTIONS.
+      Leave 'false' (default) for apps that manage their own OpenTelemetry (e.g. Kestra) — the agent would
+      hijack the global OpenTelemetry and break tests that call resetForTest(). When 'false' the action only
+      exposes the agent paths as outputs so the caller can inject them where it is safe.
     required: false
     default: 'false'
 

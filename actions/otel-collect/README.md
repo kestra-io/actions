@@ -100,8 +100,9 @@ jobs:
 | `otlp-endpoint` | — (required) | OTLP/HTTP base endpoint |
 | `otlp-headers` | `''` | Comma-separated `k=v` headers (marked secret) |
 | `mode` | `instrument` | `instrument` (per-job) or `export-all` (whole workflow) |
-| `java-enabled` | `false` | Download + auto-inject the Java agent |
-| `node-enabled` | `false` | Install + auto-inject Node auto-instrumentation |
+| `java-enabled` | `false` | Download the Java agent (path via `java-agent-path` output) |
+| `node-enabled` | `false` | Install the Node auto-instrumentation (path via `node-agent-path` output) |
+| `inject-agent` | `false` | Also inject the agents via `JAVA_TOOL_OPTIONS` / `NODE_OPTIONS`. **Do not** enable for apps that manage their own OpenTelemetry (e.g. Kestra) — see caveat below |
 | `host-metrics-enabled` | `true` | Run the background host-metrics collector |
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
 | `collector-version` | `0.114.0` | `otelcol-contrib` version |
@@ -128,7 +129,17 @@ npm run build     # bundles src/ into the committed dist/index.js
 `dist/index.js` is committed and is what GitHub executes — always rebuild after
 changing `src/`.
 
-> **Note on the Java agent root span.** The Java agent does not adopt the env
-> `TRACEPARENT` as the JVM root parent by default. Verify end-to-end that the
-> Gradle/JUnit spans attach under the step span; if your setup needs it, add a
-> Gradle init script that starts the build root span as a child of `TRACEPARENT`.
+> **Do not inject the agent into apps that own their OpenTelemetry.** With
+> `inject-agent: true` the Java agent is added to `JAVA_TOOL_OPTIONS` for *every*
+> JVM in the job, including Gradle's forked test workers. If the app under test
+> manages its own OpenTelemetry (Kestra does), the agent takes over the global
+> `OpenTelemetry` instance, so `GlobalOpenTelemetry.resetForTest()` becomes a
+> no-op and test state leaks across tests — breaking otherwise-green builds. Keep
+> `inject-agent` at its default `false` for Kestra/plugin builds; you still get
+> the workflow step spans and host metrics. Only enable injection for services
+> that do **not** configure OpenTelemetry themselves.
+>
+> **Note on the Java agent root span.** Even where injection is safe, the agent
+> does not adopt the env `TRACEPARENT` as the JVM root parent by default — if you
+> need the build spans to nest under the step span, add a Gradle init script that
+> starts the build root span as a child of `TRACEPARENT`.

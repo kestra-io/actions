@@ -17,6 +17,7 @@ interface Inputs {
   mode: string
   javaEnabled: boolean
   nodeEnabled: boolean
+  injectAgent: boolean
   hostMetricsEnabled: boolean
   parentStepName: string
   collectorVersion: string
@@ -32,6 +33,7 @@ function readInputs(): Inputs {
     mode: core.getInput('mode') || 'instrument',
     javaEnabled: core.getBooleanInput('java-enabled'),
     nodeEnabled: core.getBooleanInput('node-enabled'),
+    injectAgent: core.getBooleanInput('inject-agent'),
     hostMetricsEnabled: core.getBooleanInput('host-metrics-enabled'),
     parentStepName: core.getInput('parent-step-name'),
     collectorVersion: core.getInput('collector-version'),
@@ -81,11 +83,11 @@ async function main(inputs: Inputs): Promise<void> {
   core.setOutput('trace-id', tId)
 
   if (inputs.javaEnabled) {
-    const jar = await setupJavaAgent(inputs.javaAgentVersion)
+    const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectAgent)
     core.setOutput('java-agent-path', jar)
   }
   if (inputs.nodeEnabled) {
-    const register = await setupNodeAgent()
+    const register = await setupNodeAgent(inputs.injectAgent)
     core.setOutput('node-agent-path', register)
   }
 
