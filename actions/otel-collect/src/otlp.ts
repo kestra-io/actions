@@ -1,5 +1,6 @@
+import { credentials as grpcCredentials, Metadata } from '@grpc/grpc-js'
 import { SpanKind, SpanStatusCode, TraceFlags, type HrTime } from '@opentelemetry/api'
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
 import { Resource } from '@opentelemetry/resources'
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 
@@ -89,16 +90,37 @@ export function buildSpan(input: SpanInput, resource: Resource): ReadableSpan {
   return span as unknown as ReadableSpan
 }
 
-/** Export the spans over OTLP/HTTP and flush. */
+/**
+ * Normalize an OTLP endpoint for gRPC: strip the http(s) scheme and ensure a
+ * port (default 443 for TLS, 4317 for plaintext). Returns {target, secure}.
+ */
+export function grpcTarget(endpoint: string): { target: string; secure: boolean } {
+  const secure = !endpoint.startsWith('http://')
+  let host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  if (!/:\d+$/.test(host)) {
+    host = `${host}:${secure ? 443 : 4317}`
+  }
+  return { target: host, secure }
+}
+
+/** Export the spans over OTLP/gRPC and flush. */
 export async function exportSpans(
   spans: ReadableSpan[],
   endpoint: string,
   headers: Record<string, string>,
   timeoutMs = 15000
 ): Promise<void> {
+  const { target, secure } = grpcTarget(endpoint)
+
+  const metadata = new Metadata()
+  for (const [key, value] of Object.entries(headers)) {
+    metadata.set(key, value)
+  }
+
   const exporter = new OTLPTraceExporter({
-    url: `${endpoint.replace(/\/$/, '')}/v1/traces`,
-    headers
+    url: target,
+    metadata,
+    credentials: secure ? grpcCredentials.createSsl() : grpcCredentials.createInsecure()
   })
 
   await new Promise<void>((resolve) => {

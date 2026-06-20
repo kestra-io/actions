@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as core from '@actions/core'
 import * as tc from '@actions/tool-cache'
-import { parseHeaders } from './otlp.js'
+import { grpcTarget, parseHeaders } from './otlp.js'
 
 const RELEASES = 'https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download'
 
@@ -40,8 +40,9 @@ async function ensureCollector(version: string): Promise<string> {
 
 function buildConfig(endpoint: string, headers: Record<string, string>, serviceName: string): string {
   const headerLines = Object.entries(headers)
-    .map(([k, v]) => `        ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+    .map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
     .join('\n')
+  const { target, secure } = grpcTarget(endpoint)
 
   return `receivers:
   hostmetrics:
@@ -72,8 +73,10 @@ processors:
   batch:
 
 exporters:
-  otlphttp:
-    endpoint: ${JSON.stringify(endpoint.replace(/\/$/, ''))}
+  otlp:
+    endpoint: ${JSON.stringify(target)}
+    tls:
+      insecure: ${secure ? 'false' : 'true'}
 ${headerLines ? `    headers:\n${headerLines}` : ''}
 
 service:
@@ -81,7 +84,7 @@ service:
     metrics:
       receivers: [hostmetrics]
       processors: [resourcedetection, resource, batch]
-      exporters: [otlphttp]
+      exporters: [otlp]
 `
 }
 

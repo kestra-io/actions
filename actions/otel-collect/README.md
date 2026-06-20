@@ -24,6 +24,10 @@ workflow run
          └─ JUnit MyServiceTest#shouldWork ← live span from the Java agent
 ```
 
+Telemetry is shipped over **OTLP/gRPC** (the protocol Elastic's Managed OTLP
+endpoint and most backends expect); the host-metrics collector and the post-hoc
+trace export both use it.
+
 It does this by computing **deterministic span ids** (the same scheme the OTel
 Collector `githubreceiver` uses) so the spans emitted *live* by the auto-instrumentation
 agents and the spans rebuilt *post-hoc* from the GitHub API share ids and nest
@@ -97,8 +101,8 @@ jobs:
 | Input | Default | Description |
 |-------|---------|-------------|
 | `github-token` | — (required) | Token used to query the run's jobs/steps |
-| `otlp-endpoint` | — (required) | OTLP/HTTP base endpoint |
-| `otlp-headers` | `''` | Comma-separated `k=v` headers (marked secret) |
+| `otlp-endpoint` | — (required) | OTLP **gRPC** endpoint (e.g. `https://<id>.ingest.<region>.elastic-cloud.com`; `https://` → TLS on :443) |
+| `otlp-headers` | `''` | Comma-separated `k=v` headers, e.g. `Authorization=ApiKey <key>` (marked secret) |
 | `mode` | `instrument` | `instrument` (per-job) or `export-all` (whole workflow) |
 | `java-enabled` | `false` | Download the Java agent (path via `java-agent-path` output) |
 | `node-enabled` | `false` | Install the Node auto-instrumentation (path via `node-agent-path` output) |
