@@ -3,6 +3,7 @@ import * as github from '@actions/github'
 import { setupJavaAgent, setupNodeAgent } from './agents.js'
 import { startCollector, stopCollector } from './collector.js'
 import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
+import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
 import { baseEndpoint, buildResource, exportSpans, parseHeaders } from './otlp.js'
 import { listJobs, resolveJobId, type WorkflowJob } from './resolve-job.js'
@@ -20,6 +21,7 @@ interface Inputs {
   injectJavaAgent: boolean
   injectNodeAgent: boolean
   hostMetricsEnabled: boolean
+  gradleTracingEnabled: boolean
   parentStepName: string
   collectorVersion: string
   javaAgentVersion: string
@@ -37,6 +39,7 @@ function readInputs(): Inputs {
     injectJavaAgent: core.getBooleanInput('inject-java-agent'),
     injectNodeAgent: core.getBooleanInput('inject-node-agent'),
     hostMetricsEnabled: core.getBooleanInput('host-metrics-enabled'),
+    gradleTracingEnabled: core.getBooleanInput('gradle-tracing-enabled'),
     parentStepName: core.getInput('parent-step-name'),
     collectorVersion: core.getInput('collector-version'),
     javaAgentVersion: core.getInput('java-agent-version'),
@@ -96,6 +99,10 @@ async function main(inputs: Inputs): Promise<void> {
   if (inputs.nodeEnabled) {
     const register = await setupNodeAgent(inputs.injectNodeAgent)
     core.setOutput('node-agent-path', register)
+  }
+
+  if (inputs.gradleTracingEnabled) {
+    installGradleInitScript()
   }
 
   if (inputs.hostMetricsEnabled) {

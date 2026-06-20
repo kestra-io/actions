@@ -1,25 +1,26 @@
 import { createRequire as _createRequire } from 'module'; const require = _createRequire(import.meta.url);
-import require$$0$4 from 'os';
-import require$$0$5, { createHash } from 'crypto';
-import * as require$$0$3 from 'fs';
-import require$$0__default from 'fs';
+import * as require$$0$3 from 'os';
+import require$$0__default from 'os';
+import require$$0$4, { createHash } from 'crypto';
+import * as fs from 'fs';
+import fs__default from 'fs';
 import * as path$1 from 'path';
 import path__default from 'path';
 import * as require$$2$3 from 'http';
 import require$$2__default from 'http';
 import * as https from 'https';
 import https__default from 'https';
-import require$$0$9 from 'net';
+import require$$0$8 from 'net';
 import require$$1$2 from 'tls';
-import require$$0$7 from 'events';
-import require$$0$8 from 'assert';
-import require$$0$6 from 'util';
-import require$$0$a, { Readable } from 'stream';
+import require$$0$6 from 'events';
+import require$$0$7 from 'assert';
+import require$$0$5 from 'util';
+import require$$0$9, { Readable } from 'stream';
 import require$$7 from 'buffer';
 import require$$8 from 'querystring';
 import require$$14 from 'stream/web';
 import { createRequire } from 'node:module';
-import require$$0$b from 'worker_threads';
+import require$$0$a from 'worker_threads';
 import require$$2$4, { performance as performance$1 } from 'perf_hooks';
 import require$$5$1 from 'util/types';
 import require$$4$2 from 'async_hooks';
@@ -28,11 +29,11 @@ import require$$1$4 from 'url';
 import * as require$$3$2 from 'zlib';
 import require$$3__default from 'zlib';
 import require$$6$1 from 'string_decoder';
-import require$$0$c from 'diagnostics_channel';
+import require$$0$b from 'diagnostics_channel';
 import require$$2$5, { spawn } from 'child_process';
 import require$$6$2 from 'timers';
 import process$1 from 'process';
-import require$$0$d from 'http2';
+import require$$0$c from 'http2';
 import require$$1$5 from 'dns';
 
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
@@ -153,7 +154,7 @@ function requireCommand () {
 	};
 	Object.defineProperty(command, "__esModule", { value: true });
 	command.issue = command.issueCommand = void 0;
-	const os = __importStar(require$$0$4);
+	const os = __importStar(require$$0__default);
 	const utils_1 = requireUtils$3();
 	/**
 	 * Commands
@@ -261,9 +262,9 @@ function requireFileCommand () {
 	fileCommand.prepareKeyValueMessage = fileCommand.issueFileCommand = void 0;
 	// We use any as a valid input type
 	/* eslint-disable @typescript-eslint/no-explicit-any */
-	const crypto = __importStar(require$$0$5);
-	const fs = __importStar(require$$0__default);
-	const os = __importStar(require$$0$4);
+	const crypto = __importStar(require$$0$4);
+	const fs = __importStar(fs__default);
+	const os = __importStar(require$$0__default);
 	const utils_1 = requireUtils$3();
 	function issueFileCommand(command, message) {
 	    const filePath = process.env[`GITHUB_${command}`];
@@ -415,8 +416,8 @@ function requireTunnel$1 () {
 	var tls = require$$1$2;
 	var http = require$$2__default;
 	var https = https__default;
-	var events = require$$0$7;
-	var util = require$$0$6;
+	var events = require$$0$6;
+	var util = require$$0$5;
 
 
 	tunnel$1.httpOverHttp = httpOverHttp;
@@ -1130,14 +1131,14 @@ function requireUtil$8 () {
 	if (hasRequiredUtil$8) return util$8;
 	hasRequiredUtil$8 = 1;
 
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { kDestroyed, kBodyUsed } = requireSymbols$4();
 	const { IncomingMessage } = require$$2__default;
-	const stream = require$$0$a;
-	const net = require$$0$9;
+	const stream = require$$0$9;
+	const net = require$$0$8;
 	const { InvalidArgumentError } = requireErrors();
 	const { Blob } = require$$7;
-	const nodeUtil = require$$0$6;
+	const nodeUtil = require$$0$5;
 	const { stringify } = require$$8;
 	const { headerNameLowerCasedRecord } = requireConstants$5();
 
@@ -3401,7 +3402,7 @@ function requireConstants$4 () {
 	if (hasRequiredConstants$4) return constants$4;
 	hasRequiredConstants$4 = 1;
 
-	const { MessageChannel, receiveMessageOnPort } = require$$0$b;
+	const { MessageChannel, receiveMessageOnPort } = require$$0$a;
 
 	const corsSafeListedMethods = ['GET', 'HEAD', 'POST'];
 	const corsSafeListedMethodsSet = new Set(corsSafeListedMethods);
@@ -3612,7 +3613,7 @@ function requireUtil$7 () {
 	const { getGlobalOrigin } = requireGlobal$1();
 	const { performance } = require$$2$4;
 	const { isBlobLike, toUSVString, ReadableStreamFrom } = requireUtil$8();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { isUint8Array } = require$$5$1;
 
 	let supportedHashes = [];
@@ -4777,7 +4778,7 @@ function requireWebidl () {
 	if (hasRequiredWebidl) return webidl_1;
 	hasRequiredWebidl = 1;
 
-	const { types } = require$$0$6;
+	const { types } = require$$0$5;
 	const { hasOwn, toUSVString } = requireUtil$7();
 
 	/** @type {import('../../types/webidl').Webidl} */
@@ -5430,7 +5431,7 @@ var hasRequiredDataURL;
 function requireDataURL () {
 	if (hasRequiredDataURL) return dataURL;
 	hasRequiredDataURL = 1;
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { atob } = require$$7;
 	const { isomorphicDecode } = requireUtil$7();
 
@@ -6068,7 +6069,7 @@ function requireFile () {
 	hasRequiredFile = 1;
 
 	const { Blob, File: NativeFile } = require$$7;
-	const { types } = require$$0$6;
+	const { types } = require$$0$5;
 	const { kState } = requireSymbols$3();
 	const { isBlobLike } = requireUtil$7();
 	const { webidl } = requireWebidl();
@@ -6708,7 +6709,7 @@ function requireBody () {
 	const { DOMException, structuredClone } = requireConstants$4();
 	const { Blob, File: NativeFile } = require$$7;
 	const { kBodyUsed } = requireSymbols$4();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { isErrored } = requireUtil$8();
 	const { isUint8Array, isArrayBuffer } = require$$5$1;
 	const { File: UndiciFile } = requireFile();
@@ -7317,7 +7318,7 @@ function requireRequest$1 () {
 	  InvalidArgumentError,
 	  NotSupportedError
 	} = requireErrors();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { kHTTP2BuildRequest, kHTTP2CopyHeaders, kHTTP1BuildRequest } = requireSymbols$4();
 	const util = requireUtil$8();
 
@@ -7820,7 +7821,7 @@ function requireDispatcher () {
 	if (hasRequiredDispatcher) return dispatcher;
 	hasRequiredDispatcher = 1;
 
-	const EventEmitter = require$$0$7;
+	const EventEmitter = require$$0$6;
 
 	class Dispatcher extends EventEmitter {
 	  dispatch () {
@@ -8047,8 +8048,8 @@ function requireConnect () {
 	if (hasRequiredConnect) return connect;
 	hasRequiredConnect = 1;
 
-	const net = require$$0$9;
-	const assert = require$$0$8;
+	const net = require$$0$8;
+	const assert = require$$0$7;
 	const util = requireUtil$8();
 	const { InvalidArgumentError, ConnectTimeoutError } = requireErrors();
 
@@ -8553,9 +8554,9 @@ function requireRedirectHandler () {
 
 	const util = requireUtil$8();
 	const { kBodyUsed } = requireSymbols$4();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { InvalidArgumentError } = requireErrors();
-	const EE = require$$0$7;
+	const EE = require$$0$6;
 
 	const redirectableStatusCodes = [300, 301, 302, 303, 307, 308];
 
@@ -8813,10 +8814,10 @@ function requireClient$1 () {
 
 	/* global WebAssembly */
 
-	const assert = require$$0$8;
-	const net = require$$0$9;
+	const assert = require$$0$7;
+	const net = require$$0$8;
 	const http = require$$2__default;
-	const { pipeline } = require$$0$a;
+	const { pipeline } = require$$0$9;
 	const util = requireUtil$8();
 	const timers = requireTimers();
 	const Request = requireRequest$1();
@@ -11998,8 +11999,8 @@ function requireReadable () {
 	if (hasRequiredReadable) return readable;
 	hasRequiredReadable = 1;
 
-	const assert = require$$0$8;
-	const { Readable } = require$$0$a;
+	const assert = require$$0$7;
+	const { Readable } = require$$0$9;
 	const { RequestAbortedError, NotSupportedError, InvalidArgumentError } = requireErrors();
 	const util = requireUtil$8();
 	const { ReadableStreamFrom, toUSVString } = requireUtil$8();
@@ -12325,7 +12326,7 @@ var hasRequiredUtil$6;
 function requireUtil$6 () {
 	if (hasRequiredUtil$6) return util$6;
 	hasRequiredUtil$6 = 1;
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const {
 	  ResponseStatusCodeError
 	} = requireErrors();
@@ -12631,7 +12632,7 @@ function requireApiStream () {
 	if (hasRequiredApiStream) return apiStream;
 	hasRequiredApiStream = 1;
 
-	const { finished, PassThrough } = require$$0$a;
+	const { finished, PassThrough } = require$$0$9;
 	const {
 	  InvalidArgumentError,
 	  InvalidReturnValueError,
@@ -12863,7 +12864,7 @@ function requireApiPipeline () {
 	  Readable,
 	  Duplex,
 	  PassThrough
-	} = require$$0$a;
+	} = require$$0$9;
 	const {
 	  InvalidArgumentError,
 	  InvalidReturnValueError,
@@ -12872,7 +12873,7 @@ function requireApiPipeline () {
 	const util = requireUtil$8();
 	const { AsyncResource } = require$$4$2;
 	const { addSignal, removeSignal } = requireAbortSignal();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 
 	const kResume = Symbol('resume');
 
@@ -13120,7 +13121,7 @@ function requireApiUpgrade () {
 	const { AsyncResource } = require$$4$2;
 	const util = requireUtil$8();
 	const { addSignal, removeSignal } = requireAbortSignal();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 
 	class UpgradeHandler extends AsyncResource {
 	  constructor (opts, callback) {
@@ -13425,7 +13426,7 @@ function requireMockUtils () {
 	  types: {
 	    isPromise
 	  }
-	} = require$$0$6;
+	} = require$$0$5;
 
 	function matchValue (match, value) {
 	  if (typeof match === 'string') {
@@ -13985,7 +13986,7 @@ function requireMockClient () {
 	if (hasRequiredMockClient) return mockClient;
 	hasRequiredMockClient = 1;
 
-	const { promisify } = require$$0$6;
+	const { promisify } = require$$0$5;
 	const Client = requireClient$1();
 	const { buildMockDispatch } = requireMockUtils();
 	const {
@@ -14052,7 +14053,7 @@ function requireMockPool () {
 	if (hasRequiredMockPool) return mockPool;
 	hasRequiredMockPool = 1;
 
-	const { promisify } = require$$0$6;
+	const { promisify } = require$$0$5;
 	const Pool = requirePool$1();
 	const { buildMockDispatch } = requireMockUtils();
 	const {
@@ -14156,7 +14157,7 @@ function requirePendingInterceptorsFormatter () {
 	if (hasRequiredPendingInterceptorsFormatter) return pendingInterceptorsFormatter;
 	hasRequiredPendingInterceptorsFormatter = 1;
 
-	const { Transform } = require$$0$a;
+	const { Transform } = require$$0$9;
 	const { Console } = require$$1$3;
 
 	/**
@@ -14579,7 +14580,7 @@ var hasRequiredRetryHandler;
 function requireRetryHandler () {
 	if (hasRequiredRetryHandler) return RetryHandler_1;
 	hasRequiredRetryHandler = 1;
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 
 	const { kRetryHandlerDefaultRetry } = requireSymbols$4();
 	const { RequestRetryError } = requireErrors();
@@ -15016,9 +15017,9 @@ function requireHeaders () {
 	  isValidHeaderName,
 	  isValidHeaderValue
 	} = requireUtil$7();
-	const util = require$$0$6;
+	const util = require$$0$5;
 	const { webidl } = requireWebidl();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 
 	const kHeadersMap = Symbol('headers map');
 	const kHeadersSortedMap = Symbol('headers map sorted');
@@ -15624,8 +15625,8 @@ function requireResponse () {
 	const { getGlobalOrigin } = requireGlobal$1();
 	const { URLSerializer } = requireDataURL();
 	const { kHeadersList, kConstruct } = requireSymbols$4();
-	const assert = require$$0$8;
-	const { types } = require$$0$6;
+	const assert = require$$0$7;
+	const { types } = require$$0$5;
 
 	const ReadableStream = globalThis.ReadableStream || require$$14.ReadableStream;
 	const textEncoder = new TextEncoder('utf-8');
@@ -16208,8 +16209,8 @@ function requireRequest () {
 	const { getGlobalOrigin } = requireGlobal$1();
 	const { URLSerializer } = requireDataURL();
 	const { kHeadersList, kConstruct } = requireSymbols$4();
-	const assert = require$$0$8;
-	const { getMaxListeners, setMaxListeners, getEventListeners, defaultMaxListeners } = require$$0$7;
+	const assert = require$$0$7;
+	const { getMaxListeners, setMaxListeners, getEventListeners, defaultMaxListeners } = require$$0$6;
 
 	let TransformStream = globalThis.TransformStream;
 
@@ -17174,7 +17175,7 @@ function requireFetch$1 () {
 	  urlHasHttpsScheme
 	} = requireUtil$7();
 	const { kState, kHeaders, kGuard, kRealm } = requireSymbols$3();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { safelyExtractBody } = requireBody();
 	const {
 	  redirectStatusSet,
@@ -17185,8 +17186,8 @@ function requireFetch$1 () {
 	  DOMException
 	} = requireConstants$4();
 	const { kHeadersList } = requireSymbols$4();
-	const EE = require$$0$7;
-	const { Readable, pipeline } = require$$0$a;
+	const EE = require$$0$6;
+	const { Readable, pipeline } = require$$0$9;
 	const { addAbortListener, isErrored, isReadable, nodeMajor, nodeMinor } = requireUtil$8();
 	const { dataURLProcessor, serializeAMimeType } = requireDataURL();
 	const { TransformStream } = require$$14;
@@ -19626,7 +19627,7 @@ function requireUtil$5 () {
 	const { getEncoding } = requireEncoding();
 	const { DOMException } = requireConstants$4();
 	const { serializeAMimeType, parseMIMEType } = requireDataURL();
-	const { types } = require$$0$6;
+	const { types } = require$$0$5;
 	const { StringDecoder } = require$$6$1;
 	const { btoa } = require$$7;
 
@@ -20380,7 +20381,7 @@ function requireUtil$4 () {
 	if (hasRequiredUtil$4) return util$4;
 	hasRequiredUtil$4 = 1;
 
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { URLSerializer } = requireDataURL();
 	const { isValidHeaderName } = requireUtil$7();
 
@@ -20447,7 +20448,7 @@ function requireCache () {
 	const { kState, kHeaders, kGuard, kRealm } = requireSymbols$3();
 	const { fetching } = requireFetch$1();
 	const { urlIsHttpHttpsScheme, createDeferredPromise, readAllBytes } = requireUtil$7();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 	const { getGlobalDispatcher } = requireGlobal();
 
 	/**
@@ -21740,7 +21741,7 @@ function requireParse$1 () {
 	const { maxNameValuePairSize, maxAttributeValueSize } = requireConstants$2();
 	const { isCTLExcludingHtab } = requireUtil$3();
 	const { collectASequenceOfCodePointsFast } = requireDataURL();
-	const assert = require$$0$8;
+	const assert = require$$0$7;
 
 	/**
 	 * @description Parses the field-value attributes of a set-cookie header string.
@@ -22334,7 +22335,7 @@ function requireEvents () {
 
 	const { webidl } = requireWebidl();
 	const { kEnumerableProperty } = requireUtil$8();
-	const { MessagePort } = require$$0$b;
+	const { MessagePort } = require$$0$a;
 
 	/**
 	 * @see https://html.spec.whatwg.org/multipage/comms.html#messageevent
@@ -22851,7 +22852,7 @@ function requireConnection () {
 	if (hasRequiredConnection) return connection;
 	hasRequiredConnection = 1;
 
-	const diagnosticsChannel = require$$0$c;
+	const diagnosticsChannel = require$$0$b;
 	const { uid, states } = requireConstants$1();
 	const {
 	  kReadyState,
@@ -23231,8 +23232,8 @@ function requireReceiver () {
 	if (hasRequiredReceiver) return receiver;
 	hasRequiredReceiver = 1;
 
-	const { Writable } = require$$0$a;
-	const diagnosticsChannel = require$$0$c;
+	const { Writable } = require$$0$9;
+	const diagnosticsChannel = require$$0$b;
 	const { parserStates, opcodes, states, emptyBuffer } = requireConstants$1();
 	const { kReadyState, kSentClose, kResponse, kReceivedClose } = requireSymbols();
 	const { isValidStatusCode, failWebsocketConnection, websocketMessageReceived } = requireUtil$2();
@@ -23603,7 +23604,7 @@ function requireWebsocket () {
 	const { ByteParser } = requireReceiver();
 	const { kEnumerableProperty, isBlobLike } = requireUtil$8();
 	const { getGlobalDispatcher } = requireGlobal();
-	const { types } = require$$0$6;
+	const { types } = require$$0$5;
 
 	let experimentalWarned = false;
 
@@ -25248,8 +25249,8 @@ function requireSummary () {
 		};
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.summary = exports.markdownSummary = exports.SUMMARY_DOCS_URL = exports.SUMMARY_ENV_VAR = void 0;
-		const os_1 = require$$0$4;
-		const fs_1 = require$$0__default;
+		const os_1 = require$$0__default;
+		const fs_1 = fs__default;
 		const { access, appendFile, writeFile } = fs_1.promises;
 		exports.SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
 		exports.SUMMARY_DOCS_URL = 'https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary';
@@ -25641,7 +25642,7 @@ function requireIoUtil () {
 		var _a;
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.getCmdPath = exports.tryGetExecutablePath = exports.isRooted = exports.isDirectory = exports.exists = exports.READONLY = exports.UV_FS_O_EXLOCK = exports.IS_WINDOWS = exports.unlink = exports.symlink = exports.stat = exports.rmdir = exports.rm = exports.rename = exports.readlink = exports.readdir = exports.open = exports.mkdir = exports.lstat = exports.copyFile = exports.chmod = void 0;
-		const fs = __importStar(require$$0__default);
+		const fs = __importStar(fs__default);
 		const path = __importStar(path__default);
 		_a = fs.promises
 		// export const {open} = 'fs'
@@ -25831,7 +25832,7 @@ function requireIo () {
 	};
 	Object.defineProperty(io, "__esModule", { value: true });
 	io.findInPath = io.which = io.mkdirP = io.rmRF = io.mv = io.cp = void 0;
-	const assert_1 = require$$0$8;
+	const assert_1 = require$$0$7;
 	const path = __importStar(path__default);
 	const ioUtil = __importStar(requireIoUtil());
 	/**
@@ -26137,8 +26138,8 @@ function requireToolrunner () {
 	};
 	Object.defineProperty(toolrunner, "__esModule", { value: true });
 	toolrunner.argStringToArray = toolrunner.ToolRunner = void 0;
-	const os = __importStar(require$$0$4);
-	const events = __importStar(require$$0$7);
+	const os = __importStar(require$$0__default);
+	const events = __importStar(require$$0$6);
 	const child = __importStar(require$$2$5);
 	const path = __importStar(path__default);
 	const io = __importStar(requireIo());
@@ -26880,7 +26881,7 @@ function requirePlatform () {
 		};
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.getDetails = exports.isLinux = exports.isMacOS = exports.isWindows = exports.arch = exports.platform = void 0;
-		const os_1 = __importDefault(require$$0$4);
+		const os_1 = __importDefault(require$$0__default);
 		const exec = __importStar(requireExec());
 		const getWindowsInfo = () => __awaiter(void 0, void 0, void 0, function* () {
 		    const { stdout: version } = yield exec.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Version"', undefined, {
@@ -26983,7 +26984,7 @@ function requireCore () {
 		const command_1 = requireCommand();
 		const file_command_1 = requireFileCommand();
 		const utils_1 = requireUtils$3();
-		const os = __importStar(require$$0$4);
+		const os = __importStar(require$$0__default);
 		const path = __importStar(path__default);
 		const oidc_utils_1 = requireOidcUtils();
 		/**
@@ -27306,8 +27307,8 @@ function requireContext () {
 	hasRequiredContext = 1;
 	Object.defineProperty(context$1, "__esModule", { value: true });
 	context$1.Context = void 0;
-	const fs_1 = require$$0__default;
-	const os_1 = require$$0$4;
+	const fs_1 = fs__default;
+	const os_1 = require$$0__default;
 	class Context {
 	    /**
 	     * Hydrate the context from the environment
@@ -32962,9 +32963,9 @@ function requireManifest () {
 		const core_1 = requireCore();
 		// needs to be require for core node modules to be mocked
 		/* eslint @typescript-eslint/no-require-imports: 0 */
-		const os = require$$0$4;
+		const os = require$$0__default;
 		const cp = require$$2$5;
-		const fs = require$$0__default;
+		const fs = fs__default;
 		function _findMatch(versionSpec, stable, candidates, archFilter) {
 		    return __awaiter(this, void 0, void 0, function* () {
 		        const platFilter = os.platform();
@@ -33193,16 +33194,16 @@ function requireToolCache () {
 	toolCache.evaluateVersions = toolCache.isExplicitVersion = toolCache.findFromManifest = toolCache.getManifestFromRepo = toolCache.findAllVersions = toolCache.find = toolCache.cacheFile = toolCache.cacheDir = toolCache.extractZip = toolCache.extractXar = toolCache.extractTar = toolCache.extract7z = toolCache.downloadTool = toolCache.HTTPError = void 0;
 	const core = __importStar(requireCore());
 	const io = __importStar(requireIo());
-	const crypto = __importStar(require$$0$5);
-	const fs = __importStar(require$$0__default);
+	const crypto = __importStar(require$$0$4);
+	const fs = __importStar(fs__default);
 	const mm = __importStar(requireManifest());
-	const os = __importStar(require$$0$4);
+	const os = __importStar(require$$0__default);
 	const path = __importStar(path__default);
 	const httpm = __importStar(requireLib());
 	const semver = __importStar(requireSemver());
-	const stream = __importStar(require$$0$a);
-	const util = __importStar(require$$0$6);
-	const assert_1 = require$$0$8;
+	const stream = __importStar(require$$0$9);
+	const util = __importStar(require$$0$5);
+	const assert_1 = require$$0$7;
 	const exec_1 = requireExec();
 	const retry_helper_1 = requireRetryHelper();
 	class HTTPError extends Error {
@@ -33837,7 +33838,7 @@ async function setupJavaAgent(version, inject) {
     const cacheVersion = version === 'latest' ? 'latest' : version;
     let dir = toolCacheExports.find('opentelemetry-javaagent', cacheVersion);
     let jar = dir ? path$1.join(dir, 'opentelemetry-javaagent.jar') : '';
-    if (!jar || !require$$0$3.existsSync(jar)) {
+    if (!jar || !fs.existsSync(jar)) {
         const url = version === 'latest'
             ? `${JAVA_RELEASES}/latest/download/opentelemetry-javaagent.jar`
             : `${JAVA_RELEASES}/download/v${version}/opentelemetry-javaagent.jar`;
@@ -33871,8 +33872,8 @@ async function setupNodeAgent(inject) {
     if (!dir) {
         const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp';
         const installDir = path$1.join(tmp, 'otel-node-instrumentation');
-        require$$0$3.mkdirSync(installDir, { recursive: true });
-        require$$0$3.writeFileSync(path$1.join(installDir, 'package.json'), JSON.stringify({ name: 'otel-node-bootstrap', private: true }));
+        fs.mkdirSync(installDir, { recursive: true });
+        fs.writeFileSync(path$1.join(installDir, 'package.json'), JSON.stringify({ name: 'otel-node-bootstrap', private: true }));
         await execExports.exec('npm', ['install', '--no-audit', '--no-fund', `${pkg}@${version}`], { cwd: installDir });
         dir = await toolCacheExports.cacheDir(installDir, 'otel-node-instrumentation', version);
     }
@@ -34632,7 +34633,7 @@ function requireTlsHelpers () {
 	Object.defineProperty(tlsHelpers, "__esModule", { value: true });
 	tlsHelpers.CIPHER_SUITES = void 0;
 	tlsHelpers.getDefaultRootsData = getDefaultRootsData;
-	const fs = require$$0__default;
+	const fs = fs__default;
 	tlsHelpers.CIPHER_SUITES = process.env.GRPC_SSL_CIPHER_SUITES;
 	const DEFAULT_ROOTS_FILE_PATH = process.env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH;
 	let defaultRootsData = null;
@@ -35483,7 +35484,7 @@ function requireServiceConfig () {
 	/* The any type is purposely used here. All functions validate their input at
 	 * runtime */
 	/* eslint-disable @typescript-eslint/no-explicit-any */
-	const os = require$$0$4;
+	const os = require$$0__default;
 	const constants_1 = requireConstants();
 	/**
 	 * Recognizes a number with up to 9 digits after the decimal point, followed by
@@ -36807,7 +36808,7 @@ function requireSubchannelAddress () {
 	subchannelAddress.endpointEqual = endpointEqual;
 	subchannelAddress.endpointToString = endpointToString;
 	subchannelAddress.endpointHasAddress = endpointHasAddress;
-	const net_1 = require$$0$9;
+	const net_1 = require$$0$8;
 	function isTcpSubchannelAddress(address) {
 	    return 'port' in address;
 	}
@@ -38037,8 +38038,8 @@ function requireCall () {
 	Object.defineProperty(call, "__esModule", { value: true });
 	call.ClientDuplexStreamImpl = call.ClientWritableStreamImpl = call.ClientReadableStreamImpl = call.ClientUnaryCallImpl = void 0;
 	call.callErrorFromStatus = callErrorFromStatus;
-	const events_1 = require$$0$7;
-	const stream_1 = require$$0$a;
+	const events_1 = require$$0$6;
+	const stream_1 = require$$0$9;
 	const constants_1 = requireConstants();
 	/**
 	 * Construct a ServiceError from a StatusObject. This function exists primarily
@@ -54623,7 +54624,7 @@ function requireUtil () {
 	 */
 	Object.defineProperty(util, "__esModule", { value: true });
 	util.addCommonProtos = util.loadProtosWithOptionsSync = util.loadProtosWithOptions = void 0;
-	const fs = require$$0__default;
+	const fs = fs__default;
 	const path = path__default;
 	const Protobuf = requireProtobufjs();
 	function addIncludePathResolver(root, includePaths) {
@@ -54977,7 +54978,7 @@ function requireChannelz () {
 	channelz.getChannelzHandlers = getChannelzHandlers;
 	channelz.getChannelzServiceDefinition = getChannelzServiceDefinition;
 	channelz.setup = setup;
-	const net_1 = require$$0$9;
+	const net_1 = require$$0$8;
 	const ordered_map_1 = require$$1$1;
 	const connectivity_state_1 = requireConnectivityState();
 	const constants_1 = requireConstants();
@@ -56973,7 +56974,7 @@ function requireResolverDns () {
 		const logging = requireLogging();
 		const constants_2 = requireConstants();
 		const uri_parser_1 = requireUriParser();
-		const net_1 = require$$0$9;
+		const net_1 = require$$0$8;
 		const backoff_timeout_1 = requireBackoffTimeout();
 		const environment_1 = requireEnvironment();
 		const TRACER_NAME = 'dns_resolver';
@@ -57339,7 +57340,7 @@ function requireHttp_proxy () {
 	http_proxy.getProxiedConnection = getProxiedConnection;
 	const logging_1 = requireLogging();
 	const constants_1 = requireConstants();
-	const net_1 = require$$0$9;
+	const net_1 = require$$0$8;
 	const http = require$$2__default;
 	const logging = requireLogging();
 	const subchannel_address_1 = requireSubchannelAddress();
@@ -57727,8 +57728,8 @@ function requireSubchannelCall () {
 	 */
 	Object.defineProperty(subchannelCall, "__esModule", { value: true });
 	subchannelCall.Http2SubchannelCall = void 0;
-	const http2 = require$$0$d;
-	const os = require$$0$4;
+	const http2 = require$$0$c;
+	const os = require$$0__default;
 	const constants_1 = requireConstants();
 	const metadata_1 = requireMetadata();
 	const stream_decoder_1 = requireStreamDecoder();
@@ -58279,7 +58280,7 @@ function requireTransport () {
 	 */
 	Object.defineProperty(transport, "__esModule", { value: true });
 	transport.Http2SubchannelConnector = void 0;
-	const http2 = require$$0$d;
+	const http2 = require$$0$c;
 	const tls_1 = require$$1$2;
 	const channelz_1 = requireChannelz();
 	const constants_1 = requireConstants();
@@ -58288,7 +58289,7 @@ function requireTransport () {
 	const resolver_1 = requireResolver();
 	const subchannel_address_1 = requireSubchannelAddress();
 	const uri_parser_1 = requireUriParser();
-	const net = require$$0$9;
+	const net = require$$0$8;
 	const subchannel_call_1 = requireSubchannelCall();
 	const call_number_1 = requireCallNumber();
 	const TRACER_NAME = 'transport';
@@ -59080,7 +59081,7 @@ function requireLoadBalancingCall () {
 	const uri_parser_1 = requireUriParser();
 	const logging = requireLogging();
 	const control_plane_status_1 = requireControlPlaneStatus();
-	const http2 = require$$0$d;
+	const http2 = require$$0$c;
 	const TRACER_NAME = 'load_balancing_call';
 	class LoadBalancingCall {
 	    constructor(channel, callConfig, methodName, host, credentials, deadline, callNumber) {
@@ -61256,8 +61257,8 @@ function requireServerCall () {
 	Object.defineProperty(serverCall, "__esModule", { value: true });
 	serverCall.ServerDuplexStreamImpl = serverCall.ServerWritableStreamImpl = serverCall.ServerReadableStreamImpl = serverCall.ServerUnaryCallImpl = void 0;
 	serverCall.serverErrorToStatus = serverErrorToStatus;
-	const events_1 = require$$0$7;
-	const stream_1 = require$$0$a;
+	const events_1 = require$$0$6;
+	const stream_1 = require$$0$9;
 	const constants_1 = requireConstants();
 	const metadata_1 = requireMetadata();
 	function serverErrorToStatus(error, overrideTrailers) {
@@ -62230,7 +62231,7 @@ function requireServerInterceptors () {
 	serverInterceptors.getServerInterceptingCall = getServerInterceptingCall;
 	const metadata_1 = requireMetadata();
 	const constants_1 = requireConstants();
-	const http2 = require$$0$d;
+	const http2 = require$$0$c;
 	const error_1 = requireError();
 	const zlib = require$$3__default;
 	const stream_decoder_1 = requireStreamDecoder();
@@ -63083,8 +63084,8 @@ function requireServer () {
 	};
 	Object.defineProperty(server, "__esModule", { value: true });
 	server.Server = void 0;
-	const http2 = require$$0$d;
-	const util = require$$0$6;
+	const http2 = require$$0$c;
+	const util = require$$0$5;
 	const constants_1 = requireConstants();
 	const server_call_1 = requireServerCall();
 	const server_credentials_1 = requireServerCredentials();
@@ -64768,7 +64769,7 @@ function requireLoadBalancerPickFirst () {
 	const logging = requireLogging();
 	const constants_1 = requireConstants();
 	const subchannel_address_2 = requireSubchannelAddress();
-	const net_1 = require$$0$9;
+	const net_1 = require$$0$8;
 	const call_interface_1 = requireCallInterface();
 	const TRACER_NAME = 'pick_first';
 	function trace(text) {
@@ -65282,10 +65283,10 @@ function requireCertificateProvider () {
 	 */
 	Object.defineProperty(certificateProvider, "__esModule", { value: true });
 	certificateProvider.FileWatcherCertificateProvider = void 0;
-	const fs = require$$0__default;
+	const fs = fs__default;
 	const logging = requireLogging();
 	const constants_1 = requireConstants();
-	const util_1 = require$$0$6;
+	const util_1 = require$$0$5;
 	const TRACER_NAME = 'certificate_provider';
 	function trace(text) {
 	    logging.trace(constants_1.LogVerbosity.DEBUG, TRACER_NAME, text);
@@ -65558,7 +65559,7 @@ function requireResolverIp () {
 	 */
 	Object.defineProperty(resolverIp, "__esModule", { value: true });
 	resolverIp.setup = setup;
-	const net_1 = require$$0$9;
+	const net_1 = require$$0$8;
 	const call_interface_1 = requireCallInterface();
 	const constants_1 = requireConstants();
 	const metadata_1 = requireMetadata();
@@ -72874,7 +72875,7 @@ function requireOtlpGrpcEnvConfiguration () {
 	const core_1 = require$$0$1;
 	const grpc_exporter_transport_1 = /*@__PURE__*/ requireGrpcExporterTransport();
 	const node_http_1 = require$$2;
-	const fs = require$$0__default;
+	const fs = fs__default;
 	const path = path__default;
 	const api_1 = require$$0$2;
 	function fallbackIfNullishOrBlank(signalSpecific, nonSignalSpecific) {
@@ -87121,8 +87122,8 @@ async function startCollector(version, endpoint, rawHeaders, serviceName) {
     const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp';
     const configPath = path$1.join(tmp, 'otel-collect-config.yaml');
     const logPath = path$1.join(tmp, 'otel-collect-collector.log');
-    require$$0$3.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName));
-    const out = require$$0$3.openSync(logPath, 'a');
+    fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName));
+    const out = fs.openSync(logPath, 'a');
     const child = spawn(bin, ['--config', configPath], {
         detached: true,
         stdio: ['ignore', out, out]
@@ -87266,6 +87267,138 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
     return spans;
 }
 
+/**
+ * A Gradle init script (auto-applied from $GRADLE_USER_HOME/init.d) that traces
+ * the build itself: a span per task and a span per JUnit test, parented under the
+ * GitHub step span via the TRACEPARENT env var, exported over OTLP/gRPC.
+ *
+ * It runs in the Gradle daemon JVM — NOT the forked test workers — so it does not
+ * touch the application-under-test's OpenTelemetry (no resetForTest conflict).
+ * Everything is read from the OTEL_* / TRACEPARENT env the action already exports,
+ * so the script is fully static.
+ */
+const INIT_SCRIPT = String.raw `import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.SpanKind
+import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
+import io.opentelemetry.context.Context
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.sdk.resources.Resource
+import io.opentelemetry.sdk.trace.SdkTracerProvider
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+
+initscript {
+  repositories { mavenCentral() }
+  dependencies {
+    classpath "io.opentelemetry:opentelemetry-sdk:1.43.0"
+    classpath "io.opentelemetry:opentelemetry-exporter-otlp:1.43.0"
+  }
+}
+
+def endpoint = System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+if (endpoint == null || endpoint.trim().isEmpty()) {
+  return
+}
+
+def serviceName = System.getenv("OTEL_SERVICE_NAME") ?: "gradle-build"
+def traceparent = System.getenv("TRACEPARENT")
+def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
+
+def exporterBuilder = OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)
+headersEnv.split(",").each { pair ->
+  def t = pair.trim()
+  if (!t.isEmpty()) {
+    def idx = t.indexOf("=")
+    if (idx > 0) exporterBuilder.addHeader(t.substring(0, idx).trim(), t.substring(idx + 1).trim())
+  }
+}
+def exporter = exporterBuilder.build()
+
+def resource = Resource.getDefault().merge(
+  Resource.create(Attributes.builder().put("service.name", serviceName).build()))
+
+def tracerProvider = SdkTracerProvider.builder()
+  .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
+  .setResource(resource)
+  .build()
+def tracer = tracerProvider.get("kestra-otel-collect-gradle")
+
+// Nest the build under the GitHub step span carried in TRACEPARENT.
+def parentContext = Context.root()
+if (traceparent != null && traceparent.startsWith("00-")) {
+  def p = traceparent.split("-")
+  if (p.length >= 3) {
+    def sc = SpanContext.createFromRemoteParent(p[1], p[2], TraceFlags.getSampled(), TraceState.getDefault())
+    parentContext = Context.root().with(Span.wrap(sc))
+  }
+}
+
+def buildSpan = tracer.spanBuilder("gradle " + gradle.startParameter.taskNames.join(" "))
+  .setParent(parentContext).setSpanKind(SpanKind.INTERNAL).startSpan()
+def buildContext = parentContext.with(buildSpan)
+
+def taskStarts = new ConcurrentHashMap<String, Long>()
+gradle.taskGraph.beforeTask { task -> taskStarts.put(task.path, System.currentTimeMillis()) }
+gradle.taskGraph.afterTask { task ->
+  def start = taskStarts.remove(task.path)
+  if (start == null) return
+  def span = tracer.spanBuilder(task.path).setParent(buildContext)
+    .setStartTimestamp(Instant.ofEpochMilli(start)).startSpan()
+  span.setAttribute("gradle.task.path", task.path)
+  span.setAttribute("gradle.task.did_work", task.state.didWork)
+  def failure = task.state.failure
+  if (failure != null) span.setStatus(StatusCode.ERROR, String.valueOf(failure.message))
+  span.end(Instant.now())
+}
+
+// A span per JUnit test, from Gradle's own test events.
+allprojects { prj ->
+  prj.tasks.withType(Test).configureEach { testTask ->
+    testTask.afterTest { desc, result ->
+      def name = (desc.className ? desc.className + "#" : "") + desc.name
+      def span = tracer.spanBuilder(name).setParent(buildContext)
+        .setStartTimestamp(Instant.ofEpochMilli(result.startTime)).startSpan()
+      span.setAttribute("test.class", String.valueOf(desc.className))
+      span.setAttribute("test.name", String.valueOf(desc.name))
+      span.setAttribute("test.result", String.valueOf(result.resultType))
+      if (result.resultType.toString() == "FAILURE") {
+        def ex = result.exception
+        span.setStatus(StatusCode.ERROR, ex != null ? String.valueOf(ex.message) : "test failed")
+      }
+      span.end(Instant.ofEpochMilli(result.endTime))
+    }
+  }
+}
+
+gradle.buildFinished {
+  buildSpan.end()
+  tracerProvider.forceFlush().join(30, TimeUnit.SECONDS)
+  tracerProvider.shutdown().join(10, TimeUnit.SECONDS)
+}
+`;
+/** Resolve the Gradle user home the build will use (matches the default the runner uses). */
+function gradleUserHome() {
+    return process.env.GRADLE_USER_HOME || path$1.join(require$$0$3.homedir(), '.gradle');
+}
+/**
+ * Install the tracing init script into $GRADLE_USER_HOME/init.d so every later
+ * `gradle`/`./gradlew` invocation in the job is traced without any build.gradle change.
+ */
+function installGradleInitScript() {
+    const initDir = path$1.join(gradleUserHome(), 'init.d');
+    fs.mkdirSync(initDir, { recursive: true });
+    const scriptPath = path$1.join(initDir, 'otel-collect.gradle');
+    fs.writeFileSync(scriptPath, INIT_SCRIPT);
+    coreExports.info(`Installed Gradle tracing init script: ${scriptPath}`);
+    return scriptPath;
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function listJobs(octokit, owner, repo, runId, runAttempt) {
     const jobs = (await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRunAttempt, {
@@ -87316,6 +87449,7 @@ function readInputs() {
         injectJavaAgent: coreExports.getBooleanInput('inject-java-agent'),
         injectNodeAgent: coreExports.getBooleanInput('inject-node-agent'),
         hostMetricsEnabled: coreExports.getBooleanInput('host-metrics-enabled'),
+        gradleTracingEnabled: coreExports.getBooleanInput('gradle-tracing-enabled'),
         parentStepName: coreExports.getInput('parent-step-name'),
         collectorVersion: coreExports.getInput('collector-version'),
         javaAgentVersion: coreExports.getInput('java-agent-version'),
@@ -87370,6 +87504,9 @@ async function main(inputs) {
     if (inputs.nodeEnabled) {
         const register = await setupNodeAgent(inputs.injectNodeAgent);
         coreExports.setOutput('node-agent-path', register);
+    }
+    if (inputs.gradleTracingEnabled) {
+        installGradleInitScript();
     }
     if (inputs.hostMetricsEnabled) {
         await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs));

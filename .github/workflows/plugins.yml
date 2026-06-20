@@ -103,6 +103,7 @@ jobs:
           java-enabled: 'true'
           inject-java-agent: 'true'
           host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
           parent-step-name: 'Test - Gradle Check'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 

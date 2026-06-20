@@ -109,6 +109,7 @@ jobs:
 | `inject-java-agent` | `false` | Also inject the Java agent via `JAVA_TOOL_OPTIONS`. **Do not** enable for apps that manage their own OpenTelemetry (e.g. Kestra) — see caveat below |
 | `inject-node-agent` | `false` | Also inject the Node auto-instrumentation via `NODE_OPTIONS` / `NODE_PATH`. Same caveat as above |
 | `host-metrics-enabled` | `true` | Run the background host-metrics collector |
+| `gradle-tracing-enabled` | `false` | Install a Gradle init script emitting a span per task and per JUnit test, nested under the step span (gRPC). Daemon-side, so no conflict with the app's own OpenTelemetry — this is how you get **per-test drill-down** |
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
 | `collector-version` | `0.114.0` | `otelcol-contrib` version |
 | `java-agent-version` | `latest` | `opentelemetry-javaagent` version |

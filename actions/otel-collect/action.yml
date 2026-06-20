@@ -59,6 +59,15 @@ inputs:
     required: false
     default: 'true'
 
+  gradle-tracing-enabled:
+    description: >
+      Install a Gradle init script that emits a span per Gradle task and per JUnit test, nested under the
+      GitHub step span (via TRACEPARENT) and exported over OTLP/gRPC. Runs in the Gradle daemon, so it does
+      not conflict with an application that manages its own OpenTelemetry. Gives test-level drill-down without
+      injecting the Java agent into the test workers.
+    required: false
+    default: 'false'
+
   parent-step-name:
     description: >
       Name of the workflow step the build runs in. Live build spans (gradle/junit/node) will nest
