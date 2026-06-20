@@ -86998,16 +86998,22 @@ function buildSpan(input, resource) {
     return span;
 }
 /**
- * Normalize an OTLP endpoint for gRPC: strip the http(s) scheme and ensure a
- * port (default 443 for TLS, 4317 for plaintext). Returns {target, secure}.
+ * Normalize an OTLP endpoint for gRPC: strip the http(s) scheme and any signal
+ * path (gRPC endpoints must be base URLs — a "/v1/traces" path is rejected), then
+ * ensure a port (443 for TLS, 4317 for plaintext). Returns {target, secure}.
  */
 function grpcTarget(endpoint) {
     const secure = !endpoint.startsWith('http://');
-    let host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    let host = endpoint.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!/:\d+$/.test(host)) {
         host = `${host}:${secure ? 443 : 4317}`;
     }
     return { target: host, secure };
+}
+/** Base OTLP endpoint (scheme + host[:port], no signal path) for OTEL_EXPORTER_OTLP_ENDPOINT. */
+function baseEndpoint(endpoint) {
+    const { target, secure } = grpcTarget(endpoint);
+    return `${secure ? 'https' : 'http'}://${target}`;
 }
 /** Export the spans over OTLP/gRPC and flush. */
 async function exportSpans(spans, endpoint, headers, timeoutMs = 15000) {
@@ -87345,7 +87351,9 @@ async function main(inputs) {
         coreExports.exportVariable('TRACEPARENT', traceparent);
         coreExports.setOutput('traceparent', traceparent);
     }
-    coreExports.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', inputs.otlpEndpoint);
+    // gRPC requires a base endpoint with no signal path ("/v1/traces" is rejected),
+    // so normalize whatever endpoint was provided before handing it to child agents.
+    coreExports.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', baseEndpoint(inputs.otlpEndpoint));
     if (inputs.otlpHeaders)
         coreExports.exportVariable('OTEL_EXPORTER_OTLP_HEADERS', inputs.otlpHeaders);
     // Match the gRPC transport the post-hoc exporter and collector use, so an injected

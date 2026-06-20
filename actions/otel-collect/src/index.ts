@@ -4,7 +4,7 @@ import { setupJavaAgent, setupNodeAgent } from './agents.js'
 import { startCollector, stopCollector } from './collector.js'
 import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { buildResource, exportSpans, parseHeaders } from './otlp.js'
+import { baseEndpoint, buildResource, exportSpans, parseHeaders } from './otlp.js'
 import { listJobs, resolveJobId, type WorkflowJob } from './resolve-job.js'
 
 const STARTED_STATE = 'otel-collect-started'
@@ -77,7 +77,9 @@ async function main(inputs: Inputs): Promise<void> {
     core.exportVariable('TRACEPARENT', traceparent)
     core.setOutput('traceparent', traceparent)
   }
-  core.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', inputs.otlpEndpoint)
+  // gRPC requires a base endpoint with no signal path ("/v1/traces" is rejected),
+  // so normalize whatever endpoint was provided before handing it to child agents.
+  core.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', baseEndpoint(inputs.otlpEndpoint))
   if (inputs.otlpHeaders) core.exportVariable('OTEL_EXPORTER_OTLP_HEADERS', inputs.otlpHeaders)
   // Match the gRPC transport the post-hoc exporter and collector use, so an injected
   // agent talks to the same (gRPC) endpoint instead of defaulting to http/protobuf.

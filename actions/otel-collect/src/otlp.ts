@@ -91,16 +91,23 @@ export function buildSpan(input: SpanInput, resource: Resource): ReadableSpan {
 }
 
 /**
- * Normalize an OTLP endpoint for gRPC: strip the http(s) scheme and ensure a
- * port (default 443 for TLS, 4317 for plaintext). Returns {target, secure}.
+ * Normalize an OTLP endpoint for gRPC: strip the http(s) scheme and any signal
+ * path (gRPC endpoints must be base URLs — a "/v1/traces" path is rejected), then
+ * ensure a port (443 for TLS, 4317 for plaintext). Returns {target, secure}.
  */
 export function grpcTarget(endpoint: string): { target: string; secure: boolean } {
   const secure = !endpoint.startsWith('http://')
-  let host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  let host = endpoint.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
   if (!/:\d+$/.test(host)) {
     host = `${host}:${secure ? 443 : 4317}`
   }
   return { target: host, secure }
+}
+
+/** Base OTLP endpoint (scheme + host[:port], no signal path) for OTEL_EXPORTER_OTLP_ENDPOINT. */
+export function baseEndpoint(endpoint: string): string {
+  const { target, secure } = grpcTarget(endpoint)
+  return `${secure ? 'https' : 'http'}://${target}`
 }
 
 /** Export the spans over OTLP/gRPC and flush. */
