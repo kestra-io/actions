@@ -87348,6 +87348,9 @@ async function main(inputs) {
     coreExports.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', inputs.otlpEndpoint);
     if (inputs.otlpHeaders)
         coreExports.exportVariable('OTEL_EXPORTER_OTLP_HEADERS', inputs.otlpHeaders);
+    // Match the gRPC transport the post-hoc exporter and collector use, so an injected
+    // agent talks to the same (gRPC) endpoint instead of defaulting to http/protobuf.
+    coreExports.exportVariable('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc');
     coreExports.exportVariable('OTEL_PROPAGATORS', 'tracecontext,baggage');
     coreExports.exportVariable('OTEL_TRACES_SAMPLER', 'parentbased_always_on');
     coreExports.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs));

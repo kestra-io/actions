@@ -88,11 +88,11 @@ jobs:
           # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
           java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
-
-      # Setup OpenTelemetry: root span context + background host-metrics collector.
-      # We intentionally do NOT inject the Java agent into the build: Kestra manages
-      # its own OpenTelemetry and the agent would hijack the global instance, breaking
-      # tests that call resetForTest(). Step spans + host metrics are captured regardless.
+  
+      # Setup OpenTelemetry: root span context, background host-metrics collector, and
+      # inject the Java agent so the Gradle build + JUnit tests nest under the build step.
+      # MICRONAUT_OTEL_ENABLED=true (set on the Gradle step) makes Kestra defer to the
+      # agent's global OpenTelemetry instead of fighting it, avoiding the resetForTest() conflict.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@feat/otel-collect-action
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -100,7 +100,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          java-enabled: 'true'
+          inject-java-agent: 'true'
           host-metrics-enabled: 'true'
+          parent-step-name: 'Test - Gradle Check'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Setup for setup-unit.sh, injecting secrets as env variables
@@ -135,6 +138,9 @@ jobs:
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
+          # Let Kestra/Micronaut use the injected agent's OpenTelemetry instead of
+          # managing (and resetting) its own, which conflicts with the agent.
+          MICRONAUT_OTEL_ENABLED: ${{ env.OTLP_ENDPOINT != '' && 'true' || 'false' }}
 
       # Cleanup unit tests environment
       - name: Cleanup - Unit test
