@@ -1,0 +1,77 @@
+name: OTel Collect
+description: Capture OpenTelemetry metrics, traces and logs for a complete GitHub Actions workflow run
+
+runs:
+  using: node20
+  main: dist/index.js
+  post: dist/index.js
+
+inputs:
+  github-token:
+    description: The github token used to query the workflow jobs and steps
+    required: true
+
+  otlp-endpoint:
+    description: The OTLP endpoint to export telemetry to (e.g. https://otlp.kestra.io)
+    required: true
+
+  otlp-headers:
+    description: Comma separated OTLP headers (e.g. "authorization=Bearer xyz,x-tenant=foo")
+    required: false
+    default: ''
+
+  mode:
+    description: >
+      "instrument" (default) sets up the root span, agents and host metrics inside a job and
+      exports that job's step spans on post. "export-all" reconstructs and exports the whole
+      workflow tree (use it in a final job with needs:[...] and if: always()).
+    required: false
+    default: 'instrument'
+
+  java-enabled:
+    description: Download & cache the OpenTelemetry Java agent and auto-inject it via JAVA_TOOL_OPTIONS
+    required: false
+    default: 'false'
+
+  node-enabled:
+    description: Download & cache the OpenTelemetry Node auto-instrumentation and auto-inject it via NODE_OPTIONS
+    required: false
+    default: 'false'
+
+  host-metrics-enabled:
+    description: Start a background otelcol-contrib collector capturing host metrics (cpu/memory/network/io)
+    required: false
+    default: 'true'
+
+  parent-step-name:
+    description: >
+      Name of the workflow step the build runs in. Live build spans (gradle/junit/node) will nest
+      under this step's span for real drill-down. If empty, they nest under the job span. The name
+      must be unique within the job.
+    required: false
+    default: ''
+
+  collector-version:
+    description: The otelcol-contrib version to download
+    required: false
+    default: '0.114.0'
+
+  java-agent-version:
+    description: The opentelemetry-javaagent version to download (or "latest")
+    required: false
+    default: 'latest'
+
+  service-name:
+    description: The service.name resource attribute for emitted telemetry
+    required: false
+    default: ''
+
+outputs:
+  java-agent-path:
+    description: Absolute path to the downloaded opentelemetry-javaagent.jar
+  node-agent-path:
+    description: Path to the Node auto-instrumentation register module
+  traceparent:
+    description: The W3C traceparent exported for child-process auto-instrumentation
+  trace-id:
+    description: The deterministic trace id for this workflow run
