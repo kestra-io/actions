@@ -87298,6 +87298,10 @@ initscript {
   dependencies {
     classpath "io.opentelemetry:opentelemetry-sdk:1.43.0"
     classpath "io.opentelemetry:opentelemetry-exporter-otlp:1.43.0"
+    // OtlpGrpcSpanExporter references io.grpc.ManagedChannel (deprecated setChannel),
+    // so grpc-api must be on the classpath to load the class even though the actual
+    // transport goes over the bundled okhttp sender.
+    classpath "io.grpc:grpc-api:1.68.1"
   }
 }
 
