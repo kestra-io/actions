@@ -36576,7 +36576,8 @@ function readInputs() {
         mode: coreExports.getInput('mode') || 'instrument',
         javaEnabled: coreExports.getBooleanInput('java-enabled'),
         nodeEnabled: coreExports.getBooleanInput('node-enabled'),
-        injectAgent: coreExports.getBooleanInput('inject-agent'),
+        injectJavaAgent: coreExports.getBooleanInput('inject-java-agent'),
+        injectNodeAgent: coreExports.getBooleanInput('inject-node-agent'),
         hostMetricsEnabled: coreExports.getBooleanInput('host-metrics-enabled'),
         parentStepName: coreExports.getInput('parent-step-name'),
         collectorVersion: coreExports.getInput('collector-version'),
@@ -36621,11 +36622,11 @@ async function main(inputs) {
     coreExports.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs));
     coreExports.setOutput('trace-id', tId);
     if (inputs.javaEnabled) {
-        const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectAgent);
+        const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent);
         coreExports.setOutput('java-agent-path', jar);
     }
     if (inputs.nodeEnabled) {
-        const register = await setupNodeAgent(inputs.injectAgent);
+        const register = await setupNodeAgent(inputs.injectNodeAgent);
         coreExports.setOutput('node-agent-path', register);
     }
     if (inputs.hostMetricsEnabled) {

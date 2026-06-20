@@ -102,7 +102,8 @@ jobs:
 | `mode` | `instrument` | `instrument` (per-job) or `export-all` (whole workflow) |
 | `java-enabled` | `false` | Download the Java agent (path via `java-agent-path` output) |
 | `node-enabled` | `false` | Install the Node auto-instrumentation (path via `node-agent-path` output) |
-| `inject-agent` | `false` | Also inject the agents via `JAVA_TOOL_OPTIONS` / `NODE_OPTIONS`. **Do not** enable for apps that manage their own OpenTelemetry (e.g. Kestra) — see caveat below |
+| `inject-java-agent` | `false` | Also inject the Java agent via `JAVA_TOOL_OPTIONS`. **Do not** enable for apps that manage their own OpenTelemetry (e.g. Kestra) — see caveat below |
+| `inject-node-agent` | `false` | Also inject the Node auto-instrumentation via `NODE_OPTIONS` / `NODE_PATH`. Same caveat as above |
 | `host-metrics-enabled` | `true` | Run the background host-metrics collector |
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
 | `collector-version` | `0.114.0` | `otelcol-contrib` version |
@@ -130,14 +131,16 @@ npm run build     # bundles src/ into the committed dist/index.js
 changing `src/`.
 
 > **Do not inject the agent into apps that own their OpenTelemetry.** With
-> `inject-agent: true` the Java agent is added to `JAVA_TOOL_OPTIONS` for *every*
-> JVM in the job, including Gradle's forked test workers. If the app under test
-> manages its own OpenTelemetry (Kestra does), the agent takes over the global
+> `inject-java-agent: true` the Java agent is added to `JAVA_TOOL_OPTIONS` for
+> *every* JVM in the job, including Gradle's forked test workers (the Node agent
+> behaves the same via `inject-node-agent`). If the app under test manages its
+> own OpenTelemetry (Kestra does), the agent takes over the global
 > `OpenTelemetry` instance, so `GlobalOpenTelemetry.resetForTest()` becomes a
 > no-op and test state leaks across tests — breaking otherwise-green builds. Keep
-> `inject-agent` at its default `false` for Kestra/plugin builds; you still get
-> the workflow step spans and host metrics. Only enable injection for services
-> that do **not** configure OpenTelemetry themselves.
+> `inject-java-agent` / `inject-node-agent` at their default `false` for
+> Kestra/plugin builds; you still get the workflow step spans and host metrics.
+> Only enable injection for services that do **not** configure OpenTelemetry
+> themselves.
 >
 > **Note on the Java agent root span.** Even where injection is safe, the agent
 > does not adopt the env `TRACEPARENT` as the JVM root parent by default — if you

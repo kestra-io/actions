@@ -38,12 +38,19 @@ inputs:
     required: false
     default: 'false'
 
-  inject-agent:
+  inject-java-agent:
     description: >
-      Auto-inject the downloaded agents into every JVM/Node process via JAVA_TOOL_OPTIONS / NODE_OPTIONS.
-      Leave 'false' (default) for apps that manage their own OpenTelemetry (e.g. Kestra) — the agent would
-      hijack the global OpenTelemetry and break tests that call resetForTest(). When 'false' the action only
-      exposes the agent paths as outputs so the caller can inject them where it is safe.
+      Auto-inject the Java agent into every JVM via JAVA_TOOL_OPTIONS. Leave 'false' (default) for apps that
+      manage their own OpenTelemetry (e.g. Kestra) — the agent would hijack the global OpenTelemetry and break
+      tests that call resetForTest(). When 'false' the action only exposes java-agent-path as an output.
+    required: false
+    default: 'false'
+
+  inject-node-agent:
+    description: >
+      Auto-inject the Node auto-instrumentation into every Node process via NODE_OPTIONS / NODE_PATH. Leave
+      'false' (default) for apps that manage their own OpenTelemetry. When 'false' the action only exposes
+      node-agent-path as an output.
     required: false
     default: 'false'
 
