@@ -111,8 +111,6 @@ async function main(inputs: Inputs): Promise<void> {
   if (inputs.hostMetricsEnabled) {
     await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs))
   }
-
-  core.saveState(STARTED_STATE, 'true')
 }
 
 /** Per-job post: stop the collector and export this job's step spans. */
@@ -179,9 +177,15 @@ async function exportAll(inputs: Inputs): Promise<void> {
 async function run(): Promise<void> {
   try {
     const inputs = readInputs()
+    // The action's main and post hooks share this entrypoint. STARTED_STATE is set
+    // on the first (main) invocation, so a 'true' value here means we're in post.
+    const isPost = core.getState(STARTED_STATE) === 'true'
+    core.saveState(STARTED_STATE, 'true')
+
     if (inputs.mode === 'export-all') {
-      await exportAll(inputs)
-    } else if (core.getState(STARTED_STATE) === 'true') {
+      // Export once, on the main invocation only — not again in post (would duplicate).
+      if (!isPost) await exportAll(inputs)
+    } else if (isPost) {
       await post(inputs)
     } else {
       await main(inputs)

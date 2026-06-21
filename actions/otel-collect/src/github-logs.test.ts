@@ -64,3 +64,23 @@ test('skips blank lines', () => {
   const recs = parseJobLog('2026-06-20T10:02:00.0000000Z line\n\n   \n', job, traceId('123', '1'), resource)
   assert.equal(recs.length, 1)
 })
+
+test('coalesces an indented stack trace into a single record', () => {
+  const text = [
+    '2026-06-20T10:02:00.0000000Z java.lang.AssertionError: boom',
+    '2026-06-20T10:02:00.1000000Z \tat com.foo.Bar.test(Bar.java:42)',
+    '2026-06-20T10:02:00.2000000Z \tat com.foo.Baz.run(Baz.java:7)',
+    '2026-06-20T10:02:01.0000000Z next log line'
+  ].join('\n')
+  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  assert.equal(recs.length, 2)
+  assert.match(String(recs[0].body), /AssertionError: boom\n\tat com\.foo\.Bar.*\n\tat com\.foo\.Baz/)
+  assert.equal(recs[1].body, 'next log line')
+})
+
+test('appends untimestamped continuation lines to the previous entry', () => {
+  const text = '2026-06-20T10:02:00.0000000Z header\ncontinuation without timestamp'
+  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  assert.equal(recs.length, 1)
+  assert.equal(recs[0].body, 'header\ncontinuation without timestamp')
+})

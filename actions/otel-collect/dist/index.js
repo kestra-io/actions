@@ -87392,38 +87392,50 @@ function parseJobLog(text, job, traceId, resource) {
         start: Date.parse(s.started_at),
         end: Date.parse(s.completed_at)
     }));
-    const records = [];
+    // Coalesce continuation lines (stack traces, wrapped output) into the logical
+    // entry they belong to. GitHub timestamps every physical line, so a "new entry"
+    // is one with a timestamp AND no leading indentation; anything else (indented or
+    // untimestamped) is appended to the previous entry's body.
+    const entries = [];
     let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now();
     let truncated = false;
     for (const raw of text.split(/\r?\n/)) {
-        if (!raw.trim())
+        if (raw === '')
             continue;
-        if (records.length >= MAX_LINES_PER_JOB) {
+        if (entries.length >= MAX_LINES_PER_JOB) {
             truncated = true;
             break;
         }
         const m = LINE_RE.exec(raw);
-        const ts = m ? Date.parse(m[1]) : NaN;
+        const hasTs = m !== null && !Number.isNaN(Date.parse(m[1]));
         const message = m ? m[2] : raw;
-        const timeMs = Number.isNaN(ts) ? lastMs : ts;
-        lastMs = timeMs;
+        const isContinuation = entries.length > 0 && (!hasTs || /^\s/.test(message));
+        if (isContinuation) {
+            entries[entries.length - 1].message += `\n${message}`;
+            continue;
+        }
         if (!message.trim())
             continue;
-        const sev = severityOf(message);
+        const timeMs = hasTs ? Date.parse(m[1]) : lastMs;
+        lastMs = timeMs;
+        entries.push({ timeMs, message });
+    }
+    const records = entries.map((entry) => {
+        const sev = severityOf(entry.message);
         const input = {
-            body: message,
-            timeMs,
+            body: entry.message,
+            timeMs: entry.timeMs,
             severityNumber: sev.number,
             severityText: sev.text,
             traceId,
-            spanId: spanForTime(timeMs, steps, jobSpan),
+            spanId: spanForTime(entry.timeMs, steps, jobSpan),
             attributes: {
                 'github.job.name': job.name,
                 'github.job.id': job.id
             }
         };
-        records.push(buildLogRecord(input, resource));
-    }
+        return buildLogRecord(input, resource);
+    });
     if (truncated) {
         coreExports.warning(`Job "${job.name}" log exceeded ${MAX_LINES_PER_JOB} lines; remaining lines were not exported`);
     }
@@ -87790,7 +87802,6 @@ async function main(inputs) {
     if (inputs.hostMetricsEnabled) {
         await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs));
     }
-    coreExports.saveState(STARTED_STATE, 'true');
 }
 /** Per-job post: stop the collector and export this job's step spans. */
 async function post(inputs) {
@@ -87843,10 +87854,16 @@ async function exportAll(inputs) {
 async function run() {
     try {
         const inputs = readInputs();
+        // The action's main and post hooks share this entrypoint. STARTED_STATE is set
+        // on the first (main) invocation, so a 'true' value here means we're in post.
+        const isPost = coreExports.getState(STARTED_STATE) === 'true';
+        coreExports.saveState(STARTED_STATE, 'true');
         if (inputs.mode === 'export-all') {
-            await exportAll(inputs);
+            // Export once, on the main invocation only — not again in post (would duplicate).
+            if (!isPost)
+                await exportAll(inputs);
         }
-        else if (coreExports.getState(STARTED_STATE) === 'true') {
+        else if (isPost) {
             await post(inputs);
         }
         else {
