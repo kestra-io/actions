@@ -49,6 +49,8 @@ if (endpoint == null || endpoint.trim().isEmpty()) {
 def serviceName = System.getenv("OTEL_SERVICE_NAME") ?: "gradle-build"
 def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
+def runId = System.getenv("GITHUB_RUN_ID")
+def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 
 def exporterBuilder = OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)
 headersEnv.split(",").each { pair ->
@@ -61,7 +63,7 @@ headersEnv.split(",").each { pair ->
 def exporter = exporterBuilder.build()
 
 def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).build()))
+  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.instance.id", instanceId).build()))
 
 def tracerProvider = SdkTracerProvider.builder()
   .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())

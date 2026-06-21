@@ -26,9 +26,21 @@ function msToHr(ms: number): HrTime {
   return [seconds, nanos]
 }
 
+/**
+ * service.instance.id for the run — Elastic APM surfaces this as the "Node name".
+ * Unique per workflow run and identical across the build and export jobs.
+ */
+export function serviceInstanceId(): string {
+  const runId = process.env.GITHUB_RUN_ID
+  const attempt = process.env.GITHUB_RUN_ATTEMPT
+  if (runId) return `${runId}-${attempt ?? '1'}`
+  return process.env.RUNNER_NAME ?? 'github-actions'
+}
+
 export function buildResource(serviceName: string): Resource {
   return new Resource({
     'service.name': serviceName,
+    'service.instance.id': serviceInstanceId(),
     'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
     'github.run_id': process.env.GITHUB_RUN_ID ?? '',

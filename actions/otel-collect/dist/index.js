@@ -87030,9 +87030,21 @@ function msToHr(ms) {
     const nanos = Math.round((ms - seconds * 1000) * 1e6);
     return [seconds, nanos];
 }
+/**
+ * service.instance.id for the run — Elastic APM surfaces this as the "Node name".
+ * Unique per workflow run and identical across the build and export jobs.
+ */
+function serviceInstanceId() {
+    const runId = process.env.GITHUB_RUN_ID;
+    const attempt = process.env.GITHUB_RUN_ATTEMPT;
+    if (runId)
+        return `${runId}-${attempt ?? '1'}`;
+    return process.env.RUNNER_NAME ?? 'github-actions';
+}
 function buildResource(serviceName) {
     return new Resource({
         'service.name': serviceName,
+        'service.instance.id': serviceInstanceId(),
         'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
         'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
         'github.run_id': process.env.GITHUB_RUN_ID ?? '',
@@ -87227,6 +87239,9 @@ processors:
     attributes:
       - key: service.name
         value: ${JSON.stringify(serviceName)}
+        action: upsert
+      - key: service.instance.id
+        value: ${JSON.stringify(serviceInstanceId())}
         action: upsert
       - key: github.run_id
         value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? '')}
@@ -87599,6 +87614,8 @@ if (endpoint == null || endpoint.trim().isEmpty()) {
 def serviceName = System.getenv("OTEL_SERVICE_NAME") ?: "gradle-build"
 def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
+def runId = System.getenv("GITHUB_RUN_ID")
+def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 
 def exporterBuilder = OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)
 headersEnv.split(",").each { pair ->
@@ -87611,7 +87628,7 @@ headersEnv.split(",").each { pair ->
 def exporter = exporterBuilder.build()
 
 def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).build()))
+  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.instance.id", instanceId).build()))
 
 def tracerProvider = SdkTracerProvider.builder()
   .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
