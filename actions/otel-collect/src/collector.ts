@@ -67,7 +67,18 @@ function buildConfig(endpoint: string, headers: Record<string, string>, serviceN
 
 processors:
   resourcedetection:
-    detectors: [env, system]
+    # azure first: GitHub-hosted runners are Azure VMs, so it fills cloud.* metadata.
+    # It probes the Azure IMDS endpoint and fails fast (non-fatal) on self-hosted/non-Azure.
+    detectors: [env, azure, system]
+    timeout: 5s
+    azure:
+      resource_attributes:
+        cloud.provider:
+          enabled: true
+        cloud.region:
+          enabled: true
+        host.name:
+          enabled: true
     system:
       resource_attributes:
         host.id:
