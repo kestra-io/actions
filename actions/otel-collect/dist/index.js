@@ -87225,7 +87225,16 @@ function buildConfig(endpoint, headers, serviceName) {
     collection_interval: 10s
     scrapers:
       cpu:
+        metrics:
+          # Optional metrics Elastic's Hosts UI needs; off by default.
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.logical.count:
+            enabled: true
       memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
       load:
       disk:
       filesystem:
@@ -87235,6 +87244,14 @@ function buildConfig(endpoint, headers, serviceName) {
 processors:
   resourcedetection:
     detectors: [env, system]
+    system:
+      resource_attributes:
+        host.id:
+          enabled: true
+        host.ip:
+          enabled: true
+        os.description:
+          enabled: true
   resource:
     attributes:
       - key: service.name
