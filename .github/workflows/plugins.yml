@@ -94,7 +94,7 @@ jobs:
       # build step). This all runs in the Gradle daemon, not the test workers, so there is
       # no conflict with Kestra's own OpenTelemetry — no agent injection needed.
       - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-collect@feat/otel-collect-action
+        uses: kestra-io/actions/actions/otel-collect@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -297,7 +297,7 @@ jobs:
       # Gradle/JUnit spans emitted during "main" nest under their step spans via
       # the shared deterministic ids.
       - name: Export workflow trace
-        uses: kestra-io/actions/actions/otel-collect@feat/otel-collect-action
+        uses: kestra-io/actions/actions/otel-collect@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
           mode: export-all
