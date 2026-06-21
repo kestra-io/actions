@@ -88,6 +88,21 @@ jobs:
           # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
           java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
+  
+      # Setup OpenTelemetry: root span context, background host-metrics collector, and a
+      # Gradle init script that emits a span per task and per JUnit test (nested under the
+      # build step). This all runs in the Gradle daemon, not the test workers, so there is
+      # no conflict with Kestra's own OpenTelemetry — no agent injection needed.
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env
@@ -278,12 +293,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: [main]
     steps:
-      - name: Export workflow to Elastic
-        uses: corentinmusard/otel-cicd-action@v4
+      # Reconstruct and export the whole workflow -> job -> step trace. The live
+      # Gradle/JUnit spans emitted during "main" nest under their step spans via
+      # the shared deterministic ids.
+      - name: Export workflow trace
+        uses: kestra-io/actions/actions/otel-collect@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          otlpEndpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlpHeaders: "${{ secrets.OTLP_HEADERS }}"
-          otelServiceName: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
-          extraAttributes: "repository=${{ github.repository }},workflow=${{ github.workflow }}"
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
