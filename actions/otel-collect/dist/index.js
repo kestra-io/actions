@@ -87243,10 +87243,25 @@ function buildConfig(endpoint, headers, serviceName) {
 
 processors:
   resourcedetection:
-    # azure first: GitHub-hosted runners are Azure VMs, so it fills cloud.* metadata.
-    # It probes the Azure IMDS endpoint and fails fast (non-fatal) on self-hosted/non-Azure.
-    detectors: [env, azure, system]
+    # Cover both runner flavours: gcp (self-hosted GCP) and azure (GitHub-hosted).
+    # Each probes its cloud metadata endpoint and fails fast (non-fatal) when it
+    # isn't that cloud; system fills the rest. The non-matching detector is harmless.
+    detectors: [env, gcp, azure, system]
     timeout: 5s
+    gcp:
+      resource_attributes:
+        cloud.provider:
+          enabled: true
+        cloud.region:
+          enabled: true
+        cloud.availability_zone:
+          enabled: true
+        host.id:
+          enabled: true
+        host.name:
+          enabled: true
+        host.type:
+          enabled: true
     azure:
       resource_attributes:
         cloud.provider:
