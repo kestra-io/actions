@@ -115,6 +115,9 @@ export async function buildWorkflowLogs(
   const traceId = makeTraceId(runId, runAttempt)
   const all: ReadableLogRecord[] = []
   for (const job of jobs) {
+    // Logs are only downloadable once a job has finished; skip in-progress jobs
+    // (notably the export job itself, still running while it calls this).
+    if (job.status !== 'completed') continue
     const text = await downloadJobLog(octokit, owner, repo, job.id)
     if (!text) continue
     all.push(...parseJobLog(text, job, traceId, resource))
