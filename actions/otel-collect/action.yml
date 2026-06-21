@@ -59,6 +59,14 @@ inputs:
     required: false
     default: 'true'
 
+  logs-enabled:
+    description: >
+      In "export-all" mode, download each job's GitHub Actions logs and export them as OTLP log records,
+      correlated to the job/step spans (same trace id) so logs sit next to the trace. Only works in
+      "export-all" (the logs are only available from the API after jobs finish).
+    required: false
+    default: 'false'
+
   gradle-tracing-enabled:
     description: >
       Install a Gradle init script that emits a span per Gradle task and per JUnit test, nested under the

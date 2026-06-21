@@ -33900,7 +33900,7 @@ async function setupNodeAgent(inject) {
     return path$1.join(modulesDir, pkg, 'register.js');
 }
 
-var src$4 = {};
+var src$5 = {};
 
 var callCredentials = {};
 
@@ -39312,7 +39312,7 @@ function requireMakeClient () {
 	return makeClient;
 }
 
-var src$3 = {};
+var src$4 = {};
 
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -39916,7 +39916,7 @@ function requireLodash_camelcase () {
 	return lodash_camelcase;
 }
 
-var src$2 = {exports: {}};
+var src$3 = {exports: {}};
 
 var indexLight = {exports: {}};
 
@@ -51641,12 +51641,12 @@ function requireCommon () {
 	return common_1;
 }
 
-var hasRequiredSrc$4;
+var hasRequiredSrc$5;
 
-function requireSrc$4 () {
-	if (hasRequiredSrc$4) return src$2.exports;
-	hasRequiredSrc$4 = 1;
-	var protobuf = src$2.exports = requireIndexLight();
+function requireSrc$5 () {
+	if (hasRequiredSrc$5) return src$3.exports;
+	hasRequiredSrc$5 = 1;
+	var protobuf = src$3.exports = requireIndexLight();
 
 	protobuf.build = "full";
 
@@ -51657,7 +51657,7 @@ function requireSrc$4 () {
 
 	// Configure parser
 	protobuf.Root._configure(protobuf.Type, protobuf.parse, protobuf.common);
-	return src$2.exports;
+	return src$3.exports;
 }
 
 var protobufjs;
@@ -51666,7 +51666,7 @@ var hasRequiredProtobufjs;
 function requireProtobufjs () {
 	if (hasRequiredProtobufjs) return protobufjs;
 	hasRequiredProtobufjs = 1;
-	protobufjs = requireSrc$4();
+	protobufjs = requireSrc$5();
 	return protobufjs;
 }
 
@@ -54696,11 +54696,11 @@ function requireUtil () {
 	return util;
 }
 
-var hasRequiredSrc$3;
+var hasRequiredSrc$4;
 
-function requireSrc$3 () {
-	if (hasRequiredSrc$3) return src$3;
-	hasRequiredSrc$3 = 1;
+function requireSrc$4 () {
+	if (hasRequiredSrc$4) return src$4;
+	hasRequiredSrc$4 = 1;
 	(function (exports) {
 		/**
 		 * @license
@@ -54947,8 +54947,8 @@ function requireSrc$3 () {
 		exports.loadFileDescriptorSetFromObject = loadFileDescriptorSetFromObject;
 		(0, util_1.addCommonProtos)();
 		
-	} (src$3));
-	return src$3;
+	} (src$4));
+	return src$4;
 }
 
 var hasRequiredChannelz;
@@ -55534,7 +55534,7 @@ function requireChannelz () {
 	    }
 	    /* The purpose of this complexity is to avoid loading @grpc/proto-loader at
 	     * runtime for users who will not use/enable channelz. */
-	    const loaderLoadSync = requireSrc$3()
+	    const loaderLoadSync = requireSrc$4()
 	        .loadSync;
 	    const loadedProto = loaderLoadSync('channelz.proto', {
 	        keepCase: true,
@@ -61912,7 +61912,7 @@ function requireOrca () {
 		function loadOrcaProto() {
 		    /* The purpose of this complexity is to avoid loading @grpc/proto-loader at
 		     * runtime for users who will not use/enable ORCA. */
-		    const loaderLoadSync = requireSrc$3()
+		    const loaderLoadSync = requireSrc$4()
 		        .loadSync;
 		    const loadedProto = loaderLoadSync('xds/service/orca/v3/orca.proto', {
 		        keepCase: true,
@@ -66973,11 +66973,11 @@ function requireLoadBalancerWeightedRoundRobin () {
 	return loadBalancerWeightedRoundRobin;
 }
 
-var hasRequiredSrc$2;
+var hasRequiredSrc$3;
 
-function requireSrc$2 () {
-	if (hasRequiredSrc$2) return src$4;
-	hasRequiredSrc$2 = 1;
+function requireSrc$3 () {
+	if (hasRequiredSrc$3) return src$5;
+	hasRequiredSrc$3 = 1;
 	(function (exports) {
 		/*
 		 * Copyright 2019 gRPC authors.
@@ -67126,11 +67126,11 @@ function requireSrc$2 () {
 		    channelz.setup();
 		})();
 		
-	} (src$4));
-	return src$4;
+	} (src$5));
+	return src$5;
 }
 
-var srcExports$1 = requireSrc$2();
+var srcExports$2 = requireSrc$3();
 
 /*
  * Copyright The OpenTelemetry Authors
@@ -68855,11 +68855,11 @@ var esm$3 = /*#__PURE__*/Object.freeze({
 	trace: trace
 });
 
+var src$2 = {};
+
+var OTLPLogExporter = {};
+
 var src$1 = {};
-
-var OTLPTraceExporter = {};
-
-var src = {};
 
 var convertLegacyOtlpGrpcOptions = {};
 
@@ -71884,7 +71884,7 @@ function requireCreateServiceClientConstructor () {
 	 */
 	Object.defineProperty(createServiceClientConstructor, "__esModule", { value: true });
 	createServiceClientConstructor.createServiceClientConstructor = void 0;
-	const grpc = requireSrc$2();
+	const grpc = requireSrc$3();
 	/**
 	 * Creates a unary service client constructor that, when instantiated, does not serialize/deserialize anything.
 	 * Allows for passing in {@link Buffer} directly, serialization can be handled via protobufjs or custom implementations.
@@ -71951,7 +71951,7 @@ function requireGrpcExporterTransport () {
 	    // Lazy-load so that we don't need to require/import '@grpc/grpc-js' before it can be wrapped by instrumentation.
 	    const { credentials,
 	    // eslint-disable-next-line @typescript-eslint/no-var-requires
-	     } = requireSrc$2();
+	     } = requireSrc$3();
 	    return credentials.createInsecure();
 	}
 	grpcExporterTransport.createInsecureCredentials = createInsecureCredentials;
@@ -71959,7 +71959,7 @@ function requireGrpcExporterTransport () {
 	    // Lazy-load so that we don't need to require/import '@grpc/grpc-js' before it can be wrapped by instrumentation.
 	    const { credentials,
 	    // eslint-disable-next-line @typescript-eslint/no-var-requires
-	     } = requireSrc$2();
+	     } = requireSrc$3();
 	    return credentials.createSsl(rootCert, privateKey, certChain);
 	}
 	grpcExporterTransport.createSslCredentials = createSslCredentials;
@@ -71967,7 +71967,7 @@ function requireGrpcExporterTransport () {
 	    // Lazy-load so that we don't need to require/import '@grpc/grpc-js' before it can be wrapped by instrumentation.
 	    const { Metadata,
 	    // eslint-disable-next-line @typescript-eslint/no-var-requires
-	     } = requireSrc$2();
+	     } = requireSrc$3();
 	    return new Metadata();
 	}
 	grpcExporterTransport.createEmptyMetadata = createEmptyMetadata;
@@ -73109,11 +73109,11 @@ function requireOtlpGrpcExportDelegate () {
 	return otlpGrpcExportDelegate;
 }
 
-var hasRequiredSrc$1;
+var hasRequiredSrc$2;
 
-function requireSrc$1 () {
-	if (hasRequiredSrc$1) return src;
-	hasRequiredSrc$1 = 1;
+function requireSrc$2 () {
+	if (hasRequiredSrc$2) return src$1;
+	hasRequiredSrc$2 = 1;
 	(function (exports) {
 		/*
 		 * Copyright The OpenTelemetry Authors
@@ -73137,8 +73137,8 @@ function requireSrc$1 () {
 		var otlp_grpc_export_delegate_1 = /*@__PURE__*/ requireOtlpGrpcExportDelegate();
 		Object.defineProperty(exports, "createOtlpGrpcExportDelegate", { enumerable: true, get: function () { return otlp_grpc_export_delegate_1.createOtlpGrpcExportDelegate; } });
 		
-	} (src));
-	return src;
+	} (src$1));
+	return src$1;
 }
 
 var minimal;
@@ -86845,6 +86845,91 @@ var esm = /*#__PURE__*/Object.freeze({
 
 var require$$1 = /*@__PURE__*/getAugmentedNamespace(esm);
 
+var hasRequiredOTLPLogExporter;
+
+function requireOTLPLogExporter () {
+	if (hasRequiredOTLPLogExporter) return OTLPLogExporter;
+	hasRequiredOTLPLogExporter = 1;
+	/*
+	 * Copyright The OpenTelemetry Authors
+	 *
+	 * Licensed under the Apache License, Version 2.0 (the "License");
+	 * you may not use this file except in compliance with the License.
+	 * You may obtain a copy of the License at
+	 *
+	 *      https://www.apache.org/licenses/LICENSE-2.0
+	 *
+	 * Unless required by applicable law or agreed to in writing, software
+	 * distributed under the License is distributed on an "AS IS" BASIS,
+	 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+	 * See the License for the specific language governing permissions and
+	 * limitations under the License.
+	 */
+	Object.defineProperty(OTLPLogExporter, "__esModule", { value: true });
+	OTLPLogExporter.OTLPLogExporter = void 0;
+	const otlp_grpc_exporter_base_1 = /*@__PURE__*/ requireSrc$2();
+	const otlp_transformer_1 = require$$1;
+	const otlp_exporter_base_1 = require$$2$1;
+	/**
+	 * OTLP Logs Exporter for Node
+	 */
+	let OTLPLogExporter$1 = class OTLPLogExporter extends otlp_exporter_base_1.OTLPExporterBase {
+	    constructor(config = {}) {
+	        super((0, otlp_grpc_exporter_base_1.createOtlpGrpcExportDelegate)((0, otlp_grpc_exporter_base_1.convertLegacyOtlpGrpcOptions)(config, 'LOGS'), otlp_transformer_1.ProtobufLogsSerializer, 'LogsExportService', '/opentelemetry.proto.collector.logs.v1.LogsService/Export'));
+	    }
+	};
+	OTLPLogExporter.OTLPLogExporter = OTLPLogExporter$1;
+	
+	return OTLPLogExporter;
+}
+
+var hasRequiredSrc$1;
+
+function requireSrc$1 () {
+	if (hasRequiredSrc$1) return src$2;
+	hasRequiredSrc$1 = 1;
+	(function (exports) {
+		/*
+		 * Copyright The OpenTelemetry Authors
+		 *
+		 * Licensed under the Apache License, Version 2.0 (the "License");
+		 * you may not use this file except in compliance with the License.
+		 * You may obtain a copy of the License at
+		 *
+		 *      https://www.apache.org/licenses/LICENSE-2.0
+		 *
+		 * Unless required by applicable law or agreed to in writing, software
+		 * distributed under the License is distributed on an "AS IS" BASIS,
+		 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+		 * See the License for the specific language governing permissions and
+		 * limitations under the License.
+		 */
+		var __createBinding = (src$2 && src$2.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+		    if (k2 === undefined) k2 = k;
+		    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+		}) : (function(o, m, k, k2) {
+		    if (k2 === undefined) k2 = k;
+		    o[k2] = m[k];
+		}));
+		var __exportStar = (src$2 && src$2.__exportStar) || function(m, exports) {
+		    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+		};
+		Object.defineProperty(exports, "__esModule", { value: true });
+		/* eslint no-restricted-syntax: ["warn", "ExportAllDeclaration"] --
+		 * TODO: Replace wildcard export with named exports before next major version
+		 */
+		__exportStar(/*@__PURE__*/ requireOTLPLogExporter(), exports);
+		
+	} (src$2));
+	return src$2;
+}
+
+var srcExports$1 = /*@__PURE__*/ requireSrc$1();
+
+var src = {};
+
+var OTLPTraceExporter = {};
+
 var hasRequiredOTLPTraceExporter;
 
 function requireOTLPTraceExporter () {
@@ -86867,7 +86952,7 @@ function requireOTLPTraceExporter () {
 	 */
 	Object.defineProperty(OTLPTraceExporter, "__esModule", { value: true });
 	OTLPTraceExporter.OTLPTraceExporter = void 0;
-	const otlp_grpc_exporter_base_1 = /*@__PURE__*/ requireSrc$1();
+	const otlp_grpc_exporter_base_1 = /*@__PURE__*/ requireSrc$2();
 	const otlp_transformer_1 = require$$1;
 	const otlp_exporter_base_1 = require$$2$1;
 	/**
@@ -86886,7 +86971,7 @@ function requireOTLPTraceExporter () {
 var hasRequiredSrc;
 
 function requireSrc () {
-	if (hasRequiredSrc) return src$1;
+	if (hasRequiredSrc) return src;
 	hasRequiredSrc = 1;
 	(function (exports) {
 		/*
@@ -86904,14 +86989,14 @@ function requireSrc () {
 		 * See the License for the specific language governing permissions and
 		 * limitations under the License.
 		 */
-		var __createBinding = (src$1 && src$1.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+		var __createBinding = (src && src.__createBinding) || (Object.create ? (function(o, m, k, k2) {
 		    if (k2 === undefined) k2 = k;
 		    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
 		}) : (function(o, m, k, k2) {
 		    if (k2 === undefined) k2 = k;
 		    o[k2] = m[k];
 		}));
-		var __exportStar = (src$1 && src$1.__exportStar) || function(m, exports) {
+		var __exportStar = (src && src.__exportStar) || function(m, exports) {
 		    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 		};
 		Object.defineProperty(exports, "__esModule", { value: true });
@@ -86920,8 +87005,8 @@ function requireSrc () {
 		 */
 		__exportStar(/*@__PURE__*/ requireOTLPTraceExporter(), exports);
 		
-	} (src$1));
-	return src$1;
+	} (src));
+	return src;
 }
 
 var srcExports = /*@__PURE__*/ requireSrc();
@@ -87019,14 +87104,14 @@ function baseEndpoint(endpoint) {
 /** Export the spans over OTLP/gRPC and flush. */
 async function exportSpans(spans, endpoint, headers, timeoutMs = 15000) {
     const { target, secure } = grpcTarget(endpoint);
-    const metadata = new srcExports$1.Metadata();
+    const metadata = new srcExports$2.Metadata();
     for (const [key, value] of Object.entries(headers)) {
         metadata.set(key, value);
     }
     const exporter = new srcExports.OTLPTraceExporter({
         url: target,
         metadata,
-        credentials: secure ? srcExports$1.credentials.createSsl() : srcExports$1.credentials.createInsecure()
+        credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
     });
     await new Promise((resolve) => {
         const timer = setTimeout(resolve, timeoutMs);
@@ -87036,6 +87121,57 @@ async function exportSpans(spans, endpoint, headers, timeoutMs = 15000) {
                 // ExportResultCode.FAILED === 1
                 // eslint-disable-next-line no-console
                 console.error('OTLP export failed', result.error);
+            }
+            resolve();
+        });
+    });
+    await exporter.shutdown().catch(() => undefined);
+}
+/**
+ * Hand-build a ReadableLogRecord with a predetermined SpanContext so the log line
+ * correlates to the job/step span it belongs to. Same bypass-the-SDK approach as
+ * buildSpan() — feed records straight to the exporter.
+ */
+function buildLogRecord(input, resource) {
+    const record = {
+        hrTime: msToHr(input.timeMs),
+        hrTimeObserved: msToHr(input.timeMs),
+        severityNumber: input.severityNumber,
+        severityText: input.severityText,
+        body: input.body,
+        attributes: input.attributes ?? {},
+        droppedAttributesCount: 0,
+        resource,
+        instrumentationScope: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
+        spanContext: {
+            traceId: input.traceId,
+            spanId: input.spanId,
+            traceFlags: TraceFlags.SAMPLED
+        }
+    };
+    return record;
+}
+/** Export the log records over OTLP/gRPC and flush. */
+async function exportLogs(logs, endpoint, headers, timeoutMs = 15000) {
+    if (logs.length === 0)
+        return;
+    const { target, secure } = grpcTarget(endpoint);
+    const metadata = new srcExports$2.Metadata();
+    for (const [key, value] of Object.entries(headers)) {
+        metadata.set(key, value);
+    }
+    const exporter = new srcExports$1.OTLPLogExporter({
+        url: target,
+        metadata,
+        credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
+    });
+    await new Promise((resolve) => {
+        const timer = setTimeout(resolve, timeoutMs);
+        exporter.export(logs, (result) => {
+            clearTimeout(timer);
+            if (result.code !== 0) {
+                // eslint-disable-next-line no-console
+                console.error('OTLP log export failed', result.error);
             }
             resolve();
         });
@@ -87155,6 +87291,50 @@ async function stopCollector() {
     }
 }
 
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var SeverityNumber;
+(function (SeverityNumber) {
+    SeverityNumber[SeverityNumber["UNSPECIFIED"] = 0] = "UNSPECIFIED";
+    SeverityNumber[SeverityNumber["TRACE"] = 1] = "TRACE";
+    SeverityNumber[SeverityNumber["TRACE2"] = 2] = "TRACE2";
+    SeverityNumber[SeverityNumber["TRACE3"] = 3] = "TRACE3";
+    SeverityNumber[SeverityNumber["TRACE4"] = 4] = "TRACE4";
+    SeverityNumber[SeverityNumber["DEBUG"] = 5] = "DEBUG";
+    SeverityNumber[SeverityNumber["DEBUG2"] = 6] = "DEBUG2";
+    SeverityNumber[SeverityNumber["DEBUG3"] = 7] = "DEBUG3";
+    SeverityNumber[SeverityNumber["DEBUG4"] = 8] = "DEBUG4";
+    SeverityNumber[SeverityNumber["INFO"] = 9] = "INFO";
+    SeverityNumber[SeverityNumber["INFO2"] = 10] = "INFO2";
+    SeverityNumber[SeverityNumber["INFO3"] = 11] = "INFO3";
+    SeverityNumber[SeverityNumber["INFO4"] = 12] = "INFO4";
+    SeverityNumber[SeverityNumber["WARN"] = 13] = "WARN";
+    SeverityNumber[SeverityNumber["WARN2"] = 14] = "WARN2";
+    SeverityNumber[SeverityNumber["WARN3"] = 15] = "WARN3";
+    SeverityNumber[SeverityNumber["WARN4"] = 16] = "WARN4";
+    SeverityNumber[SeverityNumber["ERROR"] = 17] = "ERROR";
+    SeverityNumber[SeverityNumber["ERROR2"] = 18] = "ERROR2";
+    SeverityNumber[SeverityNumber["ERROR3"] = 19] = "ERROR3";
+    SeverityNumber[SeverityNumber["ERROR4"] = 20] = "ERROR4";
+    SeverityNumber[SeverityNumber["FATAL"] = 21] = "FATAL";
+    SeverityNumber[SeverityNumber["FATAL2"] = 22] = "FATAL2";
+    SeverityNumber[SeverityNumber["FATAL3"] = 23] = "FATAL3";
+    SeverityNumber[SeverityNumber["FATAL4"] = 24] = "FATAL4";
+})(SeverityNumber || (SeverityNumber = {}));
+
 /**
  * Deterministic trace/span ids, replicating the OpenTelemetry Collector
  * `githubreceiver` scheme byte-for-byte (sha256 hex, sliced). Both the live
@@ -87181,6 +87361,96 @@ function jobSpanId(jobId) {
 }
 function stepSpanId(jobId, stepName) {
     return sha256hex(`${jobId}-${stepName}-s`).slice(16, 32);
+}
+
+// Cap log lines emitted per job so a runaway log can't OOM the exporter.
+const MAX_LINES_PER_JOB = 10000;
+// GitHub prefixes every log line with an ISO-8601 timestamp.
+const LINE_RE = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s?(.*)$/;
+function severityOf(message) {
+    if (message.includes('##[error]'))
+        return { number: SeverityNumber.ERROR, text: 'ERROR' };
+    if (message.includes('##[warning]'))
+        return { number: SeverityNumber.WARN, text: 'WARN' };
+    return { number: SeverityNumber.INFO, text: 'INFO' };
+}
+/** Pick the step span whose time window contains the line, else fall back to the job span. */
+function spanForTime(ms, steps, jobSpan) {
+    for (const s of steps) {
+        if (ms >= s.start && ms <= s.end)
+            return s.spanId;
+    }
+    return jobSpan;
+}
+/** Parse a job's raw log text into log records correlated to its job/step spans. */
+function parseJobLog(text, job, traceId, resource) {
+    const jobSpan = jobSpanId(job.id);
+    const steps = (job.steps ?? [])
+        .filter((s) => s.started_at && s.completed_at)
+        .map((s) => ({
+        spanId: stepSpanId(job.id, s.name),
+        start: Date.parse(s.started_at),
+        end: Date.parse(s.completed_at)
+    }));
+    const records = [];
+    let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now();
+    let truncated = false;
+    for (const raw of text.split(/\r?\n/)) {
+        if (!raw.trim())
+            continue;
+        if (records.length >= MAX_LINES_PER_JOB) {
+            truncated = true;
+            break;
+        }
+        const m = LINE_RE.exec(raw);
+        const ts = m ? Date.parse(m[1]) : NaN;
+        const message = m ? m[2] : raw;
+        const timeMs = Number.isNaN(ts) ? lastMs : ts;
+        lastMs = timeMs;
+        if (!message.trim())
+            continue;
+        const sev = severityOf(message);
+        const input = {
+            body: message,
+            timeMs,
+            severityNumber: sev.number,
+            severityText: sev.text,
+            traceId,
+            spanId: spanForTime(timeMs, steps, jobSpan),
+            attributes: {
+                'github.job.name': job.name,
+                'github.job.id': job.id
+            }
+        };
+        records.push(buildLogRecord(input, resource));
+    }
+    if (truncated) {
+        coreExports.warning(`Job "${job.name}" log exceeded ${MAX_LINES_PER_JOB} lines; remaining lines were not exported`);
+    }
+    return records;
+}
+/** Download a single job's logs as text (empty string if unavailable/expired). */
+async function downloadJobLog(octokit, owner, repo, jobId) {
+    try {
+        const res = await octokit.rest.actions.downloadJobLogsForWorkflowRun({ owner, repo, job_id: jobId });
+        return typeof res.data === 'string' ? res.data : String(res.data ?? '');
+    }
+    catch (err) {
+        coreExports.warning(`Could not download logs for job ${jobId}: ${err.message}`);
+        return '';
+    }
+}
+/** Fetch and parse logs for every job into correlated log records. */
+async function buildWorkflowLogs(octokit, owner, repo, jobs, runId, runAttempt, resource) {
+    const traceId$1 = traceId(runId, runAttempt);
+    const all = [];
+    for (const job of jobs) {
+        const text = await downloadJobLog(octokit, owner, repo, job.id);
+        if (!text)
+            continue;
+        all.push(...parseJobLog(text, job, traceId$1, resource));
+    }
+    return all;
 }
 
 const parseTime = (iso, fallback) => {
@@ -87454,6 +87724,7 @@ function readInputs() {
         injectNodeAgent: coreExports.getBooleanInput('inject-node-agent'),
         hostMetricsEnabled: coreExports.getBooleanInput('host-metrics-enabled'),
         gradleTracingEnabled: coreExports.getBooleanInput('gradle-tracing-enabled'),
+        logsEnabled: coreExports.getBooleanInput('logs-enabled'),
         parentStepName: coreExports.getInput('parent-step-name'),
         collectorVersion: coreExports.getInput('collector-version'),
         javaAgentVersion: coreExports.getInput('java-agent-version'),
@@ -87553,6 +87824,16 @@ async function exportAll(inputs) {
     const spans = buildWorkflowTrace(jobs, runId(), runAttempt(), process.env.GITHUB_WORKFLOW ?? '', resource, Date.now());
     await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders));
     coreExports.info(`Exported ${spans.length} span(s) for ${jobs.length} job(s)`);
+    if (inputs.logsEnabled) {
+        try {
+            const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), resource);
+            await exportLogs(logs, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders), 30000);
+            coreExports.info(`Exported ${logs.length} log record(s) for ${jobs.length} job(s)`);
+        }
+        catch (err) {
+            coreExports.warning(`Failed to export logs: ${err.message}`);
+        }
+    }
     coreExports.setOutput('trace-id', traceId(runId(), runAttempt()));
 }
 async function run() {

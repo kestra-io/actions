@@ -1,7 +1,10 @@
 import { credentials as grpcCredentials, Metadata } from '@grpc/grpc-js'
 import { SpanKind, SpanStatusCode, TraceFlags, type HrTime } from '@opentelemetry/api'
+import type { SeverityNumber } from '@opentelemetry/api-logs'
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-grpc'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
 import { Resource } from '@opentelemetry/resources'
+import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 
 /** Parse a comma separated "k=v,k2=v2" header string into a map. */
@@ -138,6 +141,78 @@ export async function exportSpans(
         // ExportResultCode.FAILED === 1
         // eslint-disable-next-line no-console
         console.error('OTLP export failed', result.error)
+      }
+      resolve()
+    })
+  })
+
+  await exporter.shutdown().catch(() => undefined)
+}
+
+export interface LogInput {
+  body: string
+  timeMs: number
+  severityNumber: SeverityNumber
+  severityText: string
+  traceId: string
+  spanId: string
+  attributes?: Record<string, string | number | boolean>
+}
+
+/**
+ * Hand-build a ReadableLogRecord with a predetermined SpanContext so the log line
+ * correlates to the job/step span it belongs to. Same bypass-the-SDK approach as
+ * buildSpan() — feed records straight to the exporter.
+ */
+export function buildLogRecord(input: LogInput, resource: Resource): ReadableLogRecord {
+  const record = {
+    hrTime: msToHr(input.timeMs),
+    hrTimeObserved: msToHr(input.timeMs),
+    severityNumber: input.severityNumber,
+    severityText: input.severityText,
+    body: input.body,
+    attributes: input.attributes ?? {},
+    droppedAttributesCount: 0,
+    resource,
+    instrumentationScope: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
+    spanContext: {
+      traceId: input.traceId,
+      spanId: input.spanId,
+      traceFlags: TraceFlags.SAMPLED
+    }
+  }
+  return record as unknown as ReadableLogRecord
+}
+
+/** Export the log records over OTLP/gRPC and flush. */
+export async function exportLogs(
+  logs: ReadableLogRecord[],
+  endpoint: string,
+  headers: Record<string, string>,
+  timeoutMs = 15000
+): Promise<void> {
+  if (logs.length === 0) return
+
+  const { target, secure } = grpcTarget(endpoint)
+
+  const metadata = new Metadata()
+  for (const [key, value] of Object.entries(headers)) {
+    metadata.set(key, value)
+  }
+
+  const exporter = new OTLPLogExporter({
+    url: target,
+    metadata,
+    credentials: secure ? grpcCredentials.createSsl() : grpcCredentials.createInsecure()
+  })
+
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs)
+    exporter.export(logs, (result) => {
+      clearTimeout(timer)
+      if (result.code !== 0) {
+        // eslint-disable-next-line no-console
+        console.error('OTLP log export failed', result.error)
       }
       resolve()
     })

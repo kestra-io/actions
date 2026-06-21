@@ -2,10 +2,11 @@ import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { setupJavaAgent, setupNodeAgent } from './agents.js'
 import { startCollector, stopCollector } from './collector.js'
+import { buildWorkflowLogs } from './github-logs.js'
 import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { baseEndpoint, buildResource, exportSpans, parseHeaders } from './otlp.js'
+import { baseEndpoint, buildResource, exportLogs, exportSpans, parseHeaders } from './otlp.js'
 import { listJobs, resolveJobId, type WorkflowJob } from './resolve-job.js'
 
 const STARTED_STATE = 'otel-collect-started'
@@ -22,6 +23,7 @@ interface Inputs {
   injectNodeAgent: boolean
   hostMetricsEnabled: boolean
   gradleTracingEnabled: boolean
+  logsEnabled: boolean
   parentStepName: string
   collectorVersion: string
   javaAgentVersion: string
@@ -40,6 +42,7 @@ function readInputs(): Inputs {
     injectNodeAgent: core.getBooleanInput('inject-node-agent'),
     hostMetricsEnabled: core.getBooleanInput('host-metrics-enabled'),
     gradleTracingEnabled: core.getBooleanInput('gradle-tracing-enabled'),
+    logsEnabled: core.getBooleanInput('logs-enabled'),
     parentStepName: core.getInput('parent-step-name'),
     collectorVersion: core.getInput('collector-version'),
     javaAgentVersion: core.getInput('java-agent-version'),
@@ -159,6 +162,17 @@ async function exportAll(inputs: Inputs): Promise<void> {
   )
   await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders))
   core.info(`Exported ${spans.length} span(s) for ${jobs.length} job(s)`)
+
+  if (inputs.logsEnabled) {
+    try {
+      const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), resource)
+      await exportLogs(logs, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders), 30000)
+      core.info(`Exported ${logs.length} log record(s) for ${jobs.length} job(s)`)
+    } catch (err) {
+      core.warning(`Failed to export logs: ${(err as Error).message}`)
+    }
+  }
+
   core.setOutput('trace-id', makeTraceId(runId(), runAttempt()))
 }
 
