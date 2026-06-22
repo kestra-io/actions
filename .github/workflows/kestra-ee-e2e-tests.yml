@@ -20,6 +20,9 @@ on:
         default: '21'
         required: false
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   check:
     timeout-minutes: 30
@@ -49,6 +52,17 @@ jobs:
           java-enabled: 'true'
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Cache - OSS Node Modules
         id: cache-oss-node-modules
@@ -115,3 +129,20 @@ jobs:
           name: playwright-report
           path: kestra-ee/ui-ee/playwright-report/
           retention-days: 7
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry Export Trace
+    runs-on: kestra-private-standard
+    needs: [ check ]
+    steps:
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"

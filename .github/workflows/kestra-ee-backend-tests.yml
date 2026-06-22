@@ -30,6 +30,9 @@ permissions:
   actions: read
   pull-requests: write
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   check:
     name: Check
@@ -53,6 +56,17 @@ jobs:
         with:
           java-enabled: true
           java-version: ${{ inputs.java-version }}
+
+      - name: OpenTelemetry - Setup
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Move working directory structure
         run: |
@@ -90,3 +104,20 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           secrets: ${{ toJSON(secrets) }}
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry - Export Trace
+    runs-on: kestra-private-standard
+    needs: [ check ]
+    steps:
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"

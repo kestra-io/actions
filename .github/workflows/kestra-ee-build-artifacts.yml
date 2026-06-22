@@ -16,6 +16,9 @@ on:
         default: '21'
         required: false
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   build-artifacts:
     name: Build Jar
@@ -47,6 +50,17 @@ jobs:
           java-enabled: 'true'
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
+
+      - name: OpenTelemetry - Setup
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: build OSS UI required for EE UI build
         shell: bash
@@ -105,3 +119,20 @@ jobs:
         with:
           name: swagger
           path: swagger
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry - Export Trace
+    runs-on: kestra-private-standard
+    needs: [ build-artifacts ]
+    steps:
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
