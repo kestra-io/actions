@@ -25,6 +25,9 @@ on:
         default: '21'
         required: false
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   publish:
     name: Publish - Maven
@@ -43,6 +46,17 @@ jobs:
           java-enabled: true
           node-enabled: true
           java-version: ${{ inputs.java-version }}
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Publish
       - name: Publish - Release package to Maven Central
@@ -64,3 +78,20 @@ jobs:
       # Gradle dependency
       - name: Java - Gradle dependency graph
         uses: gradle/actions/dependency-submission@v4
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry Export Trace
+    runs-on: ubuntu-latest
+    needs: [ publish ]
+    steps:
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
