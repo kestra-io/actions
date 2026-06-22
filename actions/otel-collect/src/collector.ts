@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as core from '@actions/core'
 import * as tc from '@actions/tool-cache'
-import { grpcTarget, parseHeaders, serviceInstanceId, SERVICE_NAMESPACE } from './otlp.js'
+import { grpcTarget, parseHeaders, serviceInstanceId, NAMESPACE } from './otlp.js'
 
 const RELEASES = 'https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download'
 
@@ -108,7 +108,10 @@ processors:
         value: ${JSON.stringify(serviceName)}
         action: upsert
       - key: service.namespace
-        value: ${JSON.stringify(SERVICE_NAMESPACE)}
+        value: ${JSON.stringify(NAMESPACE)}
+        action: upsert
+      - key: data_stream.namespace
+        value: ${JSON.stringify(NAMESPACE)}
         action: upsert
       - key: service.instance.id
         value: ${JSON.stringify(serviceInstanceId())}

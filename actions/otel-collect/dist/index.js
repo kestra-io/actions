@@ -87026,11 +87026,16 @@ function parseHeaders(raw) {
     return headers;
 }
 /**
- * The service.namespace resource attribute for all emitted telemetry. Groups every
- * signal (traces / metrics / logs) under a single namespace so backends (Elastic APM,
- * etc.) can scope GitHub Actions telemetry away from the applications it observes.
+ * The namespace for all emitted telemetry, exposed via two resource attributes:
+ *  - `service.namespace`     — the OTel semantic convention; groups every signal
+ *    (traces / metrics / logs) so backends can scope GitHub Actions telemetry away
+ *    from the applications it observes.
+ *  - `data_stream.namespace` — Elastic's data-stream routing field. Elastic ingests
+ *    OTLP into data streams named `<type>-<dataset>.otel-<namespace>`; without this
+ *    attribute the namespace falls back to `default`. It is NOT derived from
+ *    `service.namespace`, so both must be set to land in a `github-actions` namespace.
  */
-const SERVICE_NAMESPACE = 'github-actions';
+const NAMESPACE = 'github-actions';
 function msToHr(ms) {
     const seconds = Math.trunc(ms / 1000);
     const nanos = Math.round((ms - seconds * 1000) * 1e6);
@@ -87050,7 +87055,8 @@ function serviceInstanceId() {
 function buildResource(serviceName) {
     return new Resource({
         'service.name': serviceName,
-        'service.namespace': SERVICE_NAMESPACE,
+        'service.namespace': NAMESPACE,
+        'data_stream.namespace': NAMESPACE,
         'service.instance.id': serviceInstanceId(),
         'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
         'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
@@ -87291,7 +87297,10 @@ processors:
         value: ${JSON.stringify(serviceName)}
         action: upsert
       - key: service.namespace
-        value: ${JSON.stringify(SERVICE_NAMESPACE)}
+        value: ${JSON.stringify(NAMESPACE)}
+        action: upsert
+      - key: data_stream.namespace
+        value: ${JSON.stringify(NAMESPACE)}
         action: upsert
       - key: service.instance.id
         value: ${JSON.stringify(serviceInstanceId())}
@@ -87681,7 +87690,7 @@ headersEnv.split(",").each { pair ->
 def exporter = exporterBuilder.build()
 
 def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
 
 def tracerProvider = SdkTracerProvider.builder()
   .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
@@ -87858,8 +87867,9 @@ async function main(inputs) {
     coreExports.exportVariable('OTEL_TRACES_SAMPLER', 'parentbased_always_on');
     coreExports.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs));
     // Group injected-agent (Java/Node) telemetry under the same namespace as the
-    // spans/metrics/logs this action emits directly.
-    coreExports.exportVariable('OTEL_RESOURCE_ATTRIBUTES', `service.namespace=${SERVICE_NAMESPACE}`);
+    // spans/metrics/logs this action emits directly. data_stream.namespace is what
+    // Elastic uses to route OTLP into a data stream (else it falls back to "default").
+    coreExports.exportVariable('OTEL_RESOURCE_ATTRIBUTES', `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE}`);
     coreExports.setOutput('trace-id', tId);
     if (inputs.javaEnabled) {
         const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent);

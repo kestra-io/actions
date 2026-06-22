@@ -21,11 +21,16 @@ export function parseHeaders(raw: string): Record<string, string> {
 }
 
 /**
- * The service.namespace resource attribute for all emitted telemetry. Groups every
- * signal (traces / metrics / logs) under a single namespace so backends (Elastic APM,
- * etc.) can scope GitHub Actions telemetry away from the applications it observes.
+ * The namespace for all emitted telemetry, exposed via two resource attributes:
+ *  - `service.namespace`     — the OTel semantic convention; groups every signal
+ *    (traces / metrics / logs) so backends can scope GitHub Actions telemetry away
+ *    from the applications it observes.
+ *  - `data_stream.namespace` — Elastic's data-stream routing field. Elastic ingests
+ *    OTLP into data streams named `<type>-<dataset>.otel-<namespace>`; without this
+ *    attribute the namespace falls back to `default`. It is NOT derived from
+ *    `service.namespace`, so both must be set to land in a `github-actions` namespace.
  */
-export const SERVICE_NAMESPACE = 'github-actions'
+export const NAMESPACE = 'github-actions'
 
 function msToHr(ms: number): HrTime {
   const seconds = Math.trunc(ms / 1000)
@@ -47,7 +52,8 @@ export function serviceInstanceId(): string {
 export function buildResource(serviceName: string): Resource {
   return new Resource({
     'service.name': serviceName,
-    'service.namespace': SERVICE_NAMESPACE,
+    'service.namespace': NAMESPACE,
+    'data_stream.namespace': NAMESPACE,
     'service.instance.id': serviceInstanceId(),
     'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',

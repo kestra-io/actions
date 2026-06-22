@@ -6,7 +6,7 @@ import { buildWorkflowLogs } from './github-logs.js'
 import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { baseEndpoint, buildResource, exportLogs, exportSpans, parseHeaders, SERVICE_NAMESPACE } from './otlp.js'
+import { baseEndpoint, buildResource, exportLogs, exportSpans, NAMESPACE, parseHeaders } from './otlp.js'
 import { listJobs, resolveJobId, type WorkflowJob } from './resolve-job.js'
 
 const STARTED_STATE = 'otel-collect-started'
@@ -94,8 +94,12 @@ async function main(inputs: Inputs): Promise<void> {
   core.exportVariable('OTEL_TRACES_SAMPLER', 'parentbased_always_on')
   core.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs))
   // Group injected-agent (Java/Node) telemetry under the same namespace as the
-  // spans/metrics/logs this action emits directly.
-  core.exportVariable('OTEL_RESOURCE_ATTRIBUTES', `service.namespace=${SERVICE_NAMESPACE}`)
+  // spans/metrics/logs this action emits directly. data_stream.namespace is what
+  // Elastic uses to route OTLP into a data stream (else it falls back to "default").
+  core.exportVariable(
+    'OTEL_RESOURCE_ATTRIBUTES',
+    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE}`
+  )
   core.setOutput('trace-id', tId)
 
   if (inputs.javaEnabled) {
