@@ -52,6 +52,9 @@ on:
         type: boolean
         default: false
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   plugins:
     name: List Plugins
@@ -192,11 +195,13 @@ jobs:
 
       # Plugins — new path (use-kestra-base-images: true)
       - name: Install kestractl
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
-        run: curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Download EE plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
         run: |
           kestractl plugins download ${{ github.ref_name }} \
             --edition EE \
@@ -207,7 +212,7 @@ jobs:
             --concurrency 50
 
       - name: Download OSS plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins != '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
         run: |
           kestractl plugins download ${{ github.ref_name }} \
             --edition OSS \
@@ -218,7 +223,7 @@ jobs:
             --concurrency 50
 
       - name: Create empty plugins dir
-        if: ${{ inputs.use-kestra-base-images && matrix.image.plugins == '' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag == '-no-plugins' }}
         run: mkdir -p kestra-ee/plugins
 
       # Download executable from artifact
@@ -265,8 +270,6 @@ jobs:
             ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           network: host
-          cache-from: type=gha,scope=docker${{ matrix.image.tag }}
-          cache-to: type=gha,mode=max,scope=docker${{ matrix.image.tag }}
           build-args: |
             KESTRA_PLUGINS=${{ !inputs.use-kestra-base-images && steps.vars.outputs.plugins || '' }}
             APT_PACKAGES=${{ matrix.image.packages }}
@@ -289,7 +292,6 @@ jobs:
           tags: ${{ env.CLOUD_GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           network: host
-          cache-from: type=gha,scope=docker${{ matrix.image.tag }}
           build-args: |
             BASE_IMAGE=${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
 
@@ -307,7 +309,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true') && (inputs.dry-run == false)
         run: |
           TAG=${GITHUB_REF#refs/*/}
-          if [[ ! $TAG =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "validation error, $TAG did not match acceptable 'latest' regex"
             exit 1
           fi
@@ -320,7 +322,7 @@ jobs:
         run: |
           echo "TODO remove this safety net after debugging inputs.retag-lts, its value: ${{ inputs.retag-lts }}"
           TAG=${GITHUB_REF#refs/*/}
-          if [[ ! $TAG =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "validation error, $TAG did not match acceptable 'latest' regex"
             exit 1
           fi
@@ -356,3 +358,20 @@ jobs:
         uses: kestra-io/actions/composite/slack-status@main
         with:
           webhook-url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry Export Trace
+    runs-on: kestra-private-standard
+    needs: [ plugins, build-artifacts, docker, end ]
+    steps:
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"

@@ -1,0 +1,110 @@
+name: OTel Collect
+description: Capture OpenTelemetry metrics, traces and logs for a complete GitHub Actions workflow run
+
+runs:
+  using: node20
+  main: dist/index.js
+  post: dist/index.js
+
+inputs:
+  github-token:
+    description: The github token used to query the workflow jobs and steps
+    required: true
+
+  otlp-endpoint:
+    description: The OTLP endpoint to export telemetry to (e.g. https://otlp.kestra.io)
+    required: true
+
+  otlp-headers:
+    description: Comma separated OTLP headers (e.g. "authorization=Bearer xyz,x-tenant=foo")
+    required: false
+    default: ''
+
+  mode:
+    description: >
+      "instrument" (default) sets up the root span, agents and host metrics inside a job and
+      exports that job's step spans on post. "export-all" reconstructs and exports the whole
+      workflow tree (use it in a final job with needs:[...] and if: always()).
+    required: false
+    default: 'instrument'
+
+  java-enabled:
+    description: Download & cache the OpenTelemetry Java agent (exposed via the java-agent-path output)
+    required: false
+    default: 'false'
+
+  node-enabled:
+    description: Download & cache the OpenTelemetry Node auto-instrumentation (exposed via the node-agent-path output)
+    required: false
+    default: 'false'
+
+  inject-java-agent:
+    description: >
+      Auto-inject the Java agent into every JVM via JAVA_TOOL_OPTIONS. Leave 'false' (default) for apps that
+      manage their own OpenTelemetry (e.g. Kestra) — the agent would hijack the global OpenTelemetry and break
+      tests that call resetForTest(). When 'false' the action only exposes java-agent-path as an output.
+    required: false
+    default: 'false'
+
+  inject-node-agent:
+    description: >
+      Auto-inject the Node auto-instrumentation into every Node process via NODE_OPTIONS / NODE_PATH. Leave
+      'false' (default) for apps that manage their own OpenTelemetry. When 'false' the action only exposes
+      node-agent-path as an output.
+    required: false
+    default: 'false'
+
+  host-metrics-enabled:
+    description: Start a background otelcol-contrib collector capturing host metrics (cpu/memory/network/io)
+    required: false
+    default: 'true'
+
+  logs-enabled:
+    description: >
+      In "export-all" mode, download each job's GitHub Actions logs and export them as OTLP log records,
+      correlated to the job/step spans (same trace id) so logs sit next to the trace. Only works in
+      "export-all" (the logs are only available from the API after jobs finish).
+    required: false
+    default: 'false'
+
+  gradle-tracing-enabled:
+    description: >
+      Install a Gradle init script that emits a span per Gradle task and per JUnit test, nested under the
+      GitHub step span (via TRACEPARENT) and exported over OTLP/gRPC. Runs in the Gradle daemon, so it does
+      not conflict with an application that manages its own OpenTelemetry. Gives test-level drill-down without
+      injecting the Java agent into the test workers.
+    required: false
+    default: 'false'
+
+  parent-step-name:
+    description: >
+      Name of the workflow step the build runs in. Live build spans (gradle/junit/node) will nest
+      under this step's span for real drill-down. If empty, they nest under the job span. The name
+      must be unique within the job.
+    required: false
+    default: ''
+
+  collector-version:
+    description: The otelcol-contrib version to download
+    required: false
+    default: '0.114.0'
+
+  java-agent-version:
+    description: The opentelemetry-javaagent version to download (or "latest")
+    required: false
+    default: 'latest'
+
+  service-name:
+    description: The service.name resource attribute for emitted telemetry
+    required: false
+    default: ''
+
+outputs:
+  java-agent-path:
+    description: Absolute path to the downloaded opentelemetry-javaagent.jar
+  node-agent-path:
+    description: Path to the Node auto-instrumentation register module
+  traceparent:
+    description: The W3C traceparent exported for child-process auto-instrumentation
+  trace-id:
+    description: The deterministic trace id for this workflow run

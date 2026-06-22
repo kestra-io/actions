@@ -47,6 +47,7 @@ permissions:
 
 env:
   COMPATIBILITY_JAVA_VERSION: '25'
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
 
 jobs:
   main:
@@ -87,6 +88,21 @@ jobs:
           # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
           java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
+  
+      # Setup OpenTelemetry: root span context, background host-metrics collector, and a
+      # Gradle init script that emits a span per task and per JUnit test (nested under the
+      # build step). This all runs in the Gradle daemon, not the test workers, so there is
+      # no conflict with Kestra's own OpenTelemetry — no agent injection needed.
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env
@@ -270,3 +286,23 @@ jobs:
         if: ${{ (startsWith(github.ref, 'releases/v') || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/')  && inputs.skip-indexing == false }}
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry Export Trace
+    runs-on: ubuntu-latest
+    needs: [main]
+    steps:
+      # Reconstruct and export the whole workflow -> job -> step trace. The live
+      # Gradle/JUnit spans emitted during "main" nest under their step spans via
+      # the shared deterministic ids.
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          mode: export-all
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
