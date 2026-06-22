@@ -20,6 +20,13 @@ export function parseHeaders(raw: string): Record<string, string> {
   return headers
 }
 
+/**
+ * The service.namespace resource attribute for all emitted telemetry. Groups every
+ * signal (traces / metrics / logs) under a single namespace so backends (Elastic APM,
+ * etc.) can scope GitHub Actions telemetry away from the applications it observes.
+ */
+export const SERVICE_NAMESPACE = 'github-actions'
+
 function msToHr(ms: number): HrTime {
   const seconds = Math.trunc(ms / 1000)
   const nanos = Math.round((ms - seconds * 1000) * 1e6)
@@ -40,6 +47,7 @@ export function serviceInstanceId(): string {
 export function buildResource(serviceName: string): Resource {
   return new Resource({
     'service.name': serviceName,
+    'service.namespace': SERVICE_NAMESPACE,
     'service.instance.id': serviceInstanceId(),
     'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',

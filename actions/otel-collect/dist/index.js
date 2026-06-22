@@ -87025,6 +87025,12 @@ function parseHeaders(raw) {
     }
     return headers;
 }
+/**
+ * The service.namespace resource attribute for all emitted telemetry. Groups every
+ * signal (traces / metrics / logs) under a single namespace so backends (Elastic APM,
+ * etc.) can scope GitHub Actions telemetry away from the applications it observes.
+ */
+const SERVICE_NAMESPACE = 'github-actions';
 function msToHr(ms) {
     const seconds = Math.trunc(ms / 1000);
     const nanos = Math.round((ms - seconds * 1000) * 1e6);
@@ -87044,6 +87050,7 @@ function serviceInstanceId() {
 function buildResource(serviceName) {
     return new Resource({
         'service.name': serviceName,
+        'service.namespace': SERVICE_NAMESPACE,
         'service.instance.id': serviceInstanceId(),
         'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
         'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
@@ -87282,6 +87289,9 @@ processors:
     attributes:
       - key: service.name
         value: ${JSON.stringify(serviceName)}
+        action: upsert
+      - key: service.namespace
+        value: ${JSON.stringify(SERVICE_NAMESPACE)}
         action: upsert
       - key: service.instance.id
         value: ${JSON.stringify(serviceInstanceId())}
@@ -87671,7 +87681,7 @@ headersEnv.split(",").each { pair ->
 def exporter = exporterBuilder.build()
 
 def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.instance.id", instanceId).build()))
+  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.namespace", "github-actions").put("service.instance.id", instanceId).build()))
 
 def tracerProvider = SdkTracerProvider.builder()
   .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
@@ -87847,6 +87857,9 @@ async function main(inputs) {
     coreExports.exportVariable('OTEL_PROPAGATORS', 'tracecontext,baggage');
     coreExports.exportVariable('OTEL_TRACES_SAMPLER', 'parentbased_always_on');
     coreExports.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs));
+    // Group injected-agent (Java/Node) telemetry under the same namespace as the
+    // spans/metrics/logs this action emits directly.
+    coreExports.exportVariable('OTEL_RESOURCE_ATTRIBUTES', `service.namespace=${SERVICE_NAMESPACE}`);
     coreExports.setOutput('trace-id', tId);
     if (inputs.javaEnabled) {
         const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent);

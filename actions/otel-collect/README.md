@@ -116,7 +116,7 @@ jobs:
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
 | `collector-version` | `0.114.0` | `otelcol-contrib` version |
 | `java-agent-version` | `latest` | `opentelemetry-javaagent` version |
-| `service-name` | `''` | `service.name` resource attribute |
+| `service-name` | `''` | `service.name` resource attribute (all signals also carry `service.namespace=github-actions`) |
 
 ## Outputs
 
