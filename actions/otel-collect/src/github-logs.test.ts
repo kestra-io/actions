@@ -60,6 +60,38 @@ test('maps ##[error] / ##[warning] markers to severity', () => {
   assert.equal(recs[2].severityNumber, SeverityNumber.INFO)
 })
 
+test('strips ANSI escape sequences from log bodies', () => {
+  const text = '2026-06-20T10:02:00.0000000Z [36;1mBUILD[0m [32msuccess[0m'
+  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  assert.equal(recs.length, 1)
+  assert.equal(recs[0].body, 'BUILD success')
+})
+
+test('detects severity after ANSI codes are stripped', () => {
+  const text = '2026-06-20T10:02:00.0000000Z [31m##[error][0mboom'
+  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  assert.equal(recs[0].severityNumber, SeverityNumber.ERROR)
+  assert.equal(recs[0].body, 'boom')
+})
+
+test('strips ##[group] / ##[endgroup] and other workflow-command markers', () => {
+  const recs = parseJobLog(
+    [
+      '2026-06-20T10:02:00.0000000Z ##[group]Run ./gradlew check',
+      '2026-06-20T10:02:01.0000000Z ##[command]./gradlew check',
+      '2026-06-20T10:02:02.0000000Z ##[endgroup]'
+    ].join('\n'),
+    job,
+    traceId('123', '1'),
+    resource
+  )
+  // ##[endgroup] becomes empty after stripping and is dropped.
+  assert.deepEqual(
+    recs.map((r) => r.body),
+    ['Run ./gradlew check', './gradlew check']
+  )
+})
+
 test('skips blank lines', () => {
   const recs = parseJobLog('2026-06-20T10:02:00.0000000Z line\n\n   \n', job, traceId('123', '1'), resource)
   assert.equal(recs.length, 1)
