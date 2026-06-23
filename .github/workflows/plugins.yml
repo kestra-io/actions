@@ -110,12 +110,34 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # Auth to google with github are required for com.google.cloud.artifactregistry.gradle-plugin
+      # Auth to google — required for com.google.cloud.artifactregistry.gradle-plugin (EE plugins)
+      # and to obtain an access token used by the maven-remote init script (all plugins).
       - name: GCP - Auth with github service account
+        id: gcp-auth
         uses: 'google-github-actions/auth@v3'
-        if: ${{ inputs.sonatype-publish == false }}
+        if: ${{ secrets.GCP_SERVICE_ACCOUNT != '' }}
         with:
+          token_format: 'access_token'
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # Inject a Gradle init script that routes all Maven reads through the GCP AR maven-remote
+      # caching proxy, avoiding Maven Central 403s caused by shared GitHub Actions runner IPs.
+      # The token is passed at build time via MAVEN_REMOTE_TOKEN; the script is a no-op when empty.
+      - name: Setup - Gradle maven-remote init script
+        if: ${{ steps.gcp-auth.outputs.access_token != '' }}
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/maven-remote.gradle << 'EOF'
+          def token = System.getenv("MAVEN_REMOTE_TOKEN") ?: ""
+          if (token) {
+              def mavenRemote = { url "https://europe-maven.pkg.dev/kestra-host/maven-remote"; credentials { username "oauth2accesstoken"; password token } }
+              allprojects {
+                  buildscript { repositories.addFirst(maven(mavenRemote)) }
+                  repositories { addFirst(maven(mavenRemote)) }
+              }
+          }
+          EOF
 
       # Setup unit tests environment
       - name: Setup - Unit test
@@ -125,7 +147,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -f .github/setup-unit.sh ]; then
-            ./.github/setup-unit.sh 
+            ./.github/setup-unit.sh
           fi
 
       # Gradle check
@@ -134,6 +156,7 @@ jobs:
         shell: bash
         run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
         env:
+          MAVEN_REMOTE_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
 
