@@ -72,20 +72,3 @@ jobs:
       - name: Run storybook component tests
         working-directory: ui/packages/design-system
         run: npm run storybook:test -- --coverage
-
-  otel-export-trace:
-    if: always()
-    name: OpenTelemetry Export Trace
-    runs-on: ubuntu-latest
-    needs: [ test ]
-    steps:
-      - name: OpenTelemetry - Export trace
-        uses: kestra-io/actions/actions/otel-collect@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          mode: export-all
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          logs-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
