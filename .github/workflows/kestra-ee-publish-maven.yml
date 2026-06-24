@@ -81,20 +81,3 @@ jobs:
         uses: gradle/actions/dependency-submission@v4
         with:
           build-root-directory: kestra-ee
-
-  otel-export-trace:
-    if: always()
-    name: OpenTelemetry Export Trace
-    runs-on: kestra-private-standard
-    needs: [ maven ]
-    steps:
-      - name: OpenTelemetry - Export trace
-        uses: kestra-io/actions/actions/otel-collect@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          mode: export-all
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          logs-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
