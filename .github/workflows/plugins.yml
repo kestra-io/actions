@@ -146,6 +146,12 @@ jobs:
               }
               beforeSettings { settings ->
                   injectProxy(settings.pluginManagement.repositories)
+                  if (!settings.pluginManagement.repositories.findByName("Gradle Plugin Portal")) {
+                      settings.pluginManagement.repositories.gradlePluginPortal()
+                  }
+                  if (!settings.pluginManagement.repositories.findByName("MavenRepo")) {
+                      settings.pluginManagement.repositories.mavenCentral()
+                  }
               }
               allprojects {
                   injectProxy(buildscript.repositories)
