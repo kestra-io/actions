@@ -144,6 +144,9 @@ jobs:
                       }
                   }
               }
+              beforeSettings { settings ->
+                  injectProxy(settings.pluginManagement.repositories)
+              }
               allprojects {
                   injectProxy(buildscript.repositories)
                   injectProxy(repositories)
