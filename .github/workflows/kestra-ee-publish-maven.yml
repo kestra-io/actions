@@ -13,6 +13,7 @@ on:
         required: false
 
 env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
   NODE_OPTIONS: "--max-old-space-size=4096"
 
 jobs:
@@ -37,7 +38,19 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: 'true'
+          node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Google Auth
       - name: GCP - Auth with github service account
@@ -45,6 +58,15 @@ jobs:
         uses: 'google-github-actions/auth@v3'
         with:
           credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+
+      - name: Build frontend
+        shell: bash
+        run: |
+          cd kestra/ui
+          npm ci
+          cd ../../kestra-ee/ui-ee
+          npm install
+          npm run build
 
       # Publish
       - name: Publish - Release package with Gradle

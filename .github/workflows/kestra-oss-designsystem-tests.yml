@@ -10,6 +10,7 @@ on:
 env:
   # to save corepack from itself
   COREPACK_INTEGRITY_KEYS: 0
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
 
 jobs:
   test:
@@ -23,6 +24,16 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22.18.0'
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Cache Node Modules
         id: cache-node-modules

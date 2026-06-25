@@ -30,10 +30,14 @@ permissions:
   actions: read
   pull-requests: write
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   test:
     name: Backend - Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -53,6 +57,17 @@ jobs:
           node-enabled: true
           python-enabled: true
           java-version: ${{ inputs.java-version }}
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Services
       - name: Setup - Start docker compose

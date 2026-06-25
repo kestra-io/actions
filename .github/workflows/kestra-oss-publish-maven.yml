@@ -25,6 +25,9 @@ on:
         default: '21'
         required: false
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   publish:
     name: Publish - Maven
@@ -43,6 +46,24 @@ jobs:
           java-enabled: true
           node-enabled: true
           java-version: ${{ inputs.java-version }}
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      - name: Build frontend
+        shell: bash
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
 
       # Publish
       - name: Publish - Release package to Maven Central

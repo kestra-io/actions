@@ -9,6 +9,9 @@ on:
         default: '21'
         required: false
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   build-artifacts:
     name: Build Artifacts
