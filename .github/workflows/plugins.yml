@@ -134,25 +134,27 @@ jobs:
           mkdir -p ~/.gradle/init.d
           cat > ~/.gradle/init.d/maven-remote.gradle << 'EOF'
           def token = System.getenv("MAVEN_REMOTE_TOKEN") ?: ""
+          def injectProxy = { repos ->
+              if (token && !repos.findByName("GcpMavenRemote")) {
+                  repos.maven {
+                      name = "GcpMavenRemote"
+                      url = "https://europe-maven.pkg.dev/kestra-host/maven-remote"
+                      credentials { username = "oauth2accesstoken"; password = token }
+                  }
+              }
+          }
+          // Always restore explicit repos: touching pluginManagement.repositories via beforeSettings
+          // drops the implicit gradlePluginPortal() default, so we re-add it unconditionally.
+          beforeSettings { settings ->
+              injectProxy(settings.pluginManagement.repositories)
+              if (!settings.pluginManagement.repositories.findByName("Gradle Plugin Portal")) {
+                  settings.pluginManagement.repositories.gradlePluginPortal()
+              }
+              if (!settings.pluginManagement.repositories.findByName("MavenRepo")) {
+                  settings.pluginManagement.repositories.mavenCentral()
+              }
+          }
           if (token) {
-              def injectProxy = { repos ->
-                  if (!repos.findByName("GcpMavenRemote")) {
-                      repos.maven {
-                          name = "GcpMavenRemote"
-                          url = "https://europe-maven.pkg.dev/kestra-host/maven-remote"
-                          credentials { username = "oauth2accesstoken"; password = token }
-                      }
-                  }
-              }
-              beforeSettings { settings ->
-                  injectProxy(settings.pluginManagement.repositories)
-                  if (!settings.pluginManagement.repositories.findByName("Gradle Plugin Portal")) {
-                      settings.pluginManagement.repositories.gradlePluginPortal()
-                  }
-                  if (!settings.pluginManagement.repositories.findByName("MavenRepo")) {
-                      settings.pluginManagement.repositories.mavenCentral()
-                  }
-              }
               allprojects {
                   injectProxy(buildscript.repositories)
                   injectProxy(repositories)
