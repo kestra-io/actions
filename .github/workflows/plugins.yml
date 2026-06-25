@@ -112,10 +112,14 @@ jobs:
 
       # Auth to google — required for com.google.cloud.artifactregistry.gradle-plugin (EE plugins)
       # and to obtain an access token used by the maven-remote init script (all plugins).
+      - name: GCP - Check credentials availability
+        id: gcp-check
+        run: echo "available=${{ secrets.GCP_SERVICE_ACCOUNT != '' }}" >> $GITHUB_OUTPUT
+
       - name: GCP - Auth with github service account
         id: gcp-auth
         uses: 'google-github-actions/auth@v3'
-        if: ${{ secrets.GCP_SERVICE_ACCOUNT != '' }}
+        if: steps.gcp-check.outputs.available == 'true'
         with:
           token_format: 'access_token'
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
