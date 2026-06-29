@@ -63,7 +63,7 @@ headersEnv.split(",").each { pair ->
 def exporter = exporterBuilder.build()
 
 def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.instance.id", instanceId).build()))
+  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
 
 def tracerProvider = SdkTracerProvider.builder()
   .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())

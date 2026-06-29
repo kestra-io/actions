@@ -15,6 +15,29 @@ const MAX_LINES_PER_JOB = 10000
 // GitHub prefixes every log line with an ISO-8601 timestamp.
 const LINE_RE = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s?(.*)$/
 
+// ANSI escape sequences GitHub embeds for colored output (e.g. "\x1b[36;1m"), which
+// render as garbage like "[36;1m" in a log backend. Matches CSI sequences (\x1b[ …
+// final byte) and OSC sequences (\x1b] … BEL/ST) so we can strip them out.
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
+
+/** Remove ANSI escape sequences so log bodies are plain, readable text. */
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_RE, '')
+}
+
+// GitHub Actions "workflow command" markers embedded in downloaded logs — ##[group],
+// ##[endgroup], ##[error], ##[warning], ##[command], ##[section], ##[debug], … They
+// drive the GitHub UI's log folding/coloring and are just noise in a log backend, so
+// strip the marker token (keeping any trailing text). Severity is read off the marker
+// before this runs, so dropping it here doesn't lose the error/warning level.
+const GH_COMMAND_RE = /##\[[^\]]*\]/g
+
+/** Remove GitHub workflow-command markers, leaving the human-readable text. */
+function stripGhCommands(text: string): string {
+  return text.replace(GH_COMMAND_RE, '')
+}
+
 interface StepWindow {
   spanId: string
   start: number
@@ -55,7 +78,7 @@ export function parseJobLog(
   // entry they belong to. GitHub timestamps every physical line, so a "new entry"
   // is one with a timestamp AND no leading indentation; anything else (indented or
   // untimestamped) is appended to the previous entry's body.
-  const entries: { timeMs: number; message: string }[] = []
+  const entries: { timeMs: number; message: string; severity: ReturnType<typeof severityOf> }[] = []
   let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now()
   let truncated = false
 
@@ -68,27 +91,30 @@ export function parseJobLog(
 
     const m = LINE_RE.exec(raw)
     const hasTs = m !== null && !Number.isNaN(Date.parse(m[1]))
-    const message = m ? m[2] : raw
+    // ANSI-clean text still carrying any ##[…] marker, used for severity + indentation.
+    const clean = stripAnsi(m ? m[2] : raw)
 
-    const isContinuation = entries.length > 0 && (!hasTs || /^\s/.test(message))
+    const isContinuation = entries.length > 0 && (!hasTs || /^\s/.test(clean))
     if (isContinuation) {
-      entries[entries.length - 1].message += `\n${message}`
+      entries[entries.length - 1].message += `\n${stripGhCommands(clean)}`
       continue
     }
 
+    // Read severity off the marker, then drop the marker from the body.
+    const severity = severityOf(clean)
+    const message = stripGhCommands(clean)
     if (!message.trim()) continue
     const timeMs = hasTs ? Date.parse((m as RegExpExecArray)[1]) : lastMs
     lastMs = timeMs
-    entries.push({ timeMs, message })
+    entries.push({ timeMs, message, severity })
   }
 
   const records: ReadableLogRecord[] = entries.map((entry) => {
-    const sev = severityOf(entry.message)
     const input: LogInput = {
       body: entry.message,
       timeMs: entry.timeMs,
-      severityNumber: sev.number,
-      severityText: sev.text,
+      severityNumber: entry.severity.number,
+      severityText: entry.severity.text,
       traceId,
       spanId: spanForTime(entry.timeMs, steps, jobSpan),
       attributes: {
