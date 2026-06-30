@@ -2,8 +2,8 @@ name: 'Upload Jar'
 description: 'This action uploads the jar as artifact and comments the download link on the pull request'
 
 inputs:
-  secrets:
-    description: 'Secrets passed as toJSON'
+  github-token:
+    description: 'GitHub token for PR comments'
     required: true
 
 runs:
@@ -20,7 +20,7 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
-        github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: "📦 Artifacts"
         fetch-artifact: 'true'
         add-summary: 'false'

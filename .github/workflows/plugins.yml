@@ -104,11 +104,14 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      # Setup for setup-unit.sh, injecting secrets as env variables
+      # Setup for setup-unit.sh, injecting only non-sensitive secrets as env variables.
+      # GITHUB_TOKEN and known infra secrets are excluded; plugin tests should use
+      # explicitly declared secrets in their own workflow_call secrets block.
       - name: Setup - Secret to Env
         uses: oNaiPs/secrets-to-env-action@v1
         with:
           secrets: ${{ toJSON(secrets) }}
+          exclude: GITHUB_TOKEN, GH_BOT_APP_ID, GH_BOT_PRIVATE_KEY, SONATYPE_USER, SONATYPE_PASSWORD, SONATYPE_GPG_KEYID, SONATYPE_GPG_PASSWORD, SONATYPE_GPG_FILE, SLACK_WEBHOOK_URL, SLACK_RELEASES_WEBHOOK_URL, KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX
 
       # Auth to google — required for com.google.cloud.artifactregistry.gradle-plugin (EE plugins)
       # and to obtain an access token used by the maven-remote init script (all plugins).
@@ -231,15 +234,19 @@ jobs:
         uses: kestra-io/actions/composite/publish-java@main
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
         with:
-          secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
+          sonatype-user: ${{ secrets.SONATYPE_USER }}
+          sonatype-password: ${{ secrets.SONATYPE_PASSWORD }}
+          sonatype-gpg-keyid: ${{ secrets.SONATYPE_GPG_KEYID }}
+          sonatype-gpg-password: ${{ secrets.SONATYPE_GPG_PASSWORD }}
+          sonatype-gpg-file: ${{ secrets.SONATYPE_GPG_FILE }}
 
       # Upload JAR for PR
       - name: Publish - Jar artifacts for PR only
         uses: kestra-io/actions/composite/jar-upload@main
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Cleanup disk space to avoid "no space left on device" errors during Trivy scan
       - name: Cleanup - Free up disk space
@@ -273,7 +280,7 @@ jobs:
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # GitHub Release
       - name: GitHub - Create release
@@ -288,14 +295,18 @@ jobs:
         uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() && inputs.skip-test == false }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+          github-auth-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
 
       # Unreleased commits since latest release
       - name: Unreleased Commits - Comment pull request
         uses: kestra-io/actions/composite/unreleased-commits@main
         if: ${{ github.event_name == 'pull_request' }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Slack on error
       - name: Slack - Notify on failure
