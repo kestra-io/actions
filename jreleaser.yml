@@ -99,8 +99,7 @@ files:
     - pattern: "!certs/**"
 
 announce:
-  slack:
-    active: 'ALWAYS' # TODO: maybe switch to RELEASE only?
+  slack: {} # `active` is driven by JRELEASER_ANNOUNCE_SLACK_ACTIVE (github-release action's announce-slack input). Do not hardcode `active` here: an explicit config value takes precedence over the env var and would force announcements ON regardless of the input.
 
 upload:
   active: ALWAYS
