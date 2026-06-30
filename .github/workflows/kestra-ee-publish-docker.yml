@@ -186,11 +186,12 @@ jobs:
             echo "TAG '$TAG' is not a real release, skipping minor_semver"
           fi
 
+          MAVEN_REMOTE="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-maven.pkg.dev/kestra-host/maven-remote"
           PRIVATE_REPO="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-west1-maven.pkg.dev/kestra-host/maven"
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             echo "plugins=$PRIVATE_REPO-snapshot --repositories=https://central.sonatype.com/repository/maven-snapshots ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           else
-            echo "plugins=$PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+            echo "plugins=$MAVEN_REMOTE $PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           fi
 
       # Plugins — new path (use-kestra-base-images: true)

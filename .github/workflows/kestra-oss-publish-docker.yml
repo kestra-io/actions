@@ -138,6 +138,15 @@ jobs:
 
       - uses: actions/checkout@v5
 
+      # GCP Auth — needed to authenticate against the maven-remote Artifact Registry caching proxy
+      - name: GCP - Auth
+        id: glogin
+        if: ${{ matrix.image.plugins != '' }}
+        uses: google-github-actions/auth@v3
+        with:
+          token_format: 'access_token'
+          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+
       # Vars
       - name: Set image name
         id: vars
@@ -165,7 +174,8 @@ jobs:
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             echo "plugins=--repositories=https://central.sonatype.com/repository/maven-snapshots/ ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           else
-            echo "plugins=${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+            MAVEN_REMOTE="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-maven.pkg.dev/kestra-host/maven-remote"
+            echo "plugins=$MAVEN_REMOTE ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           fi
 
       # Download executable from artifact
