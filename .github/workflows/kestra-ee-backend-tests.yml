@@ -74,7 +74,12 @@ jobs:
 
       # Services
       - name: Setup - Start docker compose
-        run: docker compose -f docker-compose-ci.yml up -d
+        # --wait blocks until every service with a healthcheck reports healthy (and the rest
+        # are running), so the Gradle check below no longer races container startup. This
+        # removes environmental failures like 'Connection refused' / MySQL 'Communications
+        # link failure' from tests that connect before the shared services are ready.
+        # Requires the healthchecks added in kestra-ee's docker-compose-ci.yml.
+        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       # Gradle check
       - name: Gradle - check and javadoc
