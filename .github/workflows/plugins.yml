@@ -88,6 +88,9 @@ jobs:
           # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
           java-version: ${{ startsWith(inputs.kestra-version, '2.') && env.COMPATIBILITY_JAVA_VERSION || inputs.java-version }}
           java-enable-develocity-injection: true
+          # Set up Node only for plugins that ship a UI micro-frontend (ui/package-lock.json),
+          # so setup-node's npm cache doesn't fail on the majority of plugins without one.
+          node-enabled: ${{ hashFiles('ui/package-lock.json') != '' }}
   
       # Setup OpenTelemetry: root span context, background host-metrics collector, and a
       # Gradle init script that emits a span per task and per JUnit test (nested under the
@@ -193,6 +196,19 @@ jobs:
           if [ -f .github/cleanup-unit.sh ]; then
             ./.github/cleanup-unit.sh
           fi
+
+      # UI unit tests (Vitest, jsdom — no browser download) for plugins that ship a Vue
+      # micro-frontend under ui/. Guarded on ui/package-lock.json so it is a no-op for the
+      # plugins that have no UI; Node itself is set up conditionally in "Setup - Build".
+      # --if-present keeps repos that lack a lint/test:unit script from failing.
+      - name: Test - UI unit tests
+        if: ${{ inputs.skip-test == false && hashFiles('ui/package-lock.json') != '' }}
+        working-directory: ui
+        shell: bash
+        run: |
+          npm ci
+          npm run --if-present lint
+          npm run --if-present test:unit
 
       # Avoid duplicate publishing on release commits:
       # when a main/master push points to a release tag, only the tag workflow should publish.
