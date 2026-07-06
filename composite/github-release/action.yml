@@ -37,11 +37,23 @@ runs:
           echo "BRANCH=develop" >> $GITHUB_ENV
         fi
 
+        # Previous stable tag, used by JReleaser as the changelog base
+        current_tag="v${GITHUB_REF_NAME#v}"
+        previous_tag=$(
+          git tag -l \
+          | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+          | sort -V \
+          | sed -n "/^$current_tag$/q;p" \
+          | tail -n1
+        )
+        echo "Current tag: $current_tag"
+        echo "Previous stable tag: $previous_tag"
+        echo "PREVIOUS_TAG=$previous_tag" >> $GITHUB_ENV
+
     - name: Setup - Copy jreleaser.yml
       shell: bash
       run: |
         cp jreleaser/jreleaser.yml .
-
     - name: Patch jreleaser.yml for major releases
       shell: bash
       run: |
@@ -71,6 +83,7 @@ runs:
       uses: jreleaser/release-action@v2
       env:
         JRELEASER_BRANCH: ${{ env.BRANCH}}
+        JRELEASER_PREVIOUS_TAG_NAME: ${{ env.PREVIOUS_TAG }}
         JRELEASER_GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         JRELEASER_PROJECT_VERSION: ${{ env.VERSION }}
         JRELEASER_ANNOUNCE_SLACK_WEBHOOK: ${{ env.SLACK_RELEASES_WEBHOOK_URL }}
