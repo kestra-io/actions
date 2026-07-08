@@ -18,10 +18,22 @@ runs:
   using: composite
 
   steps:
-    - name: Checkout code
+    - name: Checkout - EE
       uses: actions/checkout@v4
       with:
+        path: kestra-ee
         ref: ${{ github.head_ref }}
+
+    # check.ts imports ../../kestra/ui/src/translations/compareTranslations.ts as a sibling repo
+    - name: Checkout - OSS
+      uses: actions/checkout@v4
+      with:
+        repository: kestra-io/kestra
+        path: kestra
+        ref: ${{ github.base_ref }}
+        sparse-checkout: |
+          ui/src/translations/compareTranslations.ts
+        sparse-checkout-cone-mode: false
 
     - name: Set up Node
       uses: actions/setup-node@v6
@@ -31,11 +43,11 @@ runs:
     - name: Install Node dependencies
       run: npm ci
       shell: bash
-      working-directory: ui-ee
+      working-directory: kestra-ee/ui-ee
 
     - name: Generate translations
       run: npm run translations:generate -- ${{ github.event.inputs.retranslate_modified_keys }} ${{ github.event.inputs.only_pr && '--PR' }}
-      working-directory: ui-ee
+      working-directory: kestra-ee/ui-ee
       shell: bash
 
     - name: Set up Node
@@ -45,6 +57,7 @@ runs:
 
     - name: Check keys matching
       shell: bash
+      working-directory: kestra-ee
       run: npx --yes tsx ui-ee/src/translations/check.ts
 
     - name: Set up Git
@@ -57,6 +70,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
       shell: bash
+      working-directory: kestra-ee
       run: |
         git add ui-ee/src/translations/ee_translations/*.json
         if git diff --cached --quiet; then
