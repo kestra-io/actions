@@ -186,9 +186,8 @@ jobs:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
 
-      # Cleanup unit tests environment
+      # Cleanup unit tests environment.
       - name: Cleanup - Unit test
-        if: ${{ inputs.skip-test == false }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
