@@ -187,7 +187,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       # Cleanup unit tests environment.
+      # !cancelled() (not the implicit success()) is required so teardown still runs when
+      # "Test - Gradle Check" fails — that is exactly when a test may have leaked resources
+      # (e.g. objects in a shared cloud bucket) and cleanup matters most. Without an explicit
+      # status function a step defaults to success() and is skipped on any prior failure.
       - name: Cleanup - Unit test
+        if: ${{ !cancelled() && inputs.skip-test == false }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
