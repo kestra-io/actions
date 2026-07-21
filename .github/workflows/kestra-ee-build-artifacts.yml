@@ -6,6 +6,9 @@ on:
       GOOGLE_SERVICE_ACCOUNT:
         description: "The Google Service Account."
         required: true
+      GCP_SERVICE_ACCOUNT:
+        description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
+        required: false
       CODECOV_TOKEN:
         description: 'Codecov Token'
         required: true
@@ -51,6 +54,56 @@ jobs:
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
 
+      # Route Gradle Maven reads through the GCP AR maven-remote caching proxy to avoid Maven
+      # Central HTTP 429 rate-limiting on shared runner IPs. Mirrors plugins.yml; no-op without a token.
+      - name: GCP - Check credentials availability
+        id: gcp-check
+        run: echo "available=${{ secrets.GCP_SERVICE_ACCOUNT != '' }}" >> $GITHUB_OUTPUT
+
+      - name: GCP - Auth with github service account
+        id: gcp-auth
+        uses: 'google-github-actions/auth@v3'
+        if: steps.gcp-check.outputs.available == 'true'
+        with:
+          token_format: 'access_token'
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          export_environment_variables: false
+
+      - name: Setup - Gradle maven-remote init script
+        if: ${{ steps.gcp-auth.outputs.access_token != '' }}
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/maven-remote.gradle << 'EOF'
+          def token = System.getenv("MAVEN_REMOTE_TOKEN") ?: ""
+          def injectProxy = { repos ->
+              if (token && !repos.findByName("GcpMavenRemote")) {
+                  repos.maven {
+                      name = "GcpMavenRemote"
+                      url = "https://europe-maven.pkg.dev/kestra-host/maven-remote"
+                      credentials { username = "oauth2accesstoken"; password = token }
+                  }
+              }
+          }
+          // Always restore explicit repos: touching pluginManagement.repositories via beforeSettings
+          // drops the implicit gradlePluginPortal() default, so we re-add it unconditionally.
+          beforeSettings { settings ->
+              injectProxy(settings.pluginManagement.repositories)
+              if (!settings.pluginManagement.repositories.findByName("Gradle Plugin Portal")) {
+                  settings.pluginManagement.repositories.gradlePluginPortal()
+              }
+              if (!settings.pluginManagement.repositories.findByName("MavenRepo")) {
+                  settings.pluginManagement.repositories.mavenCentral()
+              }
+          }
+          if (token) {
+              allprojects {
+                  injectProxy(buildscript.repositories)
+                  injectProxy(repositories)
+              }
+          }
+          EOF
+
       - name: OpenTelemetry - Setup
         uses: kestra-io/actions/actions/otel-collect@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -86,6 +139,7 @@ jobs:
       # Shadow Jar
       - name: Gradle - Build jars
         env:
+          MAVEN_REMOTE_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
