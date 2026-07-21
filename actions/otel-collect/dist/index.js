@@ -87679,7 +87679,20 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 initscript {
-  repositories { mavenCentral() }
+  repositories {
+    // Use the GCP pull-through mirror when MAVEN_REMOTE_TOKEN is set so cold-cache
+    // builds don't hit Maven Central directly and get 429'd. Falls back to mavenCentral().
+    def mavenRemoteToken = System.getenv("MAVEN_REMOTE_TOKEN") ?: ""
+    if (!mavenRemoteToken.isEmpty()) {
+      maven {
+        name = "GcpMavenRemote"
+        url = "https://europe-maven.pkg.dev/kestra-host/maven-remote"
+        credentials { username = "oauth2accesstoken"; password = mavenRemoteToken }
+        authentication { basic(BasicAuthentication) }
+      }
+    }
+    mavenCentral()
+  }
   dependencies {
     classpath "io.opentelemetry:opentelemetry-sdk:1.43.0"
     classpath "io.opentelemetry:opentelemetry-exporter-otlp:1.43.0"
