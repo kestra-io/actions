@@ -100,6 +100,9 @@ jobs:
     uses: ./.github/workflows/kestra-ee-build-artifacts.yml
     secrets:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      # Routes the Build Jar Gradle step through the GCP AR maven-remote proxy to
+      # avoid Maven Central HTTP 429 on shared runner IPs. No-op if the secret is empty.
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     with:
       java-version: ${{ inputs.java-version }}
