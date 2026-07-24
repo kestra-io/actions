@@ -35,7 +35,14 @@ index() {
         fi
     fi
     GIT_COMMIT=$(git rev-parse --short HEAD)
-    
+
+    # Cloud plugins are private, shipped only in the kestra-cloud image: never index them.
+    # Checked before the semver guards so a cloud plugin skips cleanly whatever its versions.
+    if [[ "$GROUP" == io.kestra.plugin.cloud* ]]; then
+        echo "Cloud plugin $GROUP:$ARTIFACT ($VERSION): private, skipping release indexing."
+        return 0
+    fi
+
     semver_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
     if [[ ! $VERSION =~ $semver_regex ]]; then
         echo "Error: Invalid pluginVersion '$VERSION'. Expected format MAJOR.MINOR.PATCH"

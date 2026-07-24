@@ -1,0 +1,46 @@
+name: Build Kestra Cloud image
+description: "Builds and pushes the kestra-cloud image: EE base image + cloud-ee libs + private cloud plugins (groupId io.kestra.plugin.cloud, resolved from the registry poms, never from the public plugin index)."
+
+inputs:
+  context:
+    description: "Directory of the kestra-ee checkout, used as the docker build context"
+    required: false
+    default: "kestra-ee"
+  base-image:
+    description: "Full ref of the kestra-ee image to build FROM"
+    required: true
+  image:
+    description: "Full target image ref (registry/path:tag)"
+    required: true
+  kestra-version:
+    description: "Kestra version being built (vX.Y.Z or a branch name), used to filter cloud plugins by core compatibility"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Download cloud plugins
+      shell: bash
+      env:
+        KESTRA_VERSION: ${{ inputs.kestra-version }}
+        PLUGINS_DIR: ${{ inputs.context }}/docker/app/cloud-plugins
+      run: |
+        chmod +x ${{ github.action_path }}/download-cloud-plugins.sh
+        ${{ github.action_path }}/download-cloud-plugins.sh
+
+    - name: Download cloud-ee libs
+      uses: actions/download-artifact@v5
+      with:
+        name: cloud-libs
+        path: ${{ inputs.context }}/docker/app/libs
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}/.
+        file: ${{ inputs.context }}/Dockerfile.cloud
+        push: true
+        tags: ${{ inputs.image }}
+        platforms: linux/amd64,linux/arm64
+        network: host
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image }}

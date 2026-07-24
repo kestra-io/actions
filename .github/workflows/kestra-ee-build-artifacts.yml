@@ -91,7 +91,7 @@ jobs:
         run: |
           cd kestra-ee
           if [ "${{ steps.cloud-ee.outputs.exists }}" == "true" ]; then
-            ./gradlew executableJar :cloud-ee:jar --parallel
+            ./gradlew executableJar :cloud-ee:shadowJar --parallel
           else
             ./gradlew executableJar --parallel
           fi
@@ -107,9 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cloud-libs
-          path: |
-            kestra-ee/cloud-ee/build/libs/cloud-ee-*.jar
-            !kestra-ee/cloud-ee/build/libs/*-all.jar
+          path: kestra-ee/cloud-ee/build/libs/cloud-ee-*-all.jar
 
       - name: Artifacts - Transform swagger for website
         run: |
