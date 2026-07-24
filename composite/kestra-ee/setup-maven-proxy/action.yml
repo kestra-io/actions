@@ -3,7 +3,8 @@ description: >-
   Routes Gradle Maven reads through the GCP Artifact Registry maven-remote caching proxy to
   avoid Maven Central HTTP 429 rate-limiting on shared runner IPs. Writes a Gradle init script
   and exports MAVEN_REMOTE_TOKEN to the whole job so every subsequent Gradle step is covered.
-  No-op when no service account is provided.
+  Also routes Kestra's runtime plugin downloader through the same proxy by exporting the
+  kestra.plugins.repositories.central.* overrides. No-op when no service account is provided.
 
 inputs:
   gcp-service-account:
@@ -71,3 +72,12 @@ runs:
         # Export the token to the whole job so every subsequent Gradle step (build, sonar,
         # publish, javadoc, ...) resolves through the proxy — not just one step's env.
         echo "MAVEN_REMOTE_TOKEN=${MAVEN_REMOTE_ACCESS_TOKEN}" >> "$GITHUB_ENV"
+        # Route Kestra's runtime plugin downloader (MavenPluginDownloader) through the same
+        # proxy. Micronaut binds these onto kestra.plugins.repositories.central.{url,basic-auth},
+        # overriding the Maven Central default that test/app configs ship with. This is CI-only:
+        # locally the token and these vars are absent, so configs keep resolving from Central.
+        {
+          echo "KESTRA_PLUGINS_REPOSITORIES_CENTRAL_URL=https://europe-maven.pkg.dev/kestra-host/maven-remote"
+          echo "KESTRA_PLUGINS_REPOSITORIES_CENTRAL_BASIC_AUTH_USERNAME=oauth2accesstoken"
+          echo "KESTRA_PLUGINS_REPOSITORIES_CENTRAL_BASIC_AUTH_PASSWORD=${MAVEN_REMOTE_ACCESS_TOKEN}"
+        } >> "$GITHUB_ENV"
