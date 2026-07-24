@@ -70,11 +70,16 @@ jobs:
           cd kestra/ui
           npm ci
 
+      # `npm install` (not `ci`), run unconditionally: the design-system/topology workspaces live in
+      # the OSS checkout, and their transitive deps (motion-v, mermaid, remark-*, moment-timezone)
+      # aren't captured in ui-ee/package-lock.json — so `npm ci` (strict lock) leaves them out of
+      # ui-ee/node_modules. With `preserveSymlinks: true`, vue-tsc resolves design-system's imports
+      # from the ui-ee tree, so they must be hoisted there. `npm install` reconciles the cross-repo
+      # workspaces and installs them, even when the EE node_modules cache was restored.
       - name: Npm - Install
-        if: steps.cache-ee-node-modules.outputs.cache-hit != 'true'
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm ci
+        run: npm install
 
       - name: Npm - Check types
         shell: bash
