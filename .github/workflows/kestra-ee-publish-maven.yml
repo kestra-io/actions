@@ -41,6 +41,11 @@ jobs:
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
 
+      - name: Setup - Maven proxy
+        uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+        with:
+          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
