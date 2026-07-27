@@ -8,6 +8,9 @@ on:
       APPLICATION_SECRETS:
         description: "applications-secrets.yml with license infos for EE Kestra, encoded as base64"
         required: true
+      GCP_SERVICE_ACCOUNT:
+        description: "GCP service account JSON for the Maven proxy (routes Gradle reads off Maven Central). Optional; when absent the proxy step is a no-op."
+        required: false
     inputs:
       noInputYet:
         description: 'not input yet.'
@@ -52,6 +55,11 @@ jobs:
           java-enabled: 'true'
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
+
+      - name: Setup - Maven proxy
+        uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@ci/maven-proxy-no-central
+        with:
+          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@main

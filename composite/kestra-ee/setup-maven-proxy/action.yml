@@ -69,7 +69,24 @@ runs:
                 (repo.url.toString().startsWith("https://repo.maven.apache.org") ||
                  repo.url.toString().contains("central.sonatype.com"))
         }
-        def neutralisePublic = { repos ->
+        // Plugin/buildscript repos: neutralise raw Central/Sonatype, and for the remaining maven
+        // repos use the .pom only + ignore the .module redirect. Some plugins (artifactregistry,
+        // owasp dependencycheck) publish Gradle Module Metadata whose .module the proxy does not
+        // mirror and the Plugin Portal lacks, so Gradle would chase the .module back to Central and
+        // 429. The Portal's .pom resolves them.
+        def scrubPluginRepos = { repos ->
+            repos.all { repo ->
+                if (isRawPublic(repo)) {
+                    repo.content { excludeGroupByRegex ".*" }
+                } else if (repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository) {
+                    repo.metadataSources { mavenPom(); ignoreGradleMetadataRedirection() }
+                }
+            }
+        }
+        // Project (main-dependency) repos: only neutralise raw Central/Sonatype. Keep Gradle Module
+        // Metadata so library variant/capability resolution stays correct — the proxy mirrors the
+        // .module for normal Central-hosted libraries.
+        def scrubDependencyRepos = { repos ->
             repos.all { repo ->
                 if (isRawPublic(repo)) {
                     repo.content { excludeGroupByRegex ".*" }
@@ -86,14 +103,14 @@ runs:
                 settings.pluginManagement.repositories.gradlePluginPortal()
             }
             // Intentionally NO mavenCentral() here — neutralise it if a settings script adds one.
-            neutralisePublic(settings.pluginManagement.repositories)
+            scrubPluginRepos(settings.pluginManagement.repositories)
         }
         if (token) {
             allprojects {
                 injectProxy(buildscript.repositories)
-                neutralisePublic(buildscript.repositories)
+                scrubPluginRepos(buildscript.repositories)
                 injectProxy(repositories)
-                neutralisePublic(repositories)
+                scrubDependencyRepos(repositories)
             }
         }
         EOF
