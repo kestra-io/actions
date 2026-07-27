@@ -42,6 +42,12 @@ runs:
         mkdir -p ~/.gradle/init.d
         cat > ~/.gradle/init.d/maven-remote.gradle << 'EOF'
         def token = System.getenv("MAVEN_REMOTE_TOKEN") ?: ""
+
+        // The GCP Artifact Registry "maven-remote" is a server-side caching mirror of Maven
+        // Central: requests are proxied from Google IPs, never the shared runner IP, so it is
+        // immune to the Maven Central HTTP 429 rate-limiting that fails CI plugin/dependency
+        // resolution. Route ALL Gradle Maven reads through it and stop touching raw Maven
+        // Central (repo.maven.apache.org) and Sonatype (central.sonatype.com) entirely.
         def injectProxy = { repos ->
             if (token && !repos.findByName("GcpMavenRemote")) {
                 repos.maven {
@@ -51,21 +57,43 @@ runs:
                 }
             }
         }
-        // Always restore explicit repos: touching pluginManagement.repositories via beforeSettings
-        // drops the implicit gradlePluginPortal() default, so we re-add it unconditionally.
+
+        // Neutralise raw public repos (Maven Central + Sonatype) wherever they are declared,
+        // including ones added later by build scripts. We disable them via content filtering
+        // rather than removing them: removal races with the root buildscript block, whereas an
+        // "all {}" hook + excludeGroupByRegex is order- and timing-independent. An excluded repo
+        // is never queried; the proxy (a Central mirror) serves the same content.
+        def isRawPublic = { repo ->
+            repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
+                repo.url != null &&
+                (repo.url.toString().startsWith("https://repo.maven.apache.org") ||
+                 repo.url.toString().contains("central.sonatype.com"))
+        }
+        def neutralisePublic = { repos ->
+            repos.all { repo ->
+                if (isRawPublic(repo)) {
+                    repo.content { excludeGroupByRegex ".*" }
+                }
+            }
+        }
+
         beforeSettings { settings ->
             injectProxy(settings.pluginManagement.repositories)
-            if (!settings.pluginManagement.repositories.findByName("Gradle Plugin Portal")) {
+            // Keep the Gradle Plugin Portal for plugin markers/impls not mirrored by Central.
+            // (Touching pluginManagement.repositories drops the implicit default; its real name
+            // is "Gradle Central Plugin Repository".)
+            if (!settings.pluginManagement.repositories.findByName("Gradle Central Plugin Repository")) {
                 settings.pluginManagement.repositories.gradlePluginPortal()
             }
-            if (!settings.pluginManagement.repositories.findByName("MavenRepo")) {
-                settings.pluginManagement.repositories.mavenCentral()
-            }
+            // Intentionally NO mavenCentral() here — neutralise it if a settings script adds one.
+            neutralisePublic(settings.pluginManagement.repositories)
         }
         if (token) {
             allprojects {
                 injectProxy(buildscript.repositories)
+                neutralisePublic(buildscript.repositories)
                 injectProxy(repositories)
+                neutralisePublic(repositories)
             }
         }
         EOF

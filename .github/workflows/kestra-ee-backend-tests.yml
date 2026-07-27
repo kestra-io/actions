@@ -61,7 +61,7 @@ jobs:
           java-version: ${{ inputs.java-version }}
 
       - name: Setup - Maven proxy
-        uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+        uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@ci/maven-proxy-no-central
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
