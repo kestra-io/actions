@@ -108,3 +108,15 @@ jobs:
         shell: bash
         working-directory: kestra-ee/ui-ee
         run: npm run test:storybook -- --coverage
+
+      # Runs on success too (not just failure): that's what lets it clear a
+      # stale failures comment once the suite goes back to green.
+      - name: Report failing UI tests on the PR
+        if: always()
+        uses: kestra-io/actions/composite/report-ui-test-failures@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          base-path: kestra-ee/ui-ee
+          repo-path: ui-ee
+          unit-report-path: kestra-ee/ui-ee/test-report.junit.xml
+          storybook-report-path: kestra-ee/ui-ee/test-report.storybook.junit.xml
