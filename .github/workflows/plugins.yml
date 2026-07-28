@@ -131,11 +131,13 @@ jobs:
       # caching proxy, avoiding Maven Central 429s caused by shared GitHub Actions runner IPs.
       # Central and Sonatype are neutralised via content filtering (order/timing-independent),
       # not removal or reordering, so they are never queried. Mirrors the logic proven in the
-      # kestra-ee/setup-maven-proxy composite action. The token is passed at build time via
-      # MAVEN_REMOTE_TOKEN; the script is a no-op when empty.
+      # kestra-ee/setup-maven-proxy composite action. The token is read at build time from
+      # MAVEN_REMOTE_TOKEN (exported to the whole job below); the script is a no-op when empty.
       - name: Setup - Gradle maven-remote init script
         if: ${{ steps.gcp-auth.outputs.access_token != '' }}
         shell: bash
+        env:
+          MAVEN_REMOTE_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
         run: |
           mkdir -p ~/.gradle/init.d
           cat > ~/.gradle/init.d/maven-remote.gradle << 'EOF'
@@ -212,6 +214,10 @@ jobs:
               }
           }
           EOF
+          # Export the token to the whole job so every Gradle step (check, publish, index release,
+          # plugin setup/cleanup scripts) resolves through the proxy, and the OpenTelemetry init
+          # script's classpath uses the mirror instead of falling back to Maven Central and 429ing.
+          echo "MAVEN_REMOTE_TOKEN=${MAVEN_REMOTE_ACCESS_TOKEN}" >> "$GITHUB_ENV"
 
       # Setup unit tests environment
       - name: Setup - Unit test
@@ -230,7 +236,6 @@ jobs:
         shell: bash
         run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
         env:
-          MAVEN_REMOTE_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -298,11 +303,6 @@ jobs:
       - name: Publish - Java
         uses: kestra-io/actions/composite/publish-java@main
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
-        # Same as the Gradle check step: the maven-remote init script reads MAVEN_REMOTE_TOKEN to
-        # route the publish build's dependency reads (incl. the OpenTelemetry init script classpath)
-        # through the GCP mirror instead of Maven Central, which 429s on shared runner IPs.
-        env:
-          MAVEN_REMOTE_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
         with:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
