@@ -110,12 +110,10 @@ jobs:
         run: npm run test:storybook -- --coverage
 
       # Runs on success too (not just failure): that's what lets it clear a
-      # stale failures comment once the suite goes back to green. Pinned to
-      # a kestra ref, not this repo, since the action's implementation lives
-      # in kestra-io/kestra alongside the vitest config it depends on.
+      # stale failures comment once the suite goes back to green.
       - name: Report failing UI tests on the PR
         if: always()
-        uses: kestra-io/kestra/.github/actions/report-ui-test-failures@develop
+        uses: kestra-io/actions/composite/report-ui-test-failures@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           base-path: kestra-ee/ui-ee
