@@ -90,14 +90,40 @@ jobs:
         run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       # Gradle check
-      - name: Gradle - check and javadoc
+      - name: Gradle - javadoc then check
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check javadoc --parallel
+          # Run javadoc BEFORE check, as its own Gradle invocation.
+          #
+          # Why: in a single `check javadoc --parallel` build, javadoc is worker-starved to the
+          # very end (it waits behind the ~25-min :webserver-ee:test), then runs last under peak
+          # parallel load. In that tail position it intermittently stalls the whole job past the
+          # 90-min timeout — the last "> Task :...:javadoc" line prints and the build goes silent.
+          # The javadoc tool itself is NOT at fault: reproduced on JDK 25 it completes in ~10s,
+          # makes zero external network connections, and has no -link/doclet/annotation-processing
+          # flags. Running javadoc up-front on a fresh daemon avoids the starved tail entirely.
+          #
+          # The `timeout` is a safety net: if javadoc ever stalls again it is capped at 10 min
+          # instead of burning the full 90-min budget, and on timeout we dump every JVM's thread
+          # stacks so a recurrence self-captures the stuck frame in the job log.
+          JSTACK="${JAVA_HOME:+$JAVA_HOME/bin/}jstack"
+          # `|| code=$?` keeps the captured exit code intact under the runner's `set -e`.
+          code=0
+          timeout --signal=TERM 600 ./gradlew javadoc --parallel || code=$?
+          if [ "$code" -ne 0 ]; then
+            if [ "$code" -eq 124 ]; then
+              echo "::error::javadoc stalled and was killed after 10m — dumping thread stacks"
+              for p in $(pgrep -f 'GradleDaemon|GradleWorkerMain|jdk.javadoc|com.sun.tools.javadoc'); do
+                echo "===== jstack $p ====="; "$JSTACK" -l "$p" 2>&1 || true
+              done
+            fi
+            exit "$code"
+          fi
+          ./gradlew check --parallel
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
