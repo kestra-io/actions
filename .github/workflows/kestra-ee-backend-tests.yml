@@ -89,15 +89,34 @@ jobs:
         # Requires the healthchecks added in kestra-ee's docker-compose-ci.yml.
         run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
-      # Gradle check
-      - name: Gradle - check and javadoc
+      # Gradle: javadoc and check run as two separate steps.
+      #
+      # In a single `check javadoc --parallel` build, javadoc is worker-starved to the very end
+      # (it waits behind the ~25-min :webserver-ee:test) and, running last under peak parallel
+      # load, intermittently stalls the whole job past the 90-min timeout. The javadoc tool
+      # itself is fine (reproduced on JDK 25: ~10s, zero external network, no -link/doclet flags),
+      # so splitting it into its own step removes the starved tail. Gradle's on-disk task outputs
+      # persist between steps in the same job, so `check` reuses the already-compiled classes
+      # (compileJava UP-TO-DATE) — no double compilation. The javadoc step gets its own short
+      # timeout so a residual stall fails fast instead of burning the whole budget.
+      - name: Gradle - javadoc
+        timeout-minutes: 15
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check javadoc --parallel
+          ./gradlew javadoc --parallel
+
+      - name: Gradle - check
+        run: |
+          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
+          if [[ -n "${{ inputs.java-options }}" ]]; then
+            export _JAVA_OPTIONS="${{ inputs.java-options }}"
+          fi
+          ./gradlew check --parallel
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
