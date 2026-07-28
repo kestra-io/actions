@@ -150,6 +150,10 @@ async function run({github, context, core, basePath, repoPath, reports, maxListe
         return
     }
 
+    // A missing report is treated as "no failures", never an error: this
+    // action is shared (called with @main) across every release branch, and
+    // older ones won't have a given project's JUnit reporter configured —
+    // or the project itself — so its report file will never exist there.
     const failures = reports.flatMap(({path: reportPath, category}) => {
         if (!reportPath || !fs.existsSync(reportPath)) return []
         return parseJUnitFailures(fs.readFileSync(reportPath, "utf8"), category)

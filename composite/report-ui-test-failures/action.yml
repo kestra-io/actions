@@ -7,6 +7,10 @@ description: >-
   a link to the test source on GitHub); when more failed, adds the total
   count and a link to the run above the list. Call with `if: always()` after
   the test steps so a run that goes back to green removes the stale comment.
+  Safe to call from any branch/version: a report path that doesn't exist is
+  treated as zero failures, never an error, since this action runs (pinned
+  to @main) across every release branch and older ones may not produce a
+  given report at all.
 
 inputs:
   github-token:
