@@ -13,6 +13,15 @@ on:
         type: string
         default: '21'
         required: false
+      exe-artifact:
+        description: >-
+          Name of a Kestra executable artifact already uploaded by this workflow
+          run (e.g. `exe` from Build Artifacts). When set, the Docker image under
+          test is built from it instead of rebuilding the product from source;
+          leave empty (forks, scheduled runs) to build from source.
+        type: string
+        default: ''
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -34,14 +43,15 @@ jobs:
         with:
           path: kestra
 
-      # Setup build
+      # Setup build. Java/python only exist to build the product from source,
+      # so both are skipped when a prebuilt executable artifact is provided.
       - uses: kestra-io/actions/composite/setup-build@main
         name: Setup - Build
         id: build
         with:
-          java-enabled: true
+          java-enabled: ${{ inputs.exe-artifact == '' && 'true' || 'false' }}
           node-enabled: true
-          python-enabled: true
+          python-enabled: ${{ inputs.exe-artifact == '' && 'true' || 'false' }}
           java-version: ${{ inputs.java-version }}
 
       - name: Setup - OpenTelemetry
@@ -55,21 +65,46 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
+      # Same content-addressed key as the frontend jobs: the browser cache path
+      # is absolute (~/.cache/ms-playwright) and both install exactly chromium.
       - name: Cache - Playwright Binaries
         id: cache-playwright
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('kestra/ui/package-lock.json') }}
+          key: playwright-chromium-${{ hashFiles('kestra/ui/package-lock.json') }}
+
+      # Key is namespaced (`-e2e-`): this checkout lives under kestra/, and a
+      # cache archive saved from ui/ would restore to the wrong directory here.
+      - name: Cache - Node Modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            kestra/ui/node_modules
+            kestra/ui/packages/*/node_modules
+            !kestra/ui/node_modules/.tmp
+            !kestra/ui/packages/*/node_modules/.tmp
+          key: modules-e2e-v2-${{ hashFiles('kestra/ui/package-lock.json', 'kestra/ui/patches/**') }}
 
       - name: Install Npm dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: cd kestra/ui && npm ci
 
       - name: Install Playwright
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: cd kestra/ui && npx playwright install --with-deps chromium
 
+      - name: Artifacts - Download executable
+        if: ${{ inputs.exe-artifact != '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.exe-artifact }}
+          path: kestra/build/executable
+
       - name: Run E2E Tests
+        env:
+          E2E_USE_PREBUILT_EXE: ${{ inputs.exe-artifact != '' }}
         run: |
           cd kestra
           sh build-and-start-e2e-tests.sh

@@ -15,18 +15,20 @@ env:
   COREPACK_INTEGRITY_KEYS: 0
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
 
+# The former single sequential job is split into three independent jobs so the
+# wall time is max(checks, unit, storybook) instead of their sum; a final
+# report job aggregates both JUnit reports into the single PR comment.
 jobs:
-  test:
-    name: Frontend - Tests
+  checks:
+    name: Frontend - Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22.18.0'
+      - name: Setup - Frontend
+        uses: kestra-io/actions/composite/setup-frontend@main
 
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@main
@@ -38,27 +40,18 @@ jobs:
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      - name: Cache Node Modules
-        id: cache-node-modules
+      # vue-tsc revalidates restored .tsbuildinfo by content hash, so a stale
+      # restore only costs a re-check; restore-keys make warm PRs incremental.
+      - name: Cache vue-tsc incremental state
         uses: actions/cache@v4
         with:
           path: |
-            ui/node_modules
-          key: modules-${{ hashFiles('ui/package-lock.json') }}
+            ui/node_modules/.tmp
+            ui/packages/design-system/node_modules/.tmp
+          key: tsbuildinfo-${{ hashFiles('ui/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            tsbuildinfo-${{ hashFiles('ui/package-lock.json') }}-
 
-      - name: Cache Playwright Binaries
-        id: cache-playwright
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('ui/package-lock.json') }}
-
-      - name: Npm - install
-        if: steps.cache-node-modules.outputs.cache-hit != 'true'
-        working-directory: ui
-        run: npm ci
-    
       - name: Npm - check types
         working-directory: ui
         run: npm run check:types
@@ -76,29 +69,127 @@ jobs:
           reporter: github-pr-review
           workdir: ui
 
+      # Production build; only feeds the Codecov bundle-analysis plugin.
       - name: Npm - Run build
         working-directory: ui
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         run: npm run build
 
+  unit:
+    name: Frontend - Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup - Frontend
+        uses: kestra-io/actions/composite/setup-frontend@main
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
       - name: Run front-end unit tests
         working-directory: ui
-        run: npm run test:unit -- --coverage
+        run: npm run test:unit
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-report-unit
+          path: ui/test-report.junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Sharded because a browser session degrades as story files accumulate
+  # (Monaco worker memory) — each shard gets a fresh process and browser.
+  # Running the shards as a matrix makes them parallel instead of sequential.
+  storybook:
+    name: Frontend - Storybook Tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup - Frontend
+        uses: kestra-io/actions/composite/setup-frontend@main
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      # Key is browser-set-specific: other jobs installing a different browser
+      # set must not share it, or a first-writer cache poisons this one.
+      - name: Cache Playwright Binaries
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('ui/package-lock.json') }}
 
       - name: Storybook - Install Playwright
         working-directory: ui
         if: steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Run storybook component tests
         working-directory: ui
-        run: npm run test:storybook -- --coverage
+        env:
+          SHARD: ${{ matrix.shard }}/4
+        run: npm run test:storybook
 
-      # Runs on success too (not just failure): that's what lets it clear a
-      # stale failures comment once the suite goes back to green.
-      - name: Report failing UI tests on the PR
+      - name: Upload JUnit report
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-report-storybook-${{ matrix.shard }}
+          path: ui/test-report.storybook-*.junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Runs on success too (not just failure): that's what lets it clear a
+  # stale failures comment once the suite goes back to green.
+  report:
+    name: Frontend - Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [unit, storybook]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Zero matches is fine (a job may have died before writing its report);
+      # the reporter treats a missing file as zero failures.
+      - name: Download JUnit reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ui-test-report-*
+          merge-multiple: true
+          path: ui
+
+      - name: Report failing UI tests on the PR
         uses: kestra-io/actions/composite/report-ui-test-failures@main
         with:
           github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}

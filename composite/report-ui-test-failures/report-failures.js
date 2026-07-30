@@ -1,6 +1,19 @@
 const fs = require("fs")
+const path = require("path")
 
 const COMMENT_MARKER = "<!-- kestra:ui-test-failures-report -->"
+
+// Report paths may contain a `*` (e.g. one JUnit file per CI shard); expand it
+// against the containing directory. A plain path passes through unchanged.
+function expandReportPath(reportPath) {
+    if (!reportPath.includes("*")) return [reportPath]
+
+    const dir = path.dirname(reportPath)
+    if (!fs.existsSync(dir)) return []
+
+    const pattern = new RegExp(`^${path.basename(reportPath).split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`)
+    return fs.readdirSync(dir).filter((name) => pattern.test(name)).sort().map((name) => path.join(dir, name))
+}
 
 function decodeXmlEntities(value) {
     return value
@@ -155,8 +168,10 @@ async function run({github, context, core, basePath, repoPath, reports, maxListe
     // older ones won't have a given project's JUnit reporter configured —
     // or the project itself — so its report file will never exist there.
     const failures = reports.flatMap(({path: reportPath, category}) => {
-        if (!reportPath || !fs.existsSync(reportPath)) return []
-        return parseJUnitFailures(fs.readFileSync(reportPath, "utf8"), category)
+        if (!reportPath) return []
+        return expandReportPath(reportPath)
+            .filter((expanded) => fs.existsSync(expanded))
+            .flatMap((expanded) => parseJUnitFailures(fs.readFileSync(expanded, "utf8"), category))
     })
 
     const repository = `${context.repo.owner}/${context.repo.repo}`

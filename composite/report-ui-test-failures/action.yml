@@ -38,9 +38,12 @@ inputs:
     required: false
     default: "ui/test-report.junit.xml"
   storybook-report-path:
-    description: "Repo-relative path to the Storybook tests JUnit XML report."
+    description: >-
+      Repo-relative path to the Storybook tests JUnit XML report. May contain
+      a `*` to match one report per CI shard; the old single-file name still
+      matches, so branches producing either layout are covered.
     required: false
-    default: "ui/test-report.storybook.junit.xml"
+    default: "ui/test-report.storybook*.junit.xml"
   max-listed-failures:
     description: "Maximum number of failing tests to list individually before trimming to a count + run link."
     required: false

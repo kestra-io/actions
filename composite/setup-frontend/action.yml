@@ -1,0 +1,41 @@
+name: "Setup frontend"
+description: >-
+  Node + npm dependency setup for the Kestra OSS UI (`ui/`), shared by the
+  frontend test jobs. Restores the node_modules cache (including workspace
+  package trees) and runs `npm ci` only on a cache miss, with the npm download
+  cache as a second-level fallback so misses stay cheap.
+
+inputs:
+  node-version:
+    description: "Node version to install."
+    required: false
+    default: '22.18.0'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: 'ui/package-lock.json'
+
+    # `.tmp` (vue-tsc incremental state) is deliberately excluded: it is cached
+    # separately with a per-commit key so it doesn't get pinned by the lockfile key.
+    - name: Cache Node Modules
+      id: cache-node-modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ui/node_modules
+          ui/packages/*/node_modules
+          !ui/node_modules/.tmp
+          !ui/packages/*/node_modules/.tmp
+        key: modules-v2-${{ hashFiles('ui/package-lock.json', 'ui/patches/**') }}
+
+    - name: Npm - install
+      if: steps.cache-node-modules.outputs.cache-hit != 'true'
+      working-directory: ui
+      shell: bash
+      run: npm ci

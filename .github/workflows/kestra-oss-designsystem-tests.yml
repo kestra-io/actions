@@ -16,14 +16,13 @@ jobs:
   test:
     name: Frontend - Design System Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22.18.0'
+      - name: Setup - Frontend
+        uses: kestra-io/actions/composite/setup-frontend@main
 
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@main
@@ -35,40 +34,29 @@ jobs:
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      - name: Cache Node Modules
-        id: cache-node-modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ui/node_modules
-          key: modules-${{ hashFiles('ui/package-lock.json') }}
-
+      # Same key as the frontend storybook job on purpose: both install
+      # exactly chromium, so a hit from either is complete for the other.
       - name: Cache Playwright Binaries
         id: cache-playwright
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('ui/package-lock.json') }}
+          key: playwright-chromium-${{ hashFiles('ui/package-lock.json') }}
 
-      - name: Npm - install
-        if: steps.cache-node-modules.outputs.cache-hit != 'true'
-        working-directory: ui
-        run: npm ci
-    
       - name: Npm - check types
         working-directory: ui/packages/design-system
         run: npm run types:test
 
       - name: Run front-end unit tests
         working-directory: ui/packages/design-system
-        run: npm run unit:test -- --coverage
+        run: npm run unit:test
 
       - name: Storybook - Install Playwright
         working-directory: ui/packages/design-system
         if: steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Run storybook component tests
         working-directory: ui/packages/design-system
-        run: npm run storybook:test -- --coverage
+        run: npm run storybook:test
