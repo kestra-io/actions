@@ -125,12 +125,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # This workflow is pinned @main and also runs for release branches whose
+      # test:storybook predates SHARD support (there it runs the whole suite
+      # regardless of the env var — note SHARD_COUNT-era scripts don't count).
+      # On those branches only shard 1 runs — one full run, not 4 duplicates.
+      - name: Detect shard support
+        id: shard-support
+        shell: bash
+        run: echo "run=$( { grep -qsF '"$SHARD"' ui/scripts/run-storybook-tests.sh || [ "${{ matrix.shard }}" = "1" ]; } && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Setup - Frontend
+        if: steps.shard-support.outputs.run == 'true'
         uses: kestra-io/actions/composite/setup-frontend@main
 
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
+        if: ${{ env.OTLP_ENDPOINT != '' && steps.shard-support.outputs.run == 'true' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
@@ -142,6 +152,7 @@ jobs:
       # set must not share it, or a first-writer cache poisons this one.
       - name: Cache Playwright Binaries
         id: cache-playwright
+        if: steps.shard-support.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -150,17 +161,18 @@ jobs:
 
       - name: Storybook - Install Playwright
         working-directory: ui
-        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        if: steps.shard-support.outputs.run == 'true' && steps.cache-playwright.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Run storybook component tests
+        if: steps.shard-support.outputs.run == 'true'
         working-directory: ui
         env:
           SHARD: ${{ matrix.shard }}/4
         run: npm run test:storybook
 
       - name: Upload JUnit report
-        if: always()
+        if: always() && steps.shard-support.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-report-storybook-${{ matrix.shard }}
