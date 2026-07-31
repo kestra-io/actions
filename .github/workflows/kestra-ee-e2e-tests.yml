@@ -117,6 +117,16 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: npm ci
 
+      # tests/e2e/fixtures/shared.ts imports @kestra-io/kestra-sdk, whose exports resolve to
+      # dist/index.js. That dist is gitignored and the package has no prepare/postinstall, so
+      # npm ci alone never produces it and Playwright dies at import time before any test runs.
+      # Deliberately not gated on the node_modules cache: dist lives in packages/kestra-sdk,
+      # outside the cached path, so a cache hit would skip the build and leave it missing.
+      - name: EE build SDK
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npm run build:sdk
+
       - name: Install Playwright
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         shell: bash
