@@ -15,14 +15,16 @@ env:
 jobs:
   build-artifacts:
     name: Build Artifacts
-    if: github.event.pull_request.head.repo.full_name == github.repository # prevent running on forks
+    # prevent running on forks; Dependabot PRs aren't forks but GitHub still denies
+    # them a write-capable GITHUB_TOKEN, so publish would fail on ghcr.io push anyway
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
-      
+
   publish:
     name: Publish Docker
-    if: github.event.pull_request.head.repo.full_name == github.repository # prevent running on forks
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     needs: build-artifacts
     env:
