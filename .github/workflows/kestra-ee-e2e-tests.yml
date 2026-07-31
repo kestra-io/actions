@@ -22,6 +22,15 @@ on:
         type: string
         default: '21'
         required: false
+      exe-artifact:
+        description: >-
+          Name of a Kestra executable artifact already uploaded by this workflow
+          run (e.g. `exe` from Build Artifacts). When set, the Docker image under
+          test is built from it instead of rebuilding the product from source;
+          leave empty (forks, scheduled runs) to build from source.
+        type: string
+        default: ''
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -49,14 +58,17 @@ jobs:
       - name: Checkout - OSS
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
 
+      # Java only exists to build the product from source, so it's skipped
+      # when a prebuilt executable artifact is provided.
       - name: setup init
         uses: kestra-io/actions/composite/setup-build@main
         with:
-          java-enabled: 'true'
+          java-enabled: ${{ inputs.exe-artifact == '' && 'true' || 'false' }}
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
 
       - name: Setup - Maven proxy
+        if: ${{ inputs.exe-artifact == '' }}
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
@@ -117,12 +129,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y make
 
+      - name: Artifacts - Download executable
+        if: ${{ inputs.exe-artifact != '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.exe-artifact }}
+          path: kestra-ee/build/executable
+
       - name: Run EE E2E Tests
         working-directory: kestra-ee
         shell: bash
         env:
           APPLICATION_SECRETS: ${{ secrets.APPLICATION_SECRETS }}
           NODE_OPTIONS: "--max-old-space-size=4096"
+          E2E_USE_PREBUILT_EXE: ${{ inputs.exe-artifact != '' }}
         run: |
           echo $APPLICATION_SECRETS | base64 -d > ./ui-ee/tests/e2e/data/application-secrets.yml
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json

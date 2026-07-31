@@ -17,6 +17,14 @@ on:
         type: string
         default: '21'
         required: false
+      skip-build:
+        description: >-
+          Skip the nested artifact build and reuse the `exe` artifact already
+          uploaded by another job of this workflow run (e.g. a hoisted Build
+          Artifacts job shared with the E2E tests).
+        type: boolean
+        default: false
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -27,6 +35,7 @@ jobs:
   # ********************************************************************************************************************
   build-artifacts:
     name: Build Artifacts
+    if: ${{ !inputs.skip-build }}
     uses: ./.github/workflows/kestra-ee-build-artifacts.yml
     secrets:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
@@ -44,6 +53,9 @@ jobs:
     name: Publish docker
     runs-on: kestra-private-standard
     needs: build-artifacts
+    # `!cancelled()` lets this run when build-artifacts was skipped (skip-build:
+    # the `exe` artifact then comes from another job of the same run).
+    if: ${{ !cancelled() && needs.build-artifacts.result != 'failure' }}
     env:
       GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee-pr
     steps:
