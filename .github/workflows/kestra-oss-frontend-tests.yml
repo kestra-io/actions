@@ -101,15 +101,6 @@ jobs:
         working-directory: ui
         run: npm run test:unit
 
-      - name: Upload JUnit report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-test-report-unit
-          path: ui/test-report.junit.xml
-          if-no-files-found: ignore
-          retention-days: 7
-
   # Sharded because a browser session degrades as story files accumulate
   # (Monaco worker memory) — each shard gets a fresh process and browser.
   # Running the shards as a matrix makes them parallel instead of sequential.
