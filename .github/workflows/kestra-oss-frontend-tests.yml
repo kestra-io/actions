@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '22.18.0'
+          node-version: '24.x'
 
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-collect@main
