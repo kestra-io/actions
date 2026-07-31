@@ -6,6 +6,9 @@ on:
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
         required: true
+      CODECOV_TOKEN:
+        description: 'Codecov Token'
+        required: false
 
 env:
   # to save corepack from itself
@@ -62,7 +65,16 @@ jobs:
 
       - name: Run front-end unit tests
         working-directory: ui/packages/design-system
-        run: npm run unit:test
+        run: npm run unit:test -- --coverage --coverage.reportsDirectory=coverage/unit
+
+      - name: Codecov - Upload unit coverage
+        uses: codecov/codecov-action@v6
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: design-system-unit
+          directory: ui/packages/design-system/coverage/unit
 
       - name: Storybook - Install Playwright
         working-directory: ui/packages/design-system
@@ -71,4 +83,13 @@ jobs:
 
       - name: Run storybook component tests
         working-directory: ui/packages/design-system
-        run: npm run storybook:test
+        run: npm run storybook:test -- --coverage --coverage.reportsDirectory=coverage/storybook
+
+      - name: Codecov - Upload storybook coverage
+        uses: codecov/codecov-action@v6
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: design-system-storybook
+          directory: ui/packages/design-system/coverage/storybook

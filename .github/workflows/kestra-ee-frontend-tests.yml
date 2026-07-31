@@ -96,7 +96,17 @@ jobs:
       - name: Run front-end unit tests
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm run test:unit
+        run: npm run test:unit -- --coverage --coverage.reportsDirectory=coverage/unit
+
+      - name: Codecov - Upload unit coverage
+        uses: codecov/codecov-action@v6
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ui-ee-unit
+          working-directory: kestra-ee
+          directory: ui-ee/coverage/unit
 
       - name: Storybook - Install Playwright
         if: steps.cache-playwright.outputs.cache-hit != 'true'
@@ -107,7 +117,17 @@ jobs:
       - name: Run Storybook component tests
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm run test:storybook
+        run: npm run test:storybook -- --coverage --coverage.reportsDirectory=coverage/storybook
+
+      - name: Codecov - Upload storybook coverage
+        uses: codecov/codecov-action@v6
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ui-ee-storybook
+          working-directory: kestra-ee
+          directory: ui-ee/coverage/storybook
 
       # Runs on success too (not just failure): that's what lets it clear a
       # stale failures comment once the suite goes back to green.
