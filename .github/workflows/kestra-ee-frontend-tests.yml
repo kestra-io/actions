@@ -96,7 +96,7 @@ jobs:
       - name: Run front-end unit tests
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm run test:unit -- --coverage
+        run: npm run test:unit
 
       - name: Storybook - Install Playwright
         if: steps.cache-playwright.outputs.cache-hit != 'true'
@@ -107,7 +107,7 @@ jobs:
       - name: Run Storybook component tests
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm run test:storybook -- --coverage
+        run: npm run test:storybook
 
       # Runs on success too (not just failure): that's what lets it clear a
       # stale failures comment once the suite goes back to green.
