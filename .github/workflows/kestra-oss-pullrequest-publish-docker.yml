@@ -8,6 +8,14 @@ on:
         type: string
         default: '21'
         required: false
+      skip-build:
+        description: >-
+          Skip the nested artifact build and reuse the `exe` artifact already
+          uploaded by another job of this workflow run (e.g. a hoisted Build
+          Artifacts job shared with the E2E tests).
+        type: boolean
+        default: false
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -15,14 +23,16 @@ env:
 jobs:
   build-artifacts:
     name: Build Artifacts
-    if: github.event.pull_request.head.repo.full_name == github.repository # prevent running on forks
+    if: ${{ !inputs.skip-build && github.event.pull_request.head.repo.full_name == github.repository }} # prevent running on forks
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
-      
+
   publish:
     name: Publish Docker
-    if: github.event.pull_request.head.repo.full_name == github.repository # prevent running on forks
+    # `!cancelled()` lets this run when build-artifacts was skipped (skip-build:
+    # the `exe` artifact then comes from another job of the same run).
+    if: ${{ !cancelled() && needs.build-artifacts.result != 'failure' && github.event.pull_request.head.repo.full_name == github.repository }} # prevent running on forks
     runs-on: ubuntu-latest
     needs: build-artifacts
     env:
