@@ -2,6 +2,32 @@ name: Frontend tests
 
 on:
   workflow_call:
+    inputs:
+      ee-ref:
+        description: >-
+          kestra-ee ref to check out. Empty (the default) checks out the ref of the
+          calling workflow's own event.
+        type: string
+        required: false
+        default: ""
+      oss-ref:
+        description: >-
+          OSS ref to check out. Empty (the default) resolves it from the calling
+          workflow's context via the kestra-ee-checkout composite.
+        type: string
+        required: false
+        default: ""
+      pr-reporting:
+        description: >-
+          Report lint findings and UI-test failures onto a pull request of the
+          calling repository. Turn this off for runs that have no PR of their own —
+          e.g. a repository_dispatch driven by an OSS PR, where there is nothing in
+          kestra-ee to comment on. The whole suite still runs either way; only the
+          reporting channel changes, and lint failures then surface as a failed step
+          instead of as review comments.
+        type: boolean
+        required: false
+        default: true
     secrets:
       CODECOV_TOKEN:
         description: "The Codecov token."
@@ -21,9 +47,14 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: kestra-ee
+          # An empty ref is actions/checkout's default, i.e. the ref of the event
+          # that started the calling workflow.
+          ref: ${{ inputs.ee-ref }}
 
       - name: Checkout - OSS
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+        with:
+          oss-ref: ${{ inputs.oss-ref }}
 
       - name: setup build
         uses: kestra-io/actions/composite/setup-build@main
@@ -87,11 +118,20 @@ jobs:
         run: npx oxlint@latest
 
       - name: Npm - Lint (eslint)
+        if: ${{ inputs.pr-reporting }}
         uses: reviewdog/action-eslint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
           workdir: "kestra-ee/ui-ee"
+
+      # Same lint, minus the review-comment reporter, for runs with no PR of their
+      # own. reviewdog's github-pr-review reporter needs a pull_request event.
+      - name: Npm - Lint (eslint, no PR reporter)
+        if: ${{ !inputs.pr-reporting }}
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npx eslint
 
       - name: Run front-end unit tests
         shell: bash
@@ -112,7 +152,7 @@ jobs:
       # Runs on success too (not just failure): that's what lets it clear a
       # stale failures comment once the suite goes back to green.
       - name: Report failing UI tests on the PR
-        if: always()
+        if: ${{ always() && inputs.pr-reporting }}
         uses: kestra-io/actions/composite/report-ui-test-failures@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

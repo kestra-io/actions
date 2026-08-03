@@ -1,6 +1,18 @@
 name: 'Kestra Action to Checkout'
 description: 'Composite action to checkout and prepare local file.'
 
+inputs:
+  oss-ref:
+    description: >-
+      Explicit OSS ref (branch, tag or SHA) to check out. Leave empty (the default)
+      to resolve it from the calling workflow's own context, which is what every
+      kestra-ee PR / push build wants. Set it when the caller already knows which
+      OSS tree to test — e.g. a repository_dispatch run driven by an OSS PR, where
+      github.head_ref and github.base_ref are both empty and the resolution below
+      would otherwise fall back to develop and silently test the wrong tree.
+    required: false
+    default: ""
+
 runs:
   using: composite
   steps:
@@ -8,8 +20,19 @@ runs:
     - name: Checkout - Get checkout branch from OSS
       id: checkout-branch
       shell: bash
+      env:
+        OSS_REF: ${{ inputs.oss-ref }}
       run: |
-        
+
+        # An explicit ref wins over any context-based resolution. Read through the
+        # environment rather than interpolating it into the script, so a ref name
+        # can never be executed as shell.
+        if [[ -n "$OSS_REF" ]]; then
+          echo "explicit OSS ref requested: $OSS_REF"
+          echo "ossBranch=$OSS_REF" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
         if ${{ github.event_name == 'pull_request' }}; then
       
             # try to find if there is an associated OSS branch
