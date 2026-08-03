@@ -406,6 +406,82 @@ jobs:
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
 
+  # Non-blocking early-warning: does the plugin still compile against Kestra develop (2.x)?
+  compat-kestra-develop:
+    name: Compat Kestra develop
+    if: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    runs-on: ${{ inputs.runner }}
+    continue-on-error: true
+    steps:
+      - name: Checkout - Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: true
+
+      # Resolve the current Kestra develop version (e.g. 2.0.0-SNAPSHOT) from core's gradle.properties.
+      - name: Setup - Resolve Kestra develop version
+        id: kestra-2x
+        shell: bash
+        run: |
+          VERSION=$(curl -sfL https://raw.githubusercontent.com/kestra-io/kestra/develop/gradle.properties | grep '^version=' | cut -d= -f2 | tr -d '[:space:]')
+          if [ -z "$VERSION" ]; then echo "Could not resolve Kestra develop version" >&2; exit 1; fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Compiling against Kestra develop: ${VERSION}"
+
+      - name: Setup - Patch Gradle JVM args
+        shell: bash
+        run: |
+          if ! grep -q "^org.gradle.jvmargs=" gradle.properties; then
+            printf "\norg.gradle.jvmargs=-Xmx1g -XX:MaxMetaspaceSize=512m\n" >> gradle.properties
+          fi
+
+      - name: Setup - Override Kestra version
+        shell: bash
+        run: sed -i "s/^kestraVersion=.*/kestraVersion=${{ steps.kestra-2x.outputs.version }}/" gradle.properties
+
+      - name: Setup - Override Java version
+        shell: bash
+        run: find . -name "build.gradle" -exec sed -i "s/JavaVersion\.VERSION_21/JavaVersion.VERSION_${{ env.COMPATIBILITY_JAVA_VERSION }}/g" {} +
+
+      # Strip the version-less allure-junit5 (2.x dropped its BOM, so it no longer resolves).
+      - name: Setup - Remove Allure test dependency (2.x migration)
+        shell: bash
+        run: find . -name "build.gradle" -exec sed -i '/io\.qameta\.allure/d' {} +
+
+      - name: Setup - Build
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: true
+          java-version: ${{ env.COMPATIBILITY_JAVA_VERSION }}
+          # Throwaway compat build: no build scans needed.
+          java-enable-develocity-injection: false
+          # Node is required for plugins whose Gradle build compiles a ui/ micro-frontend
+          # (assemble -> processResources -> buildUI npm task). Same condition as the main job.
+          node-enabled: ${{ hashFiles('ui/package-lock.json') != '' }}
+
+      # GCP auth so EE/secret plugins resolve their private artifactregistry deps (io.kestra.ee:core-ee
+      # etc.). Auth only, not the maven-remote proxy (the proxy would block the 2.x snapshots repo).
+      - name: GCP - Check credentials availability
+        id: gcp-check
+        run: echo "available=${{ secrets.GCP_SERVICE_ACCOUNT != '' }}" >> $GITHUB_OUTPUT
+
+      - name: GCP - Auth with github service account
+        if: steps.gcp-check.outputs.available == 'true'
+        uses: 'google-github-actions/auth@v3'
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # Compile main + test against 2.x (tests not run). testClasses catches core API breaks that
+      # only surface in test code.
+      - name: Compat - Gradle compile-only
+        shell: bash
+        run: ./gradlew assemble testClasses --parallel
+        env:
+          JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
+          GITHUB_TOKEN: ${{ github.token }}
+
   otel-export-trace:
     if: always()
     name: OpenTelemetry Export Trace
