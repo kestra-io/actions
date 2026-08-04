@@ -45,7 +45,9 @@ runs:
           {% endif %}
 
     - name: Test - Comment PR with failure details
-      if: ${{ !cancelled() && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+      # Skip on fork PRs: they get a read-only GITHUB_TOKEN, so the comment POST returns 403 and fails the job.
+      # Internal PRs still run this, so a genuine devtools failure still surfaces.
+      if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
       shell: bash
       env:
         GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
