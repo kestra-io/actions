@@ -473,11 +473,22 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # Compile main + test against 2.x (tests not run). testClasses catches core API breaks that
-      # only surface in test code.
-      - name: Compat - Gradle compile-only
+      # Compile main sources (and the ui micro-frontend via assemble) against 2.x. Split from the
+      # test compile below so a main-code break is reported on its own step, not mixed with test noise.
+      - name: Compat - Compile main
         shell: bash
-        run: ./gradlew assemble testClasses --parallel
+        run: ./gradlew assemble --parallel
+        env:
+          JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # Compile test sources against 2.x (tests not run). testClasses catches core API breaks that
+      # only surface in test code. Runs even when the step above failed (if: always) so a single run
+      # shows both the main-code and test-code failures instead of stopping at the first.
+      - name: Compat - Compile tests
+        if: always()
+        shell: bash
+        run: ./gradlew testClasses --parallel
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
