@@ -2,8 +2,8 @@ name: 'Unreleased Commits'
 description: 'Comment unreleased commits since latest tag'
 
 inputs:
-  secrets:
-    description: 'Secrets passed as toJSON'
+  github-token:
+    description: 'GitHub token for PR comments'
     required: true
 
 runs:
@@ -13,13 +13,13 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
-        github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: "🔁 Unreleased Commits"
         fetch-unreleased-commits: true
         template: |
           {% if unreleased and unreleased.commits | length > 0 %}
           {{ unreleased.commits | length }} commits since [`{{ unreleased.latestTag }}`](https://github.com/${{ github.repository }}/compare/{{ unreleased.latestTag }}...main)
-          
+
           | SHA | Title | Author | Date |
           | :--- | :------ | :------ | :---- |
           {%- for c in unreleased.commits %}
