@@ -61,6 +61,44 @@ jobs:
         run: |
           ./gradlew executableJar
 
+      # KIP-45: embed the plugin schema bundle into the executable so the flow editor can
+      # autocomplete plugin types that are not installed, out of the box and offline. Done here, at
+      # the single point the executable is built and before it is copied/uploaded, so every
+      # downstream distribution (Docker image, zip/tar, java -jar) carries it with no publish-job
+      # reorder. PluginSchemaBundleService reads it as the /plugins-schema.json classpath resource.
+      #
+      # DRAFT — needs a real CI run to validate:
+      #   (1) full-catalog install (~all OSS plugins) adds time to this build job (publishes only);
+      #   (2) confirm `zip` can append into the executableJar output (fails if it carries a launcher
+      #       stub before the zip central directory — if so, embed via a Gradle resource step instead);
+      #   (3) the catalog version resolves to `latest`, matching what kestra-configuration-schema does.
+      - name: Artifacts - Embed plugin schema bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXE=$(ls build/executable/* | head -1)
+          chmod +x "$EXE"
+
+          VERSION=$(curl -sf "https://api.kestra.io/v1/versions/latest" | jq -r '.version')
+          RESPONSE=$(curl -sf "https://api.kestra.io/v1/plugins/artifacts/core-compatibility/${VERSION}/latest") || {
+            echo "::warning::Could not fetch the plugin catalog; shipping the executable without an embedded schema bundle"
+            exit 0
+          }
+
+          PLUGINS=$(echo "$RESPONSE" | jq -r '.[] | select(.license == "OPENSOURCE") | "\(.groupId):\(.artifactId):\(.version)"' | tr '\n' ' ')
+          if [ -z "$PLUGINS" ]; then
+            echo "::warning::No OSS plugins resolved; shipping the executable without an embedded schema bundle"
+            exit 0
+          fi
+
+          CATALOG_DIR=$(mktemp -d)
+          "$EXE" plugins install --plugins="$CATALOG_DIR" $PLUGINS
+          "$EXE" plugins-schema --plugins "$CATALOG_DIR" -o plugins-schema.json
+
+          # Append at the archive root so it lands on the classpath as /plugins-schema.json.
+          zip -j "$EXE" plugins-schema.json
+          echo "Embedded plugins-schema.json into $EXE"
+
       - name: Artifacts - Copy exe to image
         shell: bash
         run: |
