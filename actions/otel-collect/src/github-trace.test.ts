@@ -42,9 +42,9 @@ test('buildWorkflowTrace links root -> job -> step with deterministic ids', () =
   for (const s of spans) assert.equal(s.spanContext().traceId, tId)
 
   // hierarchy: root has no parent, job parent=root, step parent=job
-  assert.equal(root.parentSpanId, undefined)
-  assert.equal(jobSpan.parentSpanId, rootSpanId('123', '1'))
-  assert.equal(stepSpan.parentSpanId, jobSpanId(456))
+  assert.equal(root.parentSpanContext, undefined)
+  assert.equal(jobSpan.parentSpanContext?.spanId, rootSpanId('123', '1'))
+  assert.equal(stepSpan.parentSpanContext?.spanId, jobSpanId(456))
 })
 
 test('a live build span using the exported traceparent nests under the step span', () => {

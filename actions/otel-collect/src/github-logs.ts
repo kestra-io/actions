@@ -1,5 +1,5 @@
 import * as core from '@actions/core'
-import type { GitHub } from '@actions/github/lib/utils.js'
+import type { GitHub } from '@actions/github/lib/utils'
 import { SeverityNumber } from '@opentelemetry/api-logs'
 import type { Resource } from '@opentelemetry/resources'
 import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'

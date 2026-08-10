@@ -3,7 +3,7 @@ import { SpanKind, SpanStatusCode, TraceFlags, type HrTime } from '@opentelemetr
 import type { SeverityNumber } from '@opentelemetry/api-logs'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-grpc'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
-import { Resource } from '@opentelemetry/resources'
+import { resourceFromAttributes, type Resource } from '@opentelemetry/resources'
 import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 
@@ -50,7 +50,7 @@ export function serviceInstanceId(): string {
 }
 
 export function buildResource(serviceName: string): Resource {
-  return new Resource({
+  return resourceFromAttributes({
     'service.name': serviceName,
     'service.namespace': NAMESPACE,
     'data_stream.namespace': NAMESPACE,
@@ -101,7 +101,9 @@ export function buildSpan(input: SpanInput, resource: Resource): ReadableSpan {
       spanId: input.spanId,
       traceFlags: TraceFlags.SAMPLED
     }),
-    parentSpanId: input.parentSpanId,
+    parentSpanContext: input.parentSpanId
+      ? { traceId: input.traceId, spanId: input.parentSpanId, traceFlags: TraceFlags.SAMPLED }
+      : undefined,
     startTime: msToHr(input.startMs),
     endTime: msToHr(endMs),
     status: { code: statusOf(input.conclusion) },
@@ -111,7 +113,7 @@ export function buildSpan(input: SpanInput, resource: Resource): ReadableSpan {
     duration: msToHr(Math.max(0, endMs - input.startMs)),
     ended: true,
     resource,
-    instrumentationLibrary: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
+    instrumentationScope: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
     droppedAttributesCount: 0,
     droppedEventsCount: 0,
     droppedLinksCount: 0
