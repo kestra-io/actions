@@ -32,6 +32,15 @@ export function parseHeaders(raw: string): Record<string, string> {
  */
 export const NAMESPACE = 'github-actions'
 
+/**
+ * Span attribute marking which layer produced a span. All layers share one trace
+ * (same trace id, nested by deterministic span ids), but carry distinct
+ * `service.name` values too — see buildResource() callers and gradle.ts — so a
+ * trace backend can group/color github-actions vs gradle vs junit spans both by
+ * service and, regardless of backend, by this explicit attribute.
+ */
+export const TELEMETRY_SOURCE_ATTR = 'telemetry.source'
+
 function msToHr(ms: number): HrTime {
   const seconds = Math.trunc(ms / 1000)
   const nanos = Math.round((ms - seconds * 1000) * 1e6)

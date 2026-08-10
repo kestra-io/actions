@@ -80180,6 +80180,7 @@ function parseHeaders(raw) {
   return headers;
 }
 const NAMESPACE = "github-actions";
+const TELEMETRY_SOURCE_ATTR = "telemetry.source";
 function msToHr(ms) {
   const seconds = Math.trunc(ms / 1e3);
   const nanos = Math.round((ms - seconds * 1e3) * 1e6);
@@ -80674,6 +80675,7 @@ function buildJobSpans(job, traceId, parentSpanId, resource, nowMs) {
     endMs: jobEnd,
     conclusion: job.conclusion,
     attributes: {
+      [TELEMETRY_SOURCE_ATTR]: "github-actions",
       "cicd.pipeline.task.run.id": job.id,
       "github.job.name": job.name,
       "github.job.status": job.status,
@@ -80691,6 +80693,7 @@ function buildJobSpans(job, traceId, parentSpanId, resource, nowMs) {
       endMs: parseTime(step.completed_at, jobEnd),
       conclusion: step.conclusion,
       attributes: {
+        [TELEMETRY_SOURCE_ATTR]: "github-actions",
         "github.step.name": step.name,
         "github.step.number": step.number,
         "github.step.status": step.status,
@@ -80722,6 +80725,7 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
       endMs: rootEnd,
       conclusion: jobs.some((j) => j.conclusion && j.conclusion !== "success" && j.conclusion !== "skipped") ? "failure" : "success",
       attributes: {
+        [TELEMETRY_SOURCE_ATTR]: "github-actions",
         "github.workflow": workflowName,
         "github.run_id": String(runId),
         "github.run_attempt": String(runAttempt)
@@ -80736,7 +80740,10 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
   return spans;
 }
 
-const INIT_SCRIPT = String.raw`import io.opentelemetry.api.common.Attributes
+function buildInitScript(serviceName) {
+  const gradleServiceName = `${serviceName}-gradle`;
+  const junitServiceName = `${serviceName}-junit`;
+  return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.SpanKind
@@ -80782,30 +80789,43 @@ if (endpoint == null || endpoint.trim().isEmpty()) {
   return
 }
 
-def serviceName = System.getenv("OTEL_SERVICE_NAME") ?: "gradle-build"
 def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
 def runId = System.getenv("GITHUB_RUN_ID")
 def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 
-def exporterBuilder = OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)
-headersEnv.split(",").each { pair ->
-  def t = pair.trim()
-  if (!t.isEmpty()) {
-    def idx = t.indexOf("=")
-    if (idx > 0) exporterBuilder.addHeader(t.substring(0, idx).trim(), t.substring(idx + 1).trim())
+def addHeaders = { builder ->
+  headersEnv.split(",").each { pair ->
+    def t = pair.trim()
+    if (!t.isEmpty()) {
+      def idx = t.indexOf("=")
+      if (idx > 0) builder.addHeader(t.substring(0, idx).trim(), t.substring(idx + 1).trim())
+    }
   }
+  builder
 }
-def exporter = exporterBuilder.build()
 
-def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+def makeResource = { name ->
+  Resource.getDefault().merge(
+    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+}
 
-def tracerProvider = SdkTracerProvider.builder()
-  .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
-  .setResource(resource)
-  .build()
-def tracer = tracerProvider.get("kestra-otel-collect-gradle")
+def makeTracerProvider = { name ->
+  def exporter = addHeaders(OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)).build()
+  SdkTracerProvider.builder()
+    .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
+    .setResource(makeResource(name))
+    .build()
+}
+
+// Gradle task spans and JUnit test spans get distinct service.name values (and
+// distinct instrumentation scope names below) from each other and from the
+// GitHub Actions layer, so a trace backend can tell the three apart even though
+// every span here nests under one trace.
+def gradleTracerProvider = makeTracerProvider("${gradleServiceName}")
+def junitTracerProvider = makeTracerProvider("${junitServiceName}")
+def gradleTracer = gradleTracerProvider.get("kestra-otel-collect-gradle")
+def junitTracer = junitTracerProvider.get("kestra-otel-collect-junit")
 
 // Nest the build under the GitHub step span carried in TRACEPARENT.
 def parentContext = Context.root()
@@ -80817,8 +80837,9 @@ if (traceparent != null && traceparent.startsWith("00-")) {
   }
 }
 
-def buildSpan = tracer.spanBuilder("gradle " + gradle.startParameter.taskNames.join(" "))
+def buildSpan = gradleTracer.spanBuilder("gradle " + gradle.startParameter.taskNames.join(" "))
   .setParent(parentContext).setSpanKind(SpanKind.INTERNAL).startSpan()
+buildSpan.setAttribute("telemetry.source", "gradle")
 def buildContext = parentContext.with(buildSpan)
 
 def taskStarts = new ConcurrentHashMap<String, Long>()
@@ -80826,8 +80847,9 @@ gradle.taskGraph.beforeTask { task -> taskStarts.put(task.path, System.currentTi
 gradle.taskGraph.afterTask { task ->
   def start = taskStarts.remove(task.path)
   if (start == null) return
-  def span = tracer.spanBuilder(task.path).setParent(buildContext)
+  def span = gradleTracer.spanBuilder(task.path).setParent(buildContext)
     .setStartTimestamp(Instant.ofEpochMilli(start)).startSpan()
+  span.setAttribute("telemetry.source", "gradle")
   span.setAttribute("gradle.task.path", task.path)
   span.setAttribute("gradle.task.did_work", task.state.didWork)
   def failure = task.state.failure
@@ -80840,8 +80862,9 @@ allprojects { prj ->
   prj.tasks.withType(Test).configureEach { testTask ->
     testTask.afterTest { desc, result ->
       def name = (desc.className ? desc.className + "#" : "") + desc.name
-      def span = tracer.spanBuilder(name).setParent(buildContext)
+      def span = junitTracer.spanBuilder(name).setParent(buildContext)
         .setStartTimestamp(Instant.ofEpochMilli(result.startTime)).startSpan()
+      span.setAttribute("telemetry.source", "junit")
       span.setAttribute("test.class", String.valueOf(desc.className))
       span.setAttribute("test.name", String.valueOf(desc.name))
       span.setAttribute("test.result", String.valueOf(result.resultType))
@@ -80856,18 +80879,21 @@ allprojects { prj ->
 
 gradle.buildFinished {
   buildSpan.end()
-  tracerProvider.forceFlush().join(30, TimeUnit.SECONDS)
-  tracerProvider.shutdown().join(10, TimeUnit.SECONDS)
+  [gradleTracerProvider, junitTracerProvider].each { provider ->
+    provider.forceFlush().join(30, TimeUnit.SECONDS)
+    provider.shutdown().join(10, TimeUnit.SECONDS)
+  }
 }
 `;
+}
 function gradleUserHome() {
   return process.env.GRADLE_USER_HOME || path$1.join(os.homedir(), ".gradle");
 }
-function installGradleInitScript() {
+function installGradleInitScript(serviceName) {
   const initDir = path$1.join(gradleUserHome(), "init.d");
   fs.mkdirSync(initDir, { recursive: true });
   const scriptPath = path$1.join(initDir, "otel-collect.gradle");
-  fs.writeFileSync(scriptPath, INIT_SCRIPT);
+  fs.writeFileSync(scriptPath, buildInitScript(serviceName));
   info(`Installed Gradle tracing init script: ${scriptPath}`);
   return scriptPath;
 }
@@ -80967,7 +80993,7 @@ async function main(inputs) {
     setOutput("node-agent-path", register);
   }
   if (inputs.gradleTracingEnabled) {
-    installGradleInitScript();
+    installGradleInitScript(serviceName(inputs));
   }
   if (inputs.hostMetricsEnabled) {
     await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs));

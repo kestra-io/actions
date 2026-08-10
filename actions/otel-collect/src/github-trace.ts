@@ -1,7 +1,7 @@
 import type { Resource } from '@opentelemetry/resources'
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { buildSpan, type SpanInput } from './otlp.js'
+import { buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from './otlp.js'
 import type { WorkflowJob } from './resolve-job.js'
 
 const parseTime = (iso: string | null | undefined, fallback: number): number => {
@@ -32,6 +32,7 @@ export function buildJobSpans(
     endMs: jobEnd,
     conclusion: job.conclusion,
     attributes: {
+      [TELEMETRY_SOURCE_ATTR]: 'github-actions',
       'cicd.pipeline.task.run.id': job.id,
       'github.job.name': job.name,
       'github.job.status': job.status,
@@ -50,6 +51,7 @@ export function buildJobSpans(
       endMs: parseTime(step.completed_at, jobEnd),
       conclusion: step.conclusion,
       attributes: {
+        [TELEMETRY_SOURCE_ATTR]: 'github-actions',
         'github.step.name': step.name,
         'github.step.number': step.number,
         'github.step.status': step.status,
@@ -103,6 +105,7 @@ export function buildWorkflowTrace(
         ? 'failure'
         : 'success',
       attributes: {
+        [TELEMETRY_SOURCE_ATTR]: 'github-actions',
         'github.workflow': workflowName,
         'github.run_id': String(runId),
         'github.run_attempt': String(runAttempt)

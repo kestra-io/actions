@@ -112,7 +112,7 @@ async function main(inputs: Inputs): Promise<void> {
   }
 
   if (inputs.gradleTracingEnabled) {
-    installGradleInitScript()
+    installGradleInitScript(serviceName(inputs))
   }
 
   if (inputs.hostMetricsEnabled) {
