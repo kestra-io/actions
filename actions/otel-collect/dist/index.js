@@ -87176,7 +87176,37 @@ function buildLogRecord(input, resource) {
     };
     return record;
 }
-/** Export the log records over OTLP/gRPC and flush. */
+// The default gRPC max receive message size is 4 MiB. A workflow with many/verbose
+// jobs can produce a single log batch well past that (observed: ~9 MB), which the
+// server rejects outright with RESOURCE_EXHAUSTED. Stay well under the limit so a
+// generous per-record overhead estimate still can't push a batch over the edge.
+const MAX_BATCH_BYTES = 3 * 1024 * 1024;
+/** Rough serialized-size estimate for a log record: body + attributes + fixed overhead. */
+function estimateRecordBytes(record) {
+    const bodyLen = typeof record.body === 'string' ? record.body.length : JSON.stringify(record.body ?? '').length;
+    const attrLen = JSON.stringify(record.attributes ?? {}).length;
+    return bodyLen + attrLen + 256;
+}
+/** Group log records into batches that each stay under maxBytes (estimated). */
+function chunkLogs(logs, maxBytes = MAX_BATCH_BYTES) {
+    const batches = [];
+    let current = [];
+    let currentBytes = 0;
+    for (const log of logs) {
+        const size = estimateRecordBytes(log);
+        if (current.length > 0 && currentBytes + size > maxBytes) {
+            batches.push(current);
+            current = [];
+            currentBytes = 0;
+        }
+        current.push(log);
+        currentBytes += size;
+    }
+    if (current.length > 0)
+        batches.push(current);
+    return batches;
+}
+/** Export the log records over OTLP/gRPC in size-bounded batches and flush. */
 async function exportLogs(logs, endpoint, headers, timeoutMs = 15000) {
     if (logs.length === 0)
         return;
@@ -87190,17 +87220,19 @@ async function exportLogs(logs, endpoint, headers, timeoutMs = 15000) {
         metadata,
         credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
     });
-    await new Promise((resolve) => {
-        const timer = setTimeout(resolve, timeoutMs);
-        exporter.export(logs, (result) => {
-            clearTimeout(timer);
-            if (result.code !== 0) {
-                // eslint-disable-next-line no-console
-                console.error('OTLP log export failed', result.error);
-            }
-            resolve();
+    for (const batch of chunkLogs(logs)) {
+        await new Promise((resolve) => {
+            const timer = setTimeout(resolve, timeoutMs);
+            exporter.export(batch, (result) => {
+                clearTimeout(timer);
+                if (result.code !== 0) {
+                    // eslint-disable-next-line no-console
+                    console.error('OTLP log export failed', result.error);
+                }
+                resolve();
+            });
         });
-    });
+    }
     await exporter.shutdown().catch(() => undefined);
 }
 
