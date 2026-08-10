@@ -2,7 +2,7 @@ name: Comment Update
 description: Create or update a comment in a pull request
 
 runs:
-  using: node20
+  using: node24
   main: dist/index.js
 
 inputs:

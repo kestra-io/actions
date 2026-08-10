@@ -2,7 +2,7 @@ name: OTel Collect
 description: Capture OpenTelemetry metrics, traces and logs for a complete GitHub Actions workflow run
 
 runs:
-  using: node20
+  using: node24
   main: dist/index.js
   post: dist/index.js
 

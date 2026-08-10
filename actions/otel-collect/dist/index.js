@@ -33828,76 +33828,59 @@ function requireToolCache () {
 
 var toolCacheExports = requireToolCache();
 
-const JAVA_RELEASES = 'https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases';
-/**
- * Download & cache the OpenTelemetry Java agent jar. When `inject` is true it is
- * also added to JAVA_TOOL_OPTIONS so every JVM in the job is instrumented — only
- * safe for apps that do not manage their own OpenTelemetry. Returns the jar path.
- */
+const JAVA_RELEASES = "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases";
 async function setupJavaAgent(version, inject) {
-    const cacheVersion = version === 'latest' ? 'latest' : version;
-    let dir = toolCacheExports.find('opentelemetry-javaagent', cacheVersion);
-    let jar = dir ? path$1.join(dir, 'opentelemetry-javaagent.jar') : '';
-    if (!jar || !fs.existsSync(jar)) {
-        const url = version === 'latest'
-            ? `${JAVA_RELEASES}/latest/download/opentelemetry-javaagent.jar`
-            : `${JAVA_RELEASES}/download/v${version}/opentelemetry-javaagent.jar`;
-        coreExports.info(`Downloading opentelemetry-javaagent from ${url}`);
-        const downloaded = await toolCacheExports.downloadTool(url);
-        dir = await toolCacheExports.cacheFile(downloaded, 'opentelemetry-javaagent.jar', 'opentelemetry-javaagent', cacheVersion);
-        jar = path$1.join(dir, 'opentelemetry-javaagent.jar');
+  const cacheVersion = version === "latest" ? "latest" : version;
+  let dir = toolCacheExports.find("opentelemetry-javaagent", cacheVersion);
+  let jar = dir ? path$1.join(dir, "opentelemetry-javaagent.jar") : "";
+  if (!jar || !fs.existsSync(jar)) {
+    const url = version === "latest" ? `${JAVA_RELEASES}/latest/download/opentelemetry-javaagent.jar` : `${JAVA_RELEASES}/download/v${version}/opentelemetry-javaagent.jar`;
+    coreExports.info(`Downloading opentelemetry-javaagent from ${url}`);
+    const downloaded = await toolCacheExports.downloadTool(url);
+    dir = await toolCacheExports.cacheFile(downloaded, "opentelemetry-javaagent.jar", "opentelemetry-javaagent", cacheVersion);
+    jar = path$1.join(dir, "opentelemetry-javaagent.jar");
+  }
+  if (inject) {
+    const existing = process.env.JAVA_TOOL_OPTIONS ?? "";
+    const flag = `-javaagent:${jar}`;
+    if (!existing.includes(flag)) {
+      coreExports.exportVariable("JAVA_TOOL_OPTIONS", existing ? `${existing} ${flag}` : flag);
     }
-    if (inject) {
-        const existing = process.env.JAVA_TOOL_OPTIONS ?? '';
-        const flag = `-javaagent:${jar}`;
-        if (!existing.includes(flag)) {
-            coreExports.exportVariable('JAVA_TOOL_OPTIONS', existing ? `${existing} ${flag}` : flag);
-        }
-        coreExports.info(`Java agent injected via JAVA_TOOL_OPTIONS: ${jar}`);
-    }
-    else {
-        coreExports.info(`Java agent ready (not injected): ${jar}`);
-    }
-    return jar;
+    coreExports.info(`Java agent injected via JAVA_TOOL_OPTIONS: ${jar}`);
+  } else {
+    coreExports.info(`Java agent ready (not injected): ${jar}`);
+  }
+  return jar;
 }
-/**
- * Install & cache the Node auto-instrumentation. When `inject` is true it is
- * also wired in via NODE_OPTIONS/NODE_PATH. Returns the path to the `register`
- * module.
- */
 async function setupNodeAgent(inject) {
-    const pkg = '@opentelemetry/auto-instrumentations-node';
-    const version = '0.55.0';
-    let dir = toolCacheExports.find('otel-node-instrumentation', version);
-    if (!dir) {
-        const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp';
-        const installDir = path$1.join(tmp, 'otel-node-instrumentation');
-        fs.mkdirSync(installDir, { recursive: true });
-        fs.writeFileSync(path$1.join(installDir, 'package.json'), JSON.stringify({ name: 'otel-node-bootstrap', private: true }));
-        await execExports.exec('npm', ['install', '--no-audit', '--no-fund', `${pkg}@${version}`], { cwd: installDir });
-        dir = await toolCacheExports.cacheDir(installDir, 'otel-node-instrumentation', version);
+  const pkg = "@opentelemetry/auto-instrumentations-node";
+  const version = "0.55.0";
+  let dir = toolCacheExports.find("otel-node-instrumentation", version);
+  if (!dir) {
+    const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
+    const installDir = path$1.join(tmp, "otel-node-instrumentation");
+    fs.mkdirSync(installDir, { recursive: true });
+    fs.writeFileSync(path$1.join(installDir, "package.json"), JSON.stringify({ name: "otel-node-bootstrap", private: true }));
+    await execExports.exec("npm", ["install", "--no-audit", "--no-fund", `${pkg}@${version}`], { cwd: installDir });
+    dir = await toolCacheExports.cacheDir(installDir, "otel-node-instrumentation", version);
+  }
+  const modulesDir = path$1.join(dir, "node_modules");
+  const registerSpecifier = `${pkg}/register`;
+  if (inject) {
+    const existingNodePath = process.env.NODE_PATH ?? "";
+    if (!existingNodePath.split(path$1.delimiter).includes(modulesDir)) {
+      coreExports.exportVariable("NODE_PATH", existingNodePath ? `${modulesDir}${path$1.delimiter}${existingNodePath}` : modulesDir);
     }
-    // Resolve via the package's `./register` export map rather than guessing the
-    // internal file path. Make the bare specifier resolvable by adding our cached
-    // install dir to NODE_PATH.
-    const modulesDir = path$1.join(dir, 'node_modules');
-    const registerSpecifier = `${pkg}/register`;
-    if (inject) {
-        const existingNodePath = process.env.NODE_PATH ?? '';
-        if (!existingNodePath.split(path$1.delimiter).includes(modulesDir)) {
-            coreExports.exportVariable('NODE_PATH', existingNodePath ? `${modulesDir}${path$1.delimiter}${existingNodePath}` : modulesDir);
-        }
-        const existing = process.env.NODE_OPTIONS ?? '';
-        const flag = `--require ${registerSpecifier}`;
-        if (!existing.includes(registerSpecifier)) {
-            coreExports.exportVariable('NODE_OPTIONS', existing ? `${existing} ${flag}` : flag);
-        }
-        coreExports.info(`Node auto-instrumentation injected via NODE_OPTIONS: ${registerSpecifier} (NODE_PATH=${modulesDir})`);
+    const existing = process.env.NODE_OPTIONS ?? "";
+    const flag = `--require ${registerSpecifier}`;
+    if (!existing.includes(registerSpecifier)) {
+      coreExports.exportVariable("NODE_OPTIONS", existing ? `${existing} ${flag}` : flag);
     }
-    else {
-        coreExports.info(`Node auto-instrumentation ready (not injected): ${modulesDir}`);
-    }
-    return path$1.join(modulesDir, pkg, 'register.js');
+    coreExports.info(`Node auto-instrumentation injected via NODE_OPTIONS: ${registerSpecifier} (NODE_PATH=${modulesDir})`);
+  } else {
+    coreExports.info(`Node auto-instrumentation ready (not injected): ${modulesDir}`);
+  }
+  return path$1.join(modulesDir, pkg, "register.js");
 }
 
 var src$5 = {};
@@ -50922,6 +50905,9 @@ function requireParse () {
 	            }
 
 	            while (token !== "=") {
+	                if (token === null) {
+	                    throw illegal(token, "end of input");
+	                }
 	                if (token === "(") {
 	                    var parensValue = next();
 	                    skip(")");
@@ -71986,7 +71972,7 @@ function requireGrpcExporterTransport () {
 	            // Lazy require to ensure that grpc is not loaded before instrumentations can wrap it
 	            const { createServiceClientConstructor,
 	            // eslint-disable-next-line @typescript-eslint/no-var-requires
-	             } = /*@__PURE__*/ requireCreateServiceClientConstructor();
+	             } = requireCreateServiceClientConstructor();
 	            try {
 	                this._metadata = this._parameters.metadata();
 	            }
@@ -72099,8 +72085,8 @@ function requireOtlpGrpcConfiguration () {
 	Object.defineProperty(otlpGrpcConfiguration, "__esModule", { value: true });
 	otlpGrpcConfiguration.getOtlpGrpcDefaultConfiguration = otlpGrpcConfiguration.mergeOtlpGrpcConfigurationWithDefaults = otlpGrpcConfiguration.validateAndNormalizeUrl = void 0;
 	const otlp_exporter_base_1 = require$$2$1;
-	const grpc_exporter_transport_1 = /*@__PURE__*/ requireGrpcExporterTransport();
-	const version_1 = /*@__PURE__*/ requireVersion();
+	const grpc_exporter_transport_1 = requireGrpcExporterTransport();
+	const version_1 = requireVersion();
 	const url_1 = require$$1$4;
 	const api_1 = require$$0$2;
 	function validateAndNormalizeUrl(url) {
@@ -72873,7 +72859,7 @@ function requireOtlpGrpcEnvConfiguration () {
 	Object.defineProperty(otlpGrpcEnvConfiguration, "__esModule", { value: true });
 	otlpGrpcEnvConfiguration.getOtlpGrpcConfigurationFromEnv = void 0;
 	const core_1 = require$$0$1;
-	const grpc_exporter_transport_1 = /*@__PURE__*/ requireGrpcExporterTransport();
+	const grpc_exporter_transport_1 = requireGrpcExporterTransport();
 	const node_http_1 = require$$2;
 	const fs = fs__default;
 	const path = path__default;
@@ -73034,9 +73020,9 @@ function requireConvertLegacyOtlpGrpcOptions () {
 	Object.defineProperty(convertLegacyOtlpGrpcOptions, "__esModule", { value: true });
 	convertLegacyOtlpGrpcOptions.convertLegacyOtlpGrpcOptions = void 0;
 	const api_1 = require$$0$2;
-	const otlp_grpc_configuration_1 = /*@__PURE__*/ requireOtlpGrpcConfiguration();
-	const grpc_exporter_transport_1 = /*@__PURE__*/ requireGrpcExporterTransport();
-	const otlp_grpc_env_configuration_1 = /*@__PURE__*/ requireOtlpGrpcEnvConfiguration();
+	const otlp_grpc_configuration_1 = requireOtlpGrpcConfiguration();
+	const grpc_exporter_transport_1 = requireGrpcExporterTransport();
+	const otlp_grpc_env_configuration_1 = requireOtlpGrpcEnvConfiguration();
 	/**
 	 * @deprecated
 	 * @param config
@@ -73093,7 +73079,7 @@ function requireOtlpGrpcExportDelegate () {
 	Object.defineProperty(otlpGrpcExportDelegate, "__esModule", { value: true });
 	otlpGrpcExportDelegate.createOtlpGrpcExportDelegate = void 0;
 	const otlp_exporter_base_1 = require$$2$1;
-	const grpc_exporter_transport_1 = /*@__PURE__*/ requireGrpcExporterTransport();
+	const grpc_exporter_transport_1 = requireGrpcExporterTransport();
 	function createOtlpGrpcExportDelegate(options, serializer, grpcName, grpcPath) {
 	    return (0, otlp_exporter_base_1.createOtlpNetworkExportDelegate)(options, serializer, (0, grpc_exporter_transport_1.createOtlpGrpcExporterTransport)({
 	        address: options.url,
@@ -73132,9 +73118,9 @@ function requireSrc$2 () {
 		 */
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.createOtlpGrpcExportDelegate = exports.convertLegacyOtlpGrpcOptions = void 0;
-		var convert_legacy_otlp_grpc_options_1 = /*@__PURE__*/ requireConvertLegacyOtlpGrpcOptions();
+		var convert_legacy_otlp_grpc_options_1 = requireConvertLegacyOtlpGrpcOptions();
 		Object.defineProperty(exports, "convertLegacyOtlpGrpcOptions", { enumerable: true, get: function () { return convert_legacy_otlp_grpc_options_1.convertLegacyOtlpGrpcOptions; } });
-		var otlp_grpc_export_delegate_1 = /*@__PURE__*/ requireOtlpGrpcExportDelegate();
+		var otlp_grpc_export_delegate_1 = requireOtlpGrpcExportDelegate();
 		Object.defineProperty(exports, "createOtlpGrpcExportDelegate", { enumerable: true, get: function () { return otlp_grpc_export_delegate_1.createOtlpGrpcExportDelegate; } });
 		
 	} (src$1));
@@ -85874,7 +85860,7 @@ function requireRoot () {
 	return root;
 }
 
-var rootExports = /*@__PURE__*/ requireRoot();
+var rootExports = requireRoot();
 
 /*
  * Copyright The OpenTelemetry Authors
@@ -86918,7 +86904,7 @@ function requireSrc$1 () {
 		/* eslint no-restricted-syntax: ["warn", "ExportAllDeclaration"] --
 		 * TODO: Replace wildcard export with named exports before next major version
 		 */
-		__exportStar(/*@__PURE__*/ requireOTLPLogExporter(), exports);
+		__exportStar(requireOTLPLogExporter(), exports);
 		
 	} (src$2));
 	return src$2;
@@ -87003,7 +86989,7 @@ function requireSrc () {
 		/* eslint no-restricted-syntax: ["warn", "ExportAllDeclaration"] --
 		 * TODO: Replace wildcard export with named exports before next major version
 		 */
-		__exportStar(/*@__PURE__*/ requireOTLPTraceExporter(), exports);
+		__exportStar(requireOTLPTraceExporter(), exports);
 		
 	} (src));
 	return src;
@@ -87011,261 +86997,210 @@ function requireSrc () {
 
 var srcExports = /*@__PURE__*/ requireSrc();
 
-/** Parse a comma separated "k=v,k2=v2" header string into a map. */
 function parseHeaders(raw) {
-    const headers = {};
-    for (const pair of raw.split(',')) {
-        const trimmed = pair.trim();
-        if (!trimmed)
-            continue;
-        const idx = trimmed.indexOf('=');
-        if (idx === -1)
-            continue;
-        headers[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
-    }
-    return headers;
+  const headers = {};
+  for (const pair of raw.split(",")) {
+    const trimmed = pair.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf("=");
+    if (idx === -1) continue;
+    headers[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
+  }
+  return headers;
 }
-/**
- * The namespace for all emitted telemetry, exposed via two resource attributes:
- *  - `service.namespace`     — the OTel semantic convention; groups every signal
- *    (traces / metrics / logs) so backends can scope GitHub Actions telemetry away
- *    from the applications it observes.
- *  - `data_stream.namespace` — Elastic's data-stream routing field. Elastic ingests
- *    OTLP into data streams named `<type>-<dataset>.otel-<namespace>`; without this
- *    attribute the namespace falls back to `default`. It is NOT derived from
- *    `service.namespace`, so both must be set to land in a `github-actions` namespace.
- */
-const NAMESPACE = 'github-actions';
+const NAMESPACE = "github-actions";
 function msToHr(ms) {
-    const seconds = Math.trunc(ms / 1000);
-    const nanos = Math.round((ms - seconds * 1000) * 1e6);
-    return [seconds, nanos];
+  const seconds = Math.trunc(ms / 1e3);
+  const nanos = Math.round((ms - seconds * 1e3) * 1e6);
+  return [seconds, nanos];
 }
-/**
- * service.instance.id for the run — Elastic APM surfaces this as the "Node name".
- * Unique per workflow run and identical across the build and export jobs.
- */
 function serviceInstanceId() {
-    const runId = process.env.GITHUB_RUN_ID;
-    const attempt = process.env.GITHUB_RUN_ATTEMPT;
-    if (runId)
-        return `${runId}-${attempt ?? '1'}`;
-    return process.env.RUNNER_NAME ?? 'github-actions';
+  const runId = process.env.GITHUB_RUN_ID;
+  const attempt = process.env.GITHUB_RUN_ATTEMPT;
+  if (runId) return `${runId}-${attempt ?? "1"}`;
+  return process.env.RUNNER_NAME ?? "github-actions";
 }
 function buildResource(serviceName) {
-    return new Resource({
-        'service.name': serviceName,
-        'service.namespace': NAMESPACE,
-        'data_stream.namespace': NAMESPACE,
-        'service.instance.id': serviceInstanceId(),
-        'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
-        'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
-        'github.run_id': process.env.GITHUB_RUN_ID ?? '',
-        'github.run_attempt': process.env.GITHUB_RUN_ATTEMPT ?? '',
-        'github.sha': process.env.GITHUB_SHA ?? '',
-        'github.ref': process.env.GITHUB_REF ?? ''
-    });
+  return new Resource({
+    "service.name": serviceName,
+    "service.namespace": NAMESPACE,
+    "data_stream.namespace": NAMESPACE,
+    "service.instance.id": serviceInstanceId(),
+    "cicd.pipeline.name": process.env.GITHUB_WORKFLOW ?? "",
+    "vcs.repository.name": process.env.GITHUB_REPOSITORY ?? "",
+    "github.run_id": process.env.GITHUB_RUN_ID ?? "",
+    "github.run_attempt": process.env.GITHUB_RUN_ATTEMPT ?? "",
+    "github.sha": process.env.GITHUB_SHA ?? "",
+    "github.ref": process.env.GITHUB_REF ?? ""
+  });
 }
-/** GitHub conclusion -> OTel status code. */
 function statusOf(conclusion) {
-    if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
-        return SpanStatusCode.OK;
-    }
-    if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
-        return SpanStatusCode.ERROR;
-    }
-    return SpanStatusCode.UNSET;
+  if (conclusion === "success" || conclusion === "skipped" || conclusion === "neutral") {
+    return SpanStatusCode.OK;
+  }
+  if (conclusion === "failure" || conclusion === "cancelled" || conclusion === "timed_out") {
+    return SpanStatusCode.ERROR;
+  }
+  return SpanStatusCode.UNSET;
 }
-/**
- * Hand-build a ReadableSpan with predetermined (deterministic) ids. The tracer
- * SDK generates random ids, so we bypass it and feed spans straight to the
- * exporter — the proven otel-cicd-action pattern.
- */
 function buildSpan(input, resource) {
-    const endMs = Number.isFinite(input.endMs) ? input.endMs : input.startMs;
-    const span = {
-        name: input.name,
-        kind: SpanKind.INTERNAL,
-        spanContext: () => ({
-            traceId: input.traceId,
-            spanId: input.spanId,
-            traceFlags: TraceFlags.SAMPLED
-        }),
-        parentSpanId: input.parentSpanId,
-        startTime: msToHr(input.startMs),
-        endTime: msToHr(endMs),
-        status: { code: statusOf(input.conclusion) },
-        attributes: input.attributes ?? {},
-        links: [],
-        events: [],
-        duration: msToHr(Math.max(0, endMs - input.startMs)),
-        ended: true,
-        resource,
-        instrumentationLibrary: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
-        droppedAttributesCount: 0,
-        droppedEventsCount: 0,
-        droppedLinksCount: 0
-    };
-    return span;
+  const endMs = Number.isFinite(input.endMs) ? input.endMs : input.startMs;
+  const span = {
+    name: input.name,
+    kind: SpanKind.INTERNAL,
+    spanContext: () => ({
+      traceId: input.traceId,
+      spanId: input.spanId,
+      traceFlags: TraceFlags.SAMPLED
+    }),
+    parentSpanId: input.parentSpanId,
+    startTime: msToHr(input.startMs),
+    endTime: msToHr(endMs),
+    status: { code: statusOf(input.conclusion) },
+    attributes: input.attributes ?? {},
+    links: [],
+    events: [],
+    duration: msToHr(Math.max(0, endMs - input.startMs)),
+    ended: true,
+    resource,
+    instrumentationLibrary: { name: "kestra-io/actions/otel-collect", version: "1.0.0" },
+    droppedAttributesCount: 0,
+    droppedEventsCount: 0,
+    droppedLinksCount: 0
+  };
+  return span;
 }
-/**
- * Normalize an OTLP endpoint for gRPC: strip the http(s) scheme and any signal
- * path (gRPC endpoints must be base URLs — a "/v1/traces" path is rejected), then
- * ensure a port (443 for TLS, 4317 for plaintext). Returns {target, secure}.
- */
 function grpcTarget(endpoint) {
-    const secure = !endpoint.startsWith('http://');
-    let host = endpoint.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-    if (!/:\d+$/.test(host)) {
-        host = `${host}:${secure ? 443 : 4317}`;
-    }
-    return { target: host, secure };
+  const secure = !endpoint.startsWith("http://");
+  let host = endpoint.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!/:\d+$/.test(host)) {
+    host = `${host}:${secure ? 443 : 4317}`;
+  }
+  return { target: host, secure };
 }
-/** Base OTLP endpoint (scheme + host[:port], no signal path) for OTEL_EXPORTER_OTLP_ENDPOINT. */
 function baseEndpoint(endpoint) {
-    const { target, secure } = grpcTarget(endpoint);
-    return `${secure ? 'https' : 'http'}://${target}`;
+  const { target, secure } = grpcTarget(endpoint);
+  return `${secure ? "https" : "http"}://${target}`;
 }
-/** Export the spans over OTLP/gRPC and flush. */
-async function exportSpans(spans, endpoint, headers, timeoutMs = 15000) {
-    const { target, secure } = grpcTarget(endpoint);
-    const metadata = new srcExports$2.Metadata();
-    for (const [key, value] of Object.entries(headers)) {
-        metadata.set(key, value);
-    }
-    const exporter = new srcExports.OTLPTraceExporter({
-        url: target,
-        metadata,
-        credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
+async function exportSpans(spans, endpoint, headers, timeoutMs = 15e3) {
+  const { target, secure } = grpcTarget(endpoint);
+  const metadata = new srcExports$2.Metadata();
+  for (const [key, value] of Object.entries(headers)) {
+    metadata.set(key, value);
+  }
+  const exporter = new srcExports.OTLPTraceExporter({
+    url: target,
+    metadata,
+    credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
+  });
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    exporter.export(spans, (result) => {
+      clearTimeout(timer);
+      if (result.code !== 0) {
+        console.error("OTLP export failed", result.error);
+      }
+      resolve();
     });
-    await new Promise((resolve) => {
-        const timer = setTimeout(resolve, timeoutMs);
-        exporter.export(spans, (result) => {
-            clearTimeout(timer);
-            if (result.code !== 0) {
-                // ExportResultCode.FAILED === 1
-                // eslint-disable-next-line no-console
-                console.error('OTLP export failed', result.error);
-            }
-            resolve();
-        });
-    });
-    await exporter.shutdown().catch(() => undefined);
+  });
+  await exporter.shutdown().catch(() => void 0);
 }
-/**
- * Hand-build a ReadableLogRecord with a predetermined SpanContext so the log line
- * correlates to the job/step span it belongs to. Same bypass-the-SDK approach as
- * buildSpan() — feed records straight to the exporter.
- */
 function buildLogRecord(input, resource) {
-    const record = {
-        hrTime: msToHr(input.timeMs),
-        hrTimeObserved: msToHr(input.timeMs),
-        severityNumber: input.severityNumber,
-        severityText: input.severityText,
-        body: input.body,
-        attributes: input.attributes ?? {},
-        droppedAttributesCount: 0,
-        resource,
-        instrumentationScope: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
-        spanContext: {
-            traceId: input.traceId,
-            spanId: input.spanId,
-            traceFlags: TraceFlags.SAMPLED
-        }
-    };
-    return record;
+  const record = {
+    hrTime: msToHr(input.timeMs),
+    hrTimeObserved: msToHr(input.timeMs),
+    severityNumber: input.severityNumber,
+    severityText: input.severityText,
+    body: input.body,
+    attributes: input.attributes ?? {},
+    droppedAttributesCount: 0,
+    resource,
+    instrumentationScope: { name: "kestra-io/actions/otel-collect", version: "1.0.0" },
+    spanContext: {
+      traceId: input.traceId,
+      spanId: input.spanId,
+      traceFlags: TraceFlags.SAMPLED
+    }
+  };
+  return record;
 }
-// The default gRPC max receive message size is 4 MiB. A workflow with many/verbose
-// jobs can produce a single log batch well past that (observed: ~9 MB), which the
-// server rejects outright with RESOURCE_EXHAUSTED. Stay well under the limit so a
-// generous per-record overhead estimate still can't push a batch over the edge.
 const MAX_BATCH_BYTES = 3 * 1024 * 1024;
-/** Rough serialized-size estimate for a log record: body + attributes + fixed overhead. */
 function estimateRecordBytes(record) {
-    const bodyLen = typeof record.body === 'string' ? record.body.length : JSON.stringify(record.body ?? '').length;
-    const attrLen = JSON.stringify(record.attributes ?? {}).length;
-    return bodyLen + attrLen + 256;
+  const bodyLen = typeof record.body === "string" ? record.body.length : JSON.stringify(record.body ?? "").length;
+  const attrLen = JSON.stringify(record.attributes ?? {}).length;
+  return bodyLen + attrLen + 256;
 }
-/** Group log records into batches that each stay under maxBytes (estimated). */
 function chunkLogs(logs, maxBytes = MAX_BATCH_BYTES) {
-    const batches = [];
-    let current = [];
-    let currentBytes = 0;
-    for (const log of logs) {
-        const size = estimateRecordBytes(log);
-        if (current.length > 0 && currentBytes + size > maxBytes) {
-            batches.push(current);
-            current = [];
-            currentBytes = 0;
-        }
-        current.push(log);
-        currentBytes += size;
+  const batches = [];
+  let current = [];
+  let currentBytes = 0;
+  for (const log of logs) {
+    const size = estimateRecordBytes(log);
+    if (current.length > 0 && currentBytes + size > maxBytes) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
     }
-    if (current.length > 0)
-        batches.push(current);
-    return batches;
+    current.push(log);
+    currentBytes += size;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
 }
-/** Export the log records over OTLP/gRPC in size-bounded batches and flush. */
-async function exportLogs(logs, endpoint, headers, timeoutMs = 15000) {
-    if (logs.length === 0)
-        return;
-    const { target, secure } = grpcTarget(endpoint);
-    const metadata = new srcExports$2.Metadata();
-    for (const [key, value] of Object.entries(headers)) {
-        metadata.set(key, value);
-    }
-    const exporter = new srcExports$1.OTLPLogExporter({
-        url: target,
-        metadata,
-        credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
+async function exportLogs(logs, endpoint, headers, timeoutMs = 15e3) {
+  if (logs.length === 0) return;
+  const { target, secure } = grpcTarget(endpoint);
+  const metadata = new srcExports$2.Metadata();
+  for (const [key, value] of Object.entries(headers)) {
+    metadata.set(key, value);
+  }
+  const exporter = new srcExports$1.OTLPLogExporter({
+    url: target,
+    metadata,
+    credentials: secure ? srcExports$2.credentials.createSsl() : srcExports$2.credentials.createInsecure()
+  });
+  for (const batch of chunkLogs(logs)) {
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs);
+      exporter.export(batch, (result) => {
+        clearTimeout(timer);
+        if (result.code !== 0) {
+          console.error("OTLP log export failed", result.error);
+        }
+        resolve();
+      });
     });
-    for (const batch of chunkLogs(logs)) {
-        await new Promise((resolve) => {
-            const timer = setTimeout(resolve, timeoutMs);
-            exporter.export(batch, (result) => {
-                clearTimeout(timer);
-                if (result.code !== 0) {
-                    // eslint-disable-next-line no-console
-                    console.error('OTLP log export failed', result.error);
-                }
-                resolve();
-            });
-        });
-    }
-    await exporter.shutdown().catch(() => undefined);
+  }
+  await exporter.shutdown().catch(() => void 0);
 }
 
-const RELEASES = 'https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download';
+const RELEASES = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download";
 function assetFor(version) {
-    const osMap = { linux: 'linux', darwin: 'darwin', win32: 'windows' };
-    const archMap = { x64: 'amd64', arm64: 'arm64' };
-    const os = osMap[process.platform] ?? 'linux';
-    const arch = archMap[process.arch] ?? 'amd64';
-    const isZip = process.platform === 'win32';
-    const ext = isZip ? 'zip' : 'tar.gz';
-    return { file: `otelcol-contrib_${version}_${os}_${arch}.${ext}`, isZip };
+  const osMap = { linux: "linux", darwin: "darwin", win32: "windows" };
+  const archMap = { x64: "amd64", arm64: "arm64" };
+  const os = osMap[process.platform] ?? "linux";
+  const arch = archMap[process.arch] ?? "amd64";
+  const isZip = process.platform === "win32";
+  const ext = isZip ? "zip" : "tar.gz";
+  return { file: `otelcol-contrib_${version}_${os}_${arch}.${ext}`, isZip };
 }
-/** Download (and tool-cache) the otelcol-contrib binary, returning its path. */
 async function ensureCollector(version) {
-    const binName = process.platform === 'win32' ? 'otelcol-contrib.exe' : 'otelcol-contrib';
-    let dir = toolCacheExports.find('otelcol-contrib', version);
-    if (!dir) {
-        const asset = assetFor(version);
-        const url = `${RELEASES}/v${version}/${asset.file}`;
-        coreExports.info(`Downloading otelcol-contrib from ${url}`);
-        const archive = await toolCacheExports.downloadTool(url);
-        const extracted = asset.isZip ? await toolCacheExports.extractZip(archive) : await toolCacheExports.extractTar(archive);
-        dir = await toolCacheExports.cacheDir(extracted, 'otelcol-contrib', version);
-    }
-    return path$1.join(dir, binName);
+  const binName = process.platform === "win32" ? "otelcol-contrib.exe" : "otelcol-contrib";
+  let dir = toolCacheExports.find("otelcol-contrib", version);
+  if (!dir) {
+    const asset = assetFor(version);
+    const url = `${RELEASES}/v${version}/${asset.file}`;
+    coreExports.info(`Downloading otelcol-contrib from ${url}`);
+    const archive = await toolCacheExports.downloadTool(url);
+    const extracted = asset.isZip ? await toolCacheExports.extractZip(archive) : await toolCacheExports.extractTar(archive);
+    dir = await toolCacheExports.cacheDir(extracted, "otelcol-contrib", version);
+  }
+  return path$1.join(dir, binName);
 }
 function buildConfig(endpoint, headers, serviceName) {
-    const headerLines = Object.entries(headers)
-        .map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
-        .join('\n');
-    const { target, secure } = grpcTarget(endpoint);
-    return `receivers:
+  const headerLines = Object.entries(headers).map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join("\n");
+  const { target, secure } = grpcTarget(endpoint);
+  return `receivers:
   hostmetrics:
     collection_interval: 10s
     scrapers:
@@ -87338,10 +87273,10 @@ processors:
         value: ${JSON.stringify(serviceInstanceId())}
         action: upsert
       - key: github.run_id
-        value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? '')}
+        value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? "")}
         action: upsert
       - key: github.run_attempt
-        value: ${JSON.stringify(process.env.GITHUB_RUN_ATTEMPT ?? '')}
+        value: ${JSON.stringify(process.env.GITHUB_RUN_ATTEMPT ?? "")}
         action: upsert
   batch:
 
@@ -87349,8 +87284,9 @@ exporters:
   otlp:
     endpoint: ${JSON.stringify(target)}
     tls:
-      insecure: ${secure ? 'false' : 'true'}
-${headerLines ? `    headers:\n${headerLines}` : ''}
+      insecure: ${secure ? "false" : "true"}
+${headerLines ? `    headers:
+${headerLines}` : ""}
 
 service:
   pipelines:
@@ -87360,44 +87296,38 @@ service:
       exporters: [otlp]
 `;
 }
-const PID_STATE = 'otel-collector-pid';
-/** Start the collector daemon in the background. Stores its pid in action state. */
+const PID_STATE = "otel-collector-pid";
 async function startCollector(version, endpoint, rawHeaders, serviceName) {
-    const bin = await ensureCollector(version);
-    const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp';
-    const configPath = path$1.join(tmp, 'otel-collect-config.yaml');
-    const logPath = path$1.join(tmp, 'otel-collect-collector.log');
-    fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName));
-    const out = fs.openSync(logPath, 'a');
-    const child = spawn(bin, ['--config', configPath], {
-        detached: true,
-        stdio: ['ignore', out, out]
-    });
-    child.unref();
-    if (child.pid) {
-        coreExports.saveState(PID_STATE, String(child.pid));
-        coreExports.info(`Started host-metrics collector (pid ${child.pid}), logging to ${logPath}`);
-    }
-    else {
-        coreExports.warning('Failed to start host-metrics collector');
-    }
+  const bin = await ensureCollector(version);
+  const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
+  const configPath = path$1.join(tmp, "otel-collect-config.yaml");
+  const logPath = path$1.join(tmp, "otel-collect-collector.log");
+  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName));
+  const out = fs.openSync(logPath, "a");
+  const child = spawn(bin, ["--config", configPath], {
+    detached: true,
+    stdio: ["ignore", out, out]
+  });
+  child.unref();
+  if (child.pid) {
+    coreExports.saveState(PID_STATE, String(child.pid));
+    coreExports.info(`Started host-metrics collector (pid ${child.pid}), logging to ${logPath}`);
+  } else {
+    coreExports.warning("Failed to start host-metrics collector");
+  }
 }
-/** Stop the collector daemon, giving it a moment to flush. */
 async function stopCollector() {
-    const pidRaw = coreExports.getState(PID_STATE);
-    if (!pidRaw)
-        return;
-    const pid = Number(pidRaw);
-    if (!Number.isInteger(pid))
-        return;
-    try {
-        process.kill(pid, 'SIGTERM');
-        coreExports.info(`Sent SIGTERM to collector (pid ${pid}); waiting for flush`);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
-    catch (err) {
-        coreExports.debug(`Collector already stopped: ${err.message}`);
-    }
+  const pidRaw = coreExports.getState(PID_STATE);
+  if (!pidRaw) return;
+  const pid = Number(pidRaw);
+  if (!Number.isInteger(pid)) return;
+  try {
+    process.kill(pid, "SIGTERM");
+    coreExports.info(`Sent SIGTERM to collector (pid ${pid}); waiting for flush`);
+    await new Promise((resolve) => setTimeout(resolve, 3e3));
+  } catch (err) {
+    coreExports.debug(`Collector already stopped: ${err.message}`);
+  }
 }
 
 /*
@@ -87444,257 +87374,198 @@ var SeverityNumber;
     SeverityNumber[SeverityNumber["FATAL4"] = 24] = "FATAL4";
 })(SeverityNumber || (SeverityNumber = {}));
 
-/**
- * Deterministic trace/span ids, replicating the OpenTelemetry Collector
- * `githubreceiver` scheme byte-for-byte (sha256 hex, sliced). Both the live
- * build spans (which read the exported TRACEPARENT) and the post-hoc spans we
- * rebuild from the GitHub API must derive identical ids so they land in the
- * same trace tree.
- *
- *   trace id   sha256(`${run_id}${run_attempt}t`)[0:32]   (16 bytes)
- *   root span  sha256(`${run_id}${run_attempt}s`)[16:32]  ( 8 bytes)
- *   job span   sha256(`${job_id}-j`)[16:32]               ( 8 bytes)
- *   step span  sha256(`${job_id}-${step_name}-s`)[16:32]  ( 8 bytes)
- */
 function sha256hex(input) {
-    return createHash('sha256').update(input).digest('hex');
+  return createHash("sha256").update(input).digest("hex");
 }
 function traceId(runId, runAttempt) {
-    return sha256hex(`${runId}${runAttempt}t`).slice(0, 32);
+  return sha256hex(`${runId}${runAttempt}t`).slice(0, 32);
 }
 function rootSpanId(runId, runAttempt) {
-    return sha256hex(`${runId}${runAttempt}s`).slice(16, 32);
+  return sha256hex(`${runId}${runAttempt}s`).slice(16, 32);
 }
 function jobSpanId(jobId) {
-    return sha256hex(`${jobId}-j`).slice(16, 32);
+  return sha256hex(`${jobId}-j`).slice(16, 32);
 }
 function stepSpanId(jobId, stepName) {
-    return sha256hex(`${jobId}-${stepName}-s`).slice(16, 32);
+  return sha256hex(`${jobId}-${stepName}-s`).slice(16, 32);
 }
 
-// Cap log lines emitted per job so a runaway log can't OOM the exporter.
-const MAX_LINES_PER_JOB = 10000;
-// GitHub prefixes every log line with an ISO-8601 timestamp.
+const MAX_LINES_PER_JOB = 1e4;
 const LINE_RE = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s?(.*)$/;
-// ANSI escape sequences GitHub embeds for colored output (e.g. "\x1b[36;1m"), which
-// render as garbage like "[36;1m" in a log backend. Matches CSI sequences (\x1b[ …
-// final byte) and OSC sequences (\x1b] … BEL/ST) so we can strip them out.
-// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
-/** Remove ANSI escape sequences so log bodies are plain, readable text. */
 function stripAnsi(text) {
-    return text.replace(ANSI_RE, '');
+  return text.replace(ANSI_RE, "");
 }
-// GitHub Actions "workflow command" markers embedded in downloaded logs — ##[group],
-// ##[endgroup], ##[error], ##[warning], ##[command], ##[section], ##[debug], … They
-// drive the GitHub UI's log folding/coloring and are just noise in a log backend, so
-// strip the marker token (keeping any trailing text). Severity is read off the marker
-// before this runs, so dropping it here doesn't lose the error/warning level.
 const GH_COMMAND_RE = /##\[[^\]]*\]/g;
-/** Remove GitHub workflow-command markers, leaving the human-readable text. */
 function stripGhCommands(text) {
-    return text.replace(GH_COMMAND_RE, '');
+  return text.replace(GH_COMMAND_RE, "");
 }
 function severityOf(message) {
-    if (message.includes('##[error]'))
-        return { number: SeverityNumber.ERROR, text: 'ERROR' };
-    if (message.includes('##[warning]'))
-        return { number: SeverityNumber.WARN, text: 'WARN' };
-    return { number: SeverityNumber.INFO, text: 'INFO' };
+  if (message.includes("##[error]")) return { number: SeverityNumber.ERROR, text: "ERROR" };
+  if (message.includes("##[warning]")) return { number: SeverityNumber.WARN, text: "WARN" };
+  return { number: SeverityNumber.INFO, text: "INFO" };
 }
-/** Pick the step span whose time window contains the line, else fall back to the job span. */
 function spanForTime(ms, steps, jobSpan) {
-    for (const s of steps) {
-        if (ms >= s.start && ms <= s.end)
-            return s.spanId;
-    }
-    return jobSpan;
+  for (const s of steps) {
+    if (ms >= s.start && ms <= s.end) return s.spanId;
+  }
+  return jobSpan;
 }
-/** Parse a job's raw log text into log records correlated to its job/step spans. */
 function parseJobLog(text, job, traceId, resource) {
-    const jobSpan = jobSpanId(job.id);
-    const steps = (job.steps ?? [])
-        .filter((s) => s.started_at && s.completed_at)
-        .map((s) => ({
-        spanId: stepSpanId(job.id, s.name),
-        start: Date.parse(s.started_at),
-        end: Date.parse(s.completed_at)
-    }));
-    // Coalesce continuation lines (stack traces, wrapped output) into the logical
-    // entry they belong to. GitHub timestamps every physical line, so a "new entry"
-    // is one with a timestamp AND no leading indentation; anything else (indented or
-    // untimestamped) is appended to the previous entry's body.
-    const entries = [];
-    let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now();
-    let truncated = false;
-    for (const raw of text.split(/\r?\n/)) {
-        if (raw === '')
-            continue;
-        if (entries.length >= MAX_LINES_PER_JOB) {
-            truncated = true;
-            break;
-        }
-        const m = LINE_RE.exec(raw);
-        const hasTs = m !== null && !Number.isNaN(Date.parse(m[1]));
-        // ANSI-clean text still carrying any ##[…] marker, used for severity + indentation.
-        const clean = stripAnsi(m ? m[2] : raw);
-        const isContinuation = entries.length > 0 && (!hasTs || /^\s/.test(clean));
-        if (isContinuation) {
-            entries[entries.length - 1].message += `\n${stripGhCommands(clean)}`;
-            continue;
-        }
-        // Read severity off the marker, then drop the marker from the body.
-        const severity = severityOf(clean);
-        const message = stripGhCommands(clean);
-        if (!message.trim())
-            continue;
-        const timeMs = hasTs ? Date.parse(m[1]) : lastMs;
-        lastMs = timeMs;
-        entries.push({ timeMs, message, severity });
+  const jobSpan = jobSpanId(job.id);
+  const steps = (job.steps ?? []).filter((s) => s.started_at && s.completed_at).map((s) => ({
+    spanId: stepSpanId(job.id, s.name),
+    start: Date.parse(s.started_at),
+    end: Date.parse(s.completed_at)
+  }));
+  const entries = [];
+  let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now();
+  let truncated = false;
+  for (const raw of text.split(/\r?\n/)) {
+    if (raw === "") continue;
+    if (entries.length >= MAX_LINES_PER_JOB) {
+      truncated = true;
+      break;
     }
-    const records = entries.map((entry) => {
-        const input = {
-            body: entry.message,
-            timeMs: entry.timeMs,
-            severityNumber: entry.severity.number,
-            severityText: entry.severity.text,
-            traceId,
-            spanId: spanForTime(entry.timeMs, steps, jobSpan),
-            attributes: {
-                'github.job.name': job.name,
-                'github.job.id': job.id
-            }
-        };
-        return buildLogRecord(input, resource);
-    });
-    if (truncated) {
-        coreExports.warning(`Job "${job.name}" log exceeded ${MAX_LINES_PER_JOB} lines; remaining lines were not exported`);
+    const m = LINE_RE.exec(raw);
+    const hasTs = m !== null && !Number.isNaN(Date.parse(m[1]));
+    const clean = stripAnsi(m ? m[2] : raw);
+    const isContinuation = entries.length > 0 && (!hasTs || /^\s/.test(clean));
+    if (isContinuation) {
+      entries[entries.length - 1].message += `
+${stripGhCommands(clean)}`;
+      continue;
     }
-    return records;
+    const severity = severityOf(clean);
+    const message = stripGhCommands(clean);
+    if (!message.trim()) continue;
+    const timeMs = hasTs ? Date.parse(m[1]) : lastMs;
+    lastMs = timeMs;
+    entries.push({ timeMs, message, severity });
+  }
+  const records = entries.map((entry) => {
+    const input = {
+      body: entry.message,
+      timeMs: entry.timeMs,
+      severityNumber: entry.severity.number,
+      severityText: entry.severity.text,
+      traceId,
+      spanId: spanForTime(entry.timeMs, steps, jobSpan),
+      attributes: {
+        "github.job.name": job.name,
+        "github.job.id": job.id
+      }
+    };
+    return buildLogRecord(input, resource);
+  });
+  if (truncated) {
+    coreExports.warning(`Job "${job.name}" log exceeded ${MAX_LINES_PER_JOB} lines; remaining lines were not exported`);
+  }
+  return records;
 }
-/** Download a single job's logs as text (empty string if unavailable/expired). */
 async function downloadJobLog(octokit, owner, repo, jobId) {
-    try {
-        const res = await octokit.rest.actions.downloadJobLogsForWorkflowRun({ owner, repo, job_id: jobId });
-        return typeof res.data === 'string' ? res.data : String(res.data ?? '');
-    }
-    catch (err) {
-        coreExports.warning(`Could not download logs for job ${jobId}: ${err.message}`);
-        return '';
-    }
+  try {
+    const res = await octokit.rest.actions.downloadJobLogsForWorkflowRun({ owner, repo, job_id: jobId });
+    return typeof res.data === "string" ? res.data : String(res.data ?? "");
+  } catch (err) {
+    coreExports.warning(`Could not download logs for job ${jobId}: ${err.message}`);
+    return "";
+  }
 }
-/** Fetch and parse logs for every job into correlated log records. */
 async function buildWorkflowLogs(octokit, owner, repo, jobs, runId, runAttempt, resource) {
-    const traceId$1 = traceId(runId, runAttempt);
-    const all = [];
-    for (const job of jobs) {
-        // Logs are only downloadable once a job has finished; skip in-progress jobs
-        // (notably the export job itself, still running while it calls this).
-        if (job.status !== 'completed')
-            continue;
-        const text = await downloadJobLog(octokit, owner, repo, job.id);
-        if (!text)
-            continue;
-        all.push(...parseJobLog(text, job, traceId$1, resource));
-    }
-    return all;
+  const traceId$1 = traceId(runId, runAttempt);
+  const all = [];
+  for (const job of jobs) {
+    if (job.status !== "completed") continue;
+    const text = await downloadJobLog(octokit, owner, repo, job.id);
+    if (!text) continue;
+    all.push(...parseJobLog(text, job, traceId$1, resource));
+  }
+  return all;
 }
 
 const parseTime = (iso, fallback) => {
-    if (!iso)
-        return fallback;
-    const ms = Date.parse(iso);
-    return Number.isNaN(ms) ? fallback : ms;
+  if (!iso) return fallback;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? fallback : ms;
 };
-/** Build the job span + one step span per step for a single job. */
 function buildJobSpans(job, traceId, parentSpanId, resource, nowMs) {
-    const spans = [];
-    const jobStart = parseTime(job.started_at, nowMs);
-    const jobEnd = parseTime(job.completed_at, nowMs);
-    const jSpanId = jobSpanId(job.id);
-    const jobInput = {
-        name: job.name,
-        traceId,
-        spanId: jSpanId,
-        parentSpanId,
-        startMs: jobStart,
-        endMs: jobEnd,
-        conclusion: job.conclusion,
-        attributes: {
-            'cicd.pipeline.task.run.id': job.id,
-            'github.job.name': job.name,
-            'github.job.status': job.status,
-            'github.job.conclusion': job.conclusion ?? ''
-        }
+  const spans = [];
+  const jobStart = parseTime(job.started_at, nowMs);
+  const jobEnd = parseTime(job.completed_at, nowMs);
+  const jSpanId = jobSpanId(job.id);
+  const jobInput = {
+    name: job.name,
+    traceId,
+    spanId: jSpanId,
+    parentSpanId,
+    startMs: jobStart,
+    endMs: jobEnd,
+    conclusion: job.conclusion,
+    attributes: {
+      "cicd.pipeline.task.run.id": job.id,
+      "github.job.name": job.name,
+      "github.job.status": job.status,
+      "github.job.conclusion": job.conclusion ?? ""
+    }
+  };
+  spans.push(buildSpan(jobInput, resource));
+  for (const step of job.steps ?? []) {
+    const stepInput = {
+      name: step.name,
+      traceId,
+      spanId: stepSpanId(job.id, step.name),
+      parentSpanId: jSpanId,
+      startMs: parseTime(step.started_at, jobStart),
+      endMs: parseTime(step.completed_at, jobEnd),
+      conclusion: step.conclusion,
+      attributes: {
+        "github.step.name": step.name,
+        "github.step.number": step.number,
+        "github.step.status": step.status,
+        "github.step.conclusion": step.conclusion ?? ""
+      }
     };
-    spans.push(buildSpan(jobInput, resource));
-    for (const step of job.steps ?? []) {
-        const stepInput = {
-            name: step.name,
-            traceId,
-            spanId: stepSpanId(job.id, step.name),
-            parentSpanId: jSpanId,
-            startMs: parseTime(step.started_at, jobStart),
-            endMs: parseTime(step.completed_at, jobEnd),
-            conclusion: step.conclusion,
-            attributes: {
-                'github.step.name': step.name,
-                'github.step.number': step.number,
-                'github.step.status': step.status,
-                'github.step.conclusion': step.conclusion ?? ''
-            }
-        };
-        spans.push(buildSpan(stepInput, resource));
-    }
-    return spans;
+    spans.push(buildSpan(stepInput, resource));
+  }
+  return spans;
 }
-/** Build only one job's spans (the per-job `post` hook). */
 function buildSingleJobTrace(job, runId, runAttempt, resource, nowMs) {
-    const traceId$1 = traceId(runId, runAttempt);
-    const rootId = rootSpanId(runId, runAttempt);
-    return buildJobSpans(job, traceId$1, rootId, resource, nowMs);
+  const traceId$1 = traceId(runId, runAttempt);
+  const rootId = rootSpanId(runId, runAttempt);
+  return buildJobSpans(job, traceId$1, rootId, resource, nowMs);
 }
-/** Build the full workflow tree: root span + every job + every step (`export-all`). */
 function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, nowMs) {
-    const traceId$1 = traceId(runId, runAttempt);
-    const rootId = rootSpanId(runId, runAttempt);
-    const starts = jobs.map((j) => parseTime(j.started_at, nowMs));
-    const ends = jobs.map((j) => parseTime(j.completed_at, nowMs));
-    const rootStart = starts.length ? Math.min(...starts) : nowMs;
-    const rootEnd = ends.length ? Math.max(...ends) : nowMs;
-    const root = buildSpan({
-        name: workflowName || 'workflow',
-        traceId: traceId$1,
-        spanId: rootId,
-        startMs: rootStart,
-        endMs: rootEnd,
-        conclusion: jobs.some((j) => j.conclusion && j.conclusion !== 'success' && j.conclusion !== 'skipped')
-            ? 'failure'
-            : 'success',
-        attributes: {
-            'github.workflow': workflowName,
-            'github.run_id': String(runId),
-            'github.run_attempt': String(runAttempt)
-        }
-    }, resource);
-    const spans = [root];
-    for (const job of jobs) {
-        spans.push(...buildJobSpans(job, traceId$1, rootId, resource, nowMs));
-    }
-    return spans;
+  const traceId$1 = traceId(runId, runAttempt);
+  const rootId = rootSpanId(runId, runAttempt);
+  const starts = jobs.map((j) => parseTime(j.started_at, nowMs));
+  const ends = jobs.map((j) => parseTime(j.completed_at, nowMs));
+  const rootStart = starts.length ? Math.min(...starts) : nowMs;
+  const rootEnd = ends.length ? Math.max(...ends) : nowMs;
+  const root = buildSpan(
+    {
+      name: workflowName || "workflow",
+      traceId: traceId$1,
+      spanId: rootId,
+      startMs: rootStart,
+      endMs: rootEnd,
+      conclusion: jobs.some((j) => j.conclusion && j.conclusion !== "success" && j.conclusion !== "skipped") ? "failure" : "success",
+      attributes: {
+        "github.workflow": workflowName,
+        "github.run_id": String(runId),
+        "github.run_attempt": String(runAttempt)
+      }
+    },
+    resource
+  );
+  const spans = [root];
+  for (const job of jobs) {
+    spans.push(...buildJobSpans(job, traceId$1, rootId, resource, nowMs));
+  }
+  return spans;
 }
 
-/**
- * A Gradle init script (auto-applied from $GRADLE_USER_HOME/init.d) that traces
- * the build itself: a span per task and a span per JUnit test, parented under the
- * GitHub step span via the TRACEPARENT env var, exported over OTLP/gRPC.
- *
- * It runs in the Gradle daemon JVM — NOT the forked test workers — so it does not
- * touch the application-under-test's OpenTelemetry (no resetForTest conflict).
- * Everything is read from the OTEL_* / TRACEPARENT env the action already exports,
- * so the script is fully static.
- */
-const INIT_SCRIPT = String.raw `import io.opentelemetry.api.common.Attributes
+const INIT_SCRIPT = String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.SpanKind
@@ -87818,212 +87689,185 @@ gradle.buildFinished {
   tracerProvider.shutdown().join(10, TimeUnit.SECONDS)
 }
 `;
-/** Resolve the Gradle user home the build will use (matches the default the runner uses). */
 function gradleUserHome() {
-    return process.env.GRADLE_USER_HOME || path$1.join(require$$0$3.homedir(), '.gradle');
+  return process.env.GRADLE_USER_HOME || path$1.join(require$$0$3.homedir(), ".gradle");
 }
-/**
- * Install the tracing init script into $GRADLE_USER_HOME/init.d so every later
- * `gradle`/`./gradlew` invocation in the job is traced without any build.gradle change.
- */
 function installGradleInitScript() {
-    const initDir = path$1.join(gradleUserHome(), 'init.d');
-    fs.mkdirSync(initDir, { recursive: true });
-    const scriptPath = path$1.join(initDir, 'otel-collect.gradle');
-    fs.writeFileSync(scriptPath, INIT_SCRIPT);
-    coreExports.info(`Installed Gradle tracing init script: ${scriptPath}`);
-    return scriptPath;
+  const initDir = path$1.join(gradleUserHome(), "init.d");
+  fs.mkdirSync(initDir, { recursive: true });
+  const scriptPath = path$1.join(initDir, "otel-collect.gradle");
+  fs.writeFileSync(scriptPath, INIT_SCRIPT);
+  coreExports.info(`Installed Gradle tracing init script: ${scriptPath}`);
+  return scriptPath;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function listJobs(octokit, owner, repo, runId, runAttempt) {
-    const jobs = (await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRunAttempt, {
-        owner,
-        repo,
-        run_id: runId,
-        attempt_number: runAttempt,
-        per_page: 100
-    }));
-    return jobs;
+  const jobs = await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRunAttempt, {
+    owner,
+    repo,
+    run_id: runId,
+    attempt_number: runAttempt,
+    per_page: 100
+  });
+  return jobs;
 }
-/**
- * Resolve the numeric id of the job this action is currently running in.
- *
- * The job id is not exposed as a default GitHub env var, so we list the jobs of
- * the current run attempt and match ours. Matrix jobs can share a name, so we
- * disambiguate on RUNNER_NAME among the in-progress jobs, retrying since the job
- * row can be momentarily absent from the API right after a job starts.
- */
 async function resolveJobId(octokit, owner, repo, runId, runAttempt) {
-    const runnerName = process.env.RUNNER_NAME;
-    for (let attempt = 0; attempt < 5; attempt++) {
-        const jobs = await listJobs(octokit, owner, repo, runId, runAttempt);
-        const inProgress = jobs.filter((j) => j.status === 'in_progress');
-        let match = runnerName ? inProgress.find((j) => j.runner_name === runnerName) : undefined;
-        if (!match && inProgress.length === 1) {
-            match = inProgress[0];
-        }
-        if (match) {
-            return match.id;
-        }
-        coreExports.debug(`Job id not resolvable yet (attempt ${attempt + 1}/5, ${inProgress.length} in progress)`);
-        await sleep(2000 * (attempt + 1));
+  const runnerName = process.env.RUNNER_NAME;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const jobs = await listJobs(octokit, owner, repo, runId, runAttempt);
+    const inProgress = jobs.filter((j) => j.status === "in_progress");
+    let match = runnerName ? inProgress.find((j) => j.runner_name === runnerName) : void 0;
+    if (!match && inProgress.length === 1) {
+      match = inProgress[0];
     }
-    return null;
+    if (match) {
+      return match.id;
+    }
+    coreExports.debug(`Job id not resolvable yet (attempt ${attempt + 1}/5, ${inProgress.length} in progress)`);
+    await sleep(2e3 * (attempt + 1));
+  }
+  return null;
 }
 
-const STARTED_STATE = 'otel-collect-started';
-const JOB_ID_STATE = 'otel-collect-job-id';
+const STARTED_STATE = "otel-collect-started";
+const JOB_ID_STATE = "otel-collect-job-id";
 function readInputs() {
-    return {
-        githubToken: coreExports.getInput('github-token', { required: true }),
-        otlpEndpoint: coreExports.getInput('otlp-endpoint', { required: true }),
-        otlpHeaders: coreExports.getInput('otlp-headers'),
-        mode: coreExports.getInput('mode') || 'instrument',
-        javaEnabled: coreExports.getBooleanInput('java-enabled'),
-        nodeEnabled: coreExports.getBooleanInput('node-enabled'),
-        injectJavaAgent: coreExports.getBooleanInput('inject-java-agent'),
-        injectNodeAgent: coreExports.getBooleanInput('inject-node-agent'),
-        hostMetricsEnabled: coreExports.getBooleanInput('host-metrics-enabled'),
-        gradleTracingEnabled: coreExports.getBooleanInput('gradle-tracing-enabled'),
-        logsEnabled: coreExports.getBooleanInput('logs-enabled'),
-        parentStepName: coreExports.getInput('parent-step-name'),
-        collectorVersion: coreExports.getInput('collector-version'),
-        javaAgentVersion: coreExports.getInput('java-agent-version'),
-        serviceName: coreExports.getInput('service-name')
-    };
+  return {
+    githubToken: coreExports.getInput("github-token", { required: true }),
+    otlpEndpoint: coreExports.getInput("otlp-endpoint", { required: true }),
+    otlpHeaders: coreExports.getInput("otlp-headers"),
+    mode: coreExports.getInput("mode") || "instrument",
+    javaEnabled: coreExports.getBooleanInput("java-enabled"),
+    nodeEnabled: coreExports.getBooleanInput("node-enabled"),
+    injectJavaAgent: coreExports.getBooleanInput("inject-java-agent"),
+    injectNodeAgent: coreExports.getBooleanInput("inject-node-agent"),
+    hostMetricsEnabled: coreExports.getBooleanInput("host-metrics-enabled"),
+    gradleTracingEnabled: coreExports.getBooleanInput("gradle-tracing-enabled"),
+    logsEnabled: coreExports.getBooleanInput("logs-enabled"),
+    parentStepName: coreExports.getInput("parent-step-name"),
+    collectorVersion: coreExports.getInput("collector-version"),
+    javaAgentVersion: coreExports.getInput("java-agent-version"),
+    serviceName: coreExports.getInput("service-name")
+  };
 }
 function serviceName(inputs) {
-    return inputs.serviceName || `github-actions-${process.env.GITHUB_REPOSITORY ?? 'unknown'}`;
+  return inputs.serviceName || `github-actions-${process.env.GITHUB_REPOSITORY ?? "unknown"}`;
 }
 const runId = () => githubExports.context.runId;
-const runAttempt = () => Number(process.env.GITHUB_RUN_ATTEMPT ?? '1');
-/** Per-job setup: root context, agents, host metrics. */
+const runAttempt = () => Number(process.env.GITHUB_RUN_ATTEMPT ?? "1");
 async function main(inputs) {
-    if (inputs.otlpHeaders)
-        coreExports.setSecret(inputs.otlpHeaders);
-    const octokit = githubExports.getOctokit(inputs.githubToken);
-    const { owner, repo } = githubExports.context.repo;
-    const jobId = await resolveJobId(octokit, owner, repo, runId(), runAttempt());
-    if (jobId === null) {
-        coreExports.warning('Could not resolve the current job id; build spans may not nest correctly');
-    }
-    else {
-        coreExports.saveState(JOB_ID_STATE, String(jobId));
-    }
-    const tId = traceId(runId(), runAttempt());
-    let parentSpanId = null;
-    if (jobId !== null) {
-        parentSpanId = inputs.parentStepName ? stepSpanId(jobId, inputs.parentStepName) : jobSpanId(jobId);
-    }
-    // Propagate trace context + OTLP config so child processes auto-instrument under our tree.
-    if (parentSpanId) {
-        const traceparent = `00-${tId}-${parentSpanId}-01`;
-        coreExports.exportVariable('TRACEPARENT', traceparent);
-        coreExports.setOutput('traceparent', traceparent);
-    }
-    // gRPC requires a base endpoint with no signal path ("/v1/traces" is rejected),
-    // so normalize whatever endpoint was provided before handing it to child agents.
-    coreExports.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', baseEndpoint(inputs.otlpEndpoint));
-    if (inputs.otlpHeaders)
-        coreExports.exportVariable('OTEL_EXPORTER_OTLP_HEADERS', inputs.otlpHeaders);
-    // Match the gRPC transport the post-hoc exporter and collector use, so an injected
-    // agent talks to the same (gRPC) endpoint instead of defaulting to http/protobuf.
-    coreExports.exportVariable('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc');
-    coreExports.exportVariable('OTEL_PROPAGATORS', 'tracecontext,baggage');
-    coreExports.exportVariable('OTEL_TRACES_SAMPLER', 'parentbased_always_on');
-    coreExports.exportVariable('OTEL_SERVICE_NAME', serviceName(inputs));
-    // Group injected-agent (Java/Node) telemetry under the same namespace as the
-    // spans/metrics/logs this action emits directly. data_stream.namespace is what
-    // Elastic uses to route OTLP into a data stream (else it falls back to "default").
-    coreExports.exportVariable('OTEL_RESOURCE_ATTRIBUTES', `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE}`);
-    coreExports.setOutput('trace-id', tId);
-    if (inputs.javaEnabled) {
-        const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent);
-        coreExports.setOutput('java-agent-path', jar);
-    }
-    if (inputs.nodeEnabled) {
-        const register = await setupNodeAgent(inputs.injectNodeAgent);
-        coreExports.setOutput('node-agent-path', register);
-    }
-    if (inputs.gradleTracingEnabled) {
-        installGradleInitScript();
-    }
-    if (inputs.hostMetricsEnabled) {
-        await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs));
-    }
+  if (inputs.otlpHeaders) coreExports.setSecret(inputs.otlpHeaders);
+  const octokit = githubExports.getOctokit(inputs.githubToken);
+  const { owner, repo } = githubExports.context.repo;
+  const jobId = await resolveJobId(octokit, owner, repo, runId(), runAttempt());
+  if (jobId === null) {
+    coreExports.warning("Could not resolve the current job id; build spans may not nest correctly");
+  } else {
+    coreExports.saveState(JOB_ID_STATE, String(jobId));
+  }
+  const tId = traceId(runId(), runAttempt());
+  let parentSpanId = null;
+  if (jobId !== null) {
+    parentSpanId = inputs.parentStepName ? stepSpanId(jobId, inputs.parentStepName) : jobSpanId(jobId);
+  }
+  if (parentSpanId) {
+    const traceparent = `00-${tId}-${parentSpanId}-01`;
+    coreExports.exportVariable("TRACEPARENT", traceparent);
+    coreExports.setOutput("traceparent", traceparent);
+  }
+  coreExports.exportVariable("OTEL_EXPORTER_OTLP_ENDPOINT", baseEndpoint(inputs.otlpEndpoint));
+  if (inputs.otlpHeaders) coreExports.exportVariable("OTEL_EXPORTER_OTLP_HEADERS", inputs.otlpHeaders);
+  coreExports.exportVariable("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+  coreExports.exportVariable("OTEL_PROPAGATORS", "tracecontext,baggage");
+  coreExports.exportVariable("OTEL_TRACES_SAMPLER", "parentbased_always_on");
+  coreExports.exportVariable("OTEL_SERVICE_NAME", serviceName(inputs));
+  coreExports.exportVariable(
+    "OTEL_RESOURCE_ATTRIBUTES",
+    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE}`
+  );
+  coreExports.setOutput("trace-id", tId);
+  if (inputs.javaEnabled) {
+    const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent);
+    coreExports.setOutput("java-agent-path", jar);
+  }
+  if (inputs.nodeEnabled) {
+    const register = await setupNodeAgent(inputs.injectNodeAgent);
+    coreExports.setOutput("node-agent-path", register);
+  }
+  if (inputs.gradleTracingEnabled) {
+    installGradleInitScript();
+  }
+  if (inputs.hostMetricsEnabled) {
+    await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs));
+  }
 }
-/** Per-job post: stop the collector and export this job's step spans. */
 async function post(inputs) {
-    await stopCollector();
-    const jobIdRaw = coreExports.getState(JOB_ID_STATE);
-    if (!jobIdRaw) {
-        coreExports.info('No resolved job id in state; skipping step-span export');
-        return;
-    }
-    const jobId = Number(jobIdRaw);
-    try {
-        const octokit = githubExports.getOctokit(inputs.githubToken);
-        const { owner, repo } = githubExports.context.repo;
-        const jobs = await listJobs(octokit, owner, repo, runId(), runAttempt());
-        const job = jobs.find((j) => j.id === jobId);
-        if (!job) {
-            coreExports.warning(`Job ${jobId} not found in API response; skipping export`);
-            return;
-        }
-        const resource = buildResource(serviceName(inputs));
-        const spans = buildSingleJobTrace(job, runId(), runAttempt(), resource, Date.now());
-        await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders));
-        coreExports.info(`Exported ${spans.length} span(s) for job "${job.name}"`);
-    }
-    catch (err) {
-        coreExports.warning(`Failed to export step spans: ${err.message}`);
-    }
-}
-/** Final aggregation job: export the whole workflow tree. */
-async function exportAll(inputs) {
+  await stopCollector();
+  const jobIdRaw = coreExports.getState(JOB_ID_STATE);
+  if (!jobIdRaw) {
+    coreExports.info("No resolved job id in state; skipping step-span export");
+    return;
+  }
+  const jobId = Number(jobIdRaw);
+  try {
     const octokit = githubExports.getOctokit(inputs.githubToken);
     const { owner, repo } = githubExports.context.repo;
     const jobs = await listJobs(octokit, owner, repo, runId(), runAttempt());
-    const resource = buildResource(serviceName(inputs));
-    const spans = buildWorkflowTrace(jobs, runId(), runAttempt(), process.env.GITHUB_WORKFLOW ?? '', resource, Date.now());
-    await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders));
-    coreExports.info(`Exported ${spans.length} span(s) for ${jobs.length} job(s)`);
-    if (inputs.logsEnabled) {
-        try {
-            const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), resource);
-            await exportLogs(logs, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders), 30000);
-            coreExports.info(`Exported ${logs.length} log record(s) for ${jobs.length} job(s)`);
-        }
-        catch (err) {
-            coreExports.warning(`Failed to export logs: ${err.message}`);
-        }
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) {
+      coreExports.warning(`Job ${jobId} not found in API response; skipping export`);
+      return;
     }
-    coreExports.setOutput('trace-id', traceId(runId(), runAttempt()));
+    const resource = buildResource(serviceName(inputs));
+    const spans = buildSingleJobTrace(job, runId(), runAttempt(), resource, Date.now());
+    await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders));
+    coreExports.info(`Exported ${spans.length} span(s) for job "${job.name}"`);
+  } catch (err) {
+    coreExports.warning(`Failed to export step spans: ${err.message}`);
+  }
+}
+async function exportAll(inputs) {
+  const octokit = githubExports.getOctokit(inputs.githubToken);
+  const { owner, repo } = githubExports.context.repo;
+  const jobs = await listJobs(octokit, owner, repo, runId(), runAttempt());
+  const resource = buildResource(serviceName(inputs));
+  const spans = buildWorkflowTrace(
+    jobs,
+    runId(),
+    runAttempt(),
+    process.env.GITHUB_WORKFLOW ?? "",
+    resource,
+    Date.now()
+  );
+  await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders));
+  coreExports.info(`Exported ${spans.length} span(s) for ${jobs.length} job(s)`);
+  if (inputs.logsEnabled) {
+    try {
+      const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), resource);
+      await exportLogs(logs, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders), 3e4);
+      coreExports.info(`Exported ${logs.length} log record(s) for ${jobs.length} job(s)`);
+    } catch (err) {
+      coreExports.warning(`Failed to export logs: ${err.message}`);
+    }
+  }
+  coreExports.setOutput("trace-id", traceId(runId(), runAttempt()));
 }
 async function run() {
-    try {
-        const inputs = readInputs();
-        // The action's main and post hooks share this entrypoint. STARTED_STATE is set
-        // on the first (main) invocation, so a 'true' value here means we're in post.
-        const isPost = coreExports.getState(STARTED_STATE) === 'true';
-        coreExports.saveState(STARTED_STATE, 'true');
-        if (inputs.mode === 'export-all') {
-            // Export once, on the main invocation only — not again in post (would duplicate).
-            if (!isPost)
-                await exportAll(inputs);
-        }
-        else if (isPost) {
-            await post(inputs);
-        }
-        else {
-            await main(inputs);
-        }
+  try {
+    const inputs = readInputs();
+    const isPost = coreExports.getState(STARTED_STATE) === "true";
+    coreExports.saveState(STARTED_STATE, "true");
+    if (inputs.mode === "export-all") {
+      if (!isPost) await exportAll(inputs);
+    } else if (isPost) {
+      await post(inputs);
+    } else {
+      await main(inputs);
     }
-    catch (err) {
-        // Never fail the job from telemetry; surface as a warning instead.
-        coreExports.warning(`otel-collect error: ${err.message}`);
-    }
+  } catch (err) {
+    coreExports.warning(`otel-collect error: ${err.message}`);
+  }
 }
 void run();
 //# sourceMappingURL=index.js.map
