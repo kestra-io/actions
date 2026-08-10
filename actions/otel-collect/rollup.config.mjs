@@ -1,7 +1,7 @@
 import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
 import nodeResolve from '@rollup/plugin-node-resolve'
-import typescript from '@rollup/plugin-typescript'
+import esbuild from 'rollup-plugin-esbuild'
 
 const config = {
   input: 'src/index.ts',
@@ -15,7 +15,7 @@ const config = {
     banner: "import { createRequire as _createRequire } from 'module'; const require = _createRequire(import.meta.url);"
   },
   plugins: [
-    typescript(),
+    esbuild({ target: 'es2022' }),
     nodeResolve({ preferBuiltins: true }),
     // transformMixedEsModules inlines deps that mix ESM exports with require() calls
     // (e.g. @opentelemetry/otlp-exporter-base) instead of leaving a bare require.

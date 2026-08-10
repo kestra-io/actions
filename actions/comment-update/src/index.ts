@@ -3,7 +3,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import nunjucks from "nunjucks";
 import {humanReadableDate, humanReadableSize} from "./nunjucks-helpers.js";
-import {GitHub} from "@actions/github/lib/utils.js";
+import {GitHub} from "@actions/github/lib/utils";
 
 const MARKER = '<!-- KESTRA-ACTIONS-UPDATES -->'
 
@@ -65,7 +65,7 @@ class CommentUpdate {
         return result
             .data
             .artifacts
-            .map((i) => {
+            .map((i: any) => {
                 return ({...i, ...{
                         download_url: 'https://github.com/' + this.owner + '/' + this.repo + '/actions/runs/' + github.context.runId + '/artifacts/' + i.id
                     }});
