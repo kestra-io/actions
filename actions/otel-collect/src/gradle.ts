@@ -4,16 +4,26 @@ import * as path from 'path'
 import * as core from '@actions/core'
 
 /**
- * A Gradle init script (auto-applied from $GRADLE_USER_HOME/init.d) that traces
- * the build itself: a span per task and a span per JUnit test, parented under the
- * GitHub step span via the TRACEPARENT env var, exported over OTLP/gRPC.
+ * Build the Gradle init script (auto-applied from $GRADLE_USER_HOME/init.d) that
+ * traces the build itself: a span per task and a span per JUnit test, parented
+ * under the GitHub step span via the TRACEPARENT env var, exported over OTLP/gRPC.
  *
  * It runs in the Gradle daemon JVM — NOT the forked test workers — so it does not
  * touch the application-under-test's OpenTelemetry (no resetForTest conflict).
- * Everything is read from the OTEL_* / TRACEPARENT env the action already exports,
- * so the script is fully static.
+ *
+ * Gradle task spans and JUnit test spans get their own `service.name` (baked in
+ * here, derived from the action's `service-name` input) distinct from both the
+ * GitHub Actions layer's service.name and from OTEL_SERVICE_NAME (which stays
+ * dedicated to any injected Java/Node agent instrumenting the app under test) so
+ * a trace backend can tell the three layers apart even though they share one
+ * trace id. Everything else is read from the OTEL_* / TRACEPARENT env vars the
+ * action already exports.
  */
-const INIT_SCRIPT = String.raw`import io.opentelemetry.api.common.Attributes
+function buildInitScript(serviceName: string): string {
+  const gradleServiceName = `${serviceName}-gradle`
+  const junitServiceName = `${serviceName}-junit`
+
+  return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.SpanKind
@@ -59,30 +69,43 @@ if (endpoint == null || endpoint.trim().isEmpty()) {
   return
 }
 
-def serviceName = System.getenv("OTEL_SERVICE_NAME") ?: "gradle-build"
 def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
 def runId = System.getenv("GITHUB_RUN_ID")
 def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 
-def exporterBuilder = OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)
-headersEnv.split(",").each { pair ->
-  def t = pair.trim()
-  if (!t.isEmpty()) {
-    def idx = t.indexOf("=")
-    if (idx > 0) exporterBuilder.addHeader(t.substring(0, idx).trim(), t.substring(idx + 1).trim())
+def addHeaders = { builder ->
+  headersEnv.split(",").each { pair ->
+    def t = pair.trim()
+    if (!t.isEmpty()) {
+      def idx = t.indexOf("=")
+      if (idx > 0) builder.addHeader(t.substring(0, idx).trim(), t.substring(idx + 1).trim())
+    }
   }
+  builder
 }
-def exporter = exporterBuilder.build()
 
-def resource = Resource.getDefault().merge(
-  Resource.create(Attributes.builder().put("service.name", serviceName).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+def makeResource = { name ->
+  Resource.getDefault().merge(
+    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+}
 
-def tracerProvider = SdkTracerProvider.builder()
-  .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
-  .setResource(resource)
-  .build()
-def tracer = tracerProvider.get("kestra-otel-collect-gradle")
+def makeTracerProvider = { name ->
+  def exporter = addHeaders(OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)).build()
+  SdkTracerProvider.builder()
+    .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
+    .setResource(makeResource(name))
+    .build()
+}
+
+// Gradle task spans and JUnit test spans get distinct service.name values (and
+// distinct instrumentation scope names below) from each other and from the
+// GitHub Actions layer, so a trace backend can tell the three apart even though
+// every span here nests under one trace.
+def gradleTracerProvider = makeTracerProvider("${gradleServiceName}")
+def junitTracerProvider = makeTracerProvider("${junitServiceName}")
+def gradleTracer = gradleTracerProvider.get("kestra-otel-collect-gradle")
+def junitTracer = junitTracerProvider.get("kestra-otel-collect-junit")
 
 // Nest the build under the GitHub step span carried in TRACEPARENT.
 def parentContext = Context.root()
@@ -94,8 +117,9 @@ if (traceparent != null && traceparent.startsWith("00-")) {
   }
 }
 
-def buildSpan = tracer.spanBuilder("gradle " + gradle.startParameter.taskNames.join(" "))
+def buildSpan = gradleTracer.spanBuilder("gradle " + gradle.startParameter.taskNames.join(" "))
   .setParent(parentContext).setSpanKind(SpanKind.INTERNAL).startSpan()
+buildSpan.setAttribute("telemetry.source", "gradle")
 def buildContext = parentContext.with(buildSpan)
 
 def taskStarts = new ConcurrentHashMap<String, Long>()
@@ -103,8 +127,9 @@ gradle.taskGraph.beforeTask { task -> taskStarts.put(task.path, System.currentTi
 gradle.taskGraph.afterTask { task ->
   def start = taskStarts.remove(task.path)
   if (start == null) return
-  def span = tracer.spanBuilder(task.path).setParent(buildContext)
+  def span = gradleTracer.spanBuilder(task.path).setParent(buildContext)
     .setStartTimestamp(Instant.ofEpochMilli(start)).startSpan()
+  span.setAttribute("telemetry.source", "gradle")
   span.setAttribute("gradle.task.path", task.path)
   span.setAttribute("gradle.task.did_work", task.state.didWork)
   def failure = task.state.failure
@@ -117,8 +142,9 @@ allprojects { prj ->
   prj.tasks.withType(Test).configureEach { testTask ->
     testTask.afterTest { desc, result ->
       def name = (desc.className ? desc.className + "#" : "") + desc.name
-      def span = tracer.spanBuilder(name).setParent(buildContext)
+      def span = junitTracer.spanBuilder(name).setParent(buildContext)
         .setStartTimestamp(Instant.ofEpochMilli(result.startTime)).startSpan()
+      span.setAttribute("telemetry.source", "junit")
       span.setAttribute("test.class", String.valueOf(desc.className))
       span.setAttribute("test.name", String.valueOf(desc.name))
       span.setAttribute("test.result", String.valueOf(result.resultType))
@@ -133,10 +159,13 @@ allprojects { prj ->
 
 gradle.buildFinished {
   buildSpan.end()
-  tracerProvider.forceFlush().join(30, TimeUnit.SECONDS)
-  tracerProvider.shutdown().join(10, TimeUnit.SECONDS)
+  [gradleTracerProvider, junitTracerProvider].each { provider ->
+    provider.forceFlush().join(30, TimeUnit.SECONDS)
+    provider.shutdown().join(10, TimeUnit.SECONDS)
+  }
 }
 `
+}
 
 /** Resolve the Gradle user home the build will use (matches the default the runner uses). */
 function gradleUserHome(): string {
@@ -147,11 +176,11 @@ function gradleUserHome(): string {
  * Install the tracing init script into $GRADLE_USER_HOME/init.d so every later
  * `gradle`/`./gradlew` invocation in the job is traced without any build.gradle change.
  */
-export function installGradleInitScript(): string {
+export function installGradleInitScript(serviceName: string): string {
   const initDir = path.join(gradleUserHome(), 'init.d')
   fs.mkdirSync(initDir, { recursive: true })
   const scriptPath = path.join(initDir, 'otel-collect.gradle')
-  fs.writeFileSync(scriptPath, INIT_SCRIPT)
+  fs.writeFileSync(scriptPath, buildInitScript(serviceName))
   core.info(`Installed Gradle tracing init script: ${scriptPath}`)
   return scriptPath
 }

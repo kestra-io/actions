@@ -45,6 +45,11 @@ test('buildWorkflowTrace links root -> job -> step with deterministic ids', () =
   assert.equal(root.parentSpanContext, undefined)
   assert.equal(jobSpan.parentSpanContext?.spanId, rootSpanId('123', '1'))
   assert.equal(stepSpan.parentSpanContext?.spanId, jobSpanId(456))
+
+  // every GitHub Actions layer span is tagged so it's distinguishable from the
+  // gradle/junit spans that nest under the step span, which carry their own
+  // service.name (see gradle.test.ts) and telemetry.source values.
+  for (const s of [root, jobSpan, stepSpan]) assert.equal(s.attributes['telemetry.source'], 'github-actions')
 })
 
 test('a live build span using the exported traceparent nests under the step span', () => {
