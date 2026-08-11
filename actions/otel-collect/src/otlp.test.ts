@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import * as os from 'node:os'
 import { test } from 'node:test'
 import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'
-import { baseEndpoint, chunkLogs, grpcTarget, parseHeaders, serviceInstanceId } from './otlp.js'
+import { baseEndpoint, buildResource, chunkLogs, grpcTarget, parseHeaders, serviceInstanceId } from './otlp.js'
 
 function fakeRecord(bodyLen: number): ReadableLogRecord {
   return { body: 'x'.repeat(bodyLen), attributes: {} } as unknown as ReadableLogRecord
@@ -39,6 +40,11 @@ test('serviceInstanceId combines run id and attempt', () => {
     if (prev.runner === undefined) delete process.env.RUNNER_NAME
     else process.env.RUNNER_NAME = prev.runner
   }
+})
+
+test('buildResource sets host.name to the runner hostname, matching the hostmetrics collector', () => {
+  const resource = buildResource('svc')
+  assert.equal(resource.attributes['host.name'], os.hostname())
 })
 
 test('parseHeaders splits comma-separated k=v pairs', () => {

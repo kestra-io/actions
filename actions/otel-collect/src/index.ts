@@ -1,3 +1,4 @@
+import * as os from 'os'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { setupJavaAgent, setupNodeAgent } from './agents.js'
@@ -96,9 +97,11 @@ async function main(inputs: Inputs): Promise<void> {
   // Group injected-agent (Java/Node) telemetry under the same namespace as the
   // spans/metrics/logs this action emits directly. data_stream.namespace is what
   // Elastic uses to route OTLP into a data stream (else it falls back to "default").
+  // host.name matches buildResource() and the hostmetrics collector, so APM can link
+  // these agents' services to this runner's infrastructure metrics too.
   core.exportVariable(
     'OTEL_RESOURCE_ATTRIBUTES',
-    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE}`
+    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${os.hostname()}`
   )
   core.setOutput('trace-id', tId)
 
