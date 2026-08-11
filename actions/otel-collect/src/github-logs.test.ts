@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { SeverityNumber } from '@opentelemetry/api-logs'
-import { parseJobLog } from './github-logs.js'
+import { buildWorkflowLogs, parseJobLog } from './github-logs.js'
 import { jobSpanId, stepSpanId, traceId } from './ids.js'
 import { buildResource } from './otlp.js'
 import type { WorkflowJob } from './resolve-job.js'
@@ -115,4 +115,27 @@ test('appends untimestamped continuation lines to the previous entry', () => {
   const recs = parseJobLog(text, job, traceId('123', '1'), resource)
   assert.equal(recs.length, 1)
   assert.equal(recs[0].body, 'header\ncontinuation without timestamp')
+})
+
+test('buildWorkflowLogs skips in-progress and skipped jobs without downloading', async () => {
+  const requestedJobIds: number[] = []
+  const octokit = {
+    rest: {
+      actions: {
+        downloadJobLogsForWorkflowRun: async ({ job_id }: { job_id: number }) => {
+          requestedJobIds.push(job_id)
+          return { data: '2026-06-20T10:02:00.0000000Z done' }
+        }
+      }
+    }
+  } as unknown as Parameters<typeof buildWorkflowLogs>[0]
+
+  const jobs: WorkflowJob[] = [
+    { ...job, id: 1, status: 'completed', conclusion: 'success' },
+    { ...job, id: 2, status: 'completed', conclusion: 'skipped' },
+    { ...job, id: 3, status: 'in_progress', conclusion: null }
+  ]
+
+  await buildWorkflowLogs(octokit, 'owner', 'repo', jobs, '123', '1', resource)
+  assert.deepEqual(requestedJobIds, [1])
 })

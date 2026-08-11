@@ -158,6 +158,9 @@ export async function buildWorkflowLogs(
     // Logs are only downloadable once a job has finished; skip in-progress jobs
     // (notably the export job itself, still running while it calls this).
     if (job.status !== 'completed') continue
+    // Skipped jobs never ran a step, so GitHub never recorded any logs for them —
+    // downloading always fails, so don't bother trying.
+    if (job.conclusion === 'skipped') continue
     const text = await downloadJobLog(octokit, owner, repo, job.id)
     if (!text) continue
     all.push(...parseJobLog(text, job, traceId, resource))
