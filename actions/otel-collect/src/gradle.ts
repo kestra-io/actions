@@ -20,8 +20,8 @@ import * as core from '@actions/core'
  * action already exports.
  */
 function buildInitScript(serviceName: string): string {
-  const gradleServiceName = `${serviceName}-gradle`
-  const junitServiceName = `${serviceName}-junit`
+  const gradleServiceName = `${serviceName} - Gradle`
+  const junitServiceName = `${serviceName} - JUnit`
 
   return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span

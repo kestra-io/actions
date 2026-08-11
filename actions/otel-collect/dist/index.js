@@ -80733,8 +80733,8 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
 }
 
 function buildInitScript(serviceName) {
-  const gradleServiceName = `${serviceName}-gradle`;
-  const junitServiceName = `${serviceName}-junit`;
+  const gradleServiceName = `${serviceName} - Gradle`;
+  const junitServiceName = `${serviceName} - JUnit`;
   return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanContext
