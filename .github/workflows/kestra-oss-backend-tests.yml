@@ -95,9 +95,7 @@ jobs:
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
-          # gradle.properties sets org.gradle.priority=low for local-dev ergonomics;
-          # override it here since this runner exists only to run this build.
-          ./gradlew check javadoc -Dorg.gradle.priority=normal
+         ./gradlew check javadoc --parallel
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
