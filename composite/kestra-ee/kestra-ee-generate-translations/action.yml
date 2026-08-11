@@ -1,16 +1,12 @@
 name: Generate Translations
-description: "Required the environment variable OPENAI_API_KEY to be set. This action will generate translations for the UI."
+description: "Requires the environment variable GEMINI_API_KEY to be set. This action will generate translations for the EE UI."
 
 inputs:
   github-token:
     description: 'GitHub Token'
     required: true
   retranslate_modified_keys:
-    description: 'If true, will retranslate modified keys'
-    required: false
-    default: false
-  only_pr:
-    description: 'If true, will only translate what has changed in the PR'
+    description: 'If true, forces a full re-translation of every key, ignoring the fingerprints'
     required: false
     default: false
 
@@ -24,7 +20,9 @@ runs:
         path: kestra-ee
         ref: ${{ github.head_ref }}
 
-    # check.ts imports ../../kestra/ui/src/translations/compareTranslations.ts as a sibling repo
+    # The translation tooling is shared: EE's `scripts/translations/{generate,check}.ts` import the
+    # implementation from OSS, resolved as a sibling checkout. Both the tooling and the OSS language
+    # files are needed — the latter so the "no EE key redefines an OSS key" check can run.
     - name: Checkout - OSS
       uses: actions/checkout@v4
       with:
@@ -32,7 +30,8 @@ runs:
         path: kestra
         ref: ${{ github.base_ref }}
         sparse-checkout: |
-          ui/src/translations/compareTranslations.ts
+          ui/scripts/translations/
+          ui/src/translations/
         sparse-checkout-cone-mode: false
 
     - name: Set up Node
@@ -45,8 +44,15 @@ runs:
       shell: bash
       working-directory: kestra-ee/ui-ee
 
+    # `inputs.*`, not `github.event.inputs.*` — the latter is only populated for `workflow_dispatch`,
+    # so on the `pull_request` runs this action is actually used for, the flag rendered empty and
+    # never reached the script.
+    #
+    # The former `only_pr` input is gone: it selected keys by diffing against the PR's merge-base,
+    # which the fingerprints now answer directly and without git. It never took effect anyway —
+    # it was read from `github.event.inputs`, which is empty on `pull_request`.
     - name: Generate translations
-      run: npm run translations:generate -- ${{ github.event.inputs.retranslate_modified_keys }} ${{ github.event.inputs.only_pr && '--PR' }}
+      run: npm run translations:generate -- ${{ inputs.retranslate_modified_keys }}
       working-directory: kestra-ee/ui-ee
       shell: bash
 
@@ -55,10 +61,14 @@ runs:
       with:
         node-version: "24.x"
 
+    # The dependency-free checker, not `scripts/translations/check.ts`: the latter goes through OSS's
+    # `compareTranslations.ts`, which imports `@intlify/message-compiler` and so cannot resolve from
+    # a sparse OSS checkout that has no `node_modules` — that is what made this step fail with
+    # "Cannot find module '@intlify/message-compiler'". This one uses only Node builtins.
     - name: Check keys matching
       shell: bash
       working-directory: kestra-ee
-      run: npx --yes tsx ui-ee/src/translations/check.ts
+      run: node ui-ee/scripts/translations/check-translations.mjs --scope ee --oss-root ../kestra
 
     - name: Set up Git
       shell: bash
