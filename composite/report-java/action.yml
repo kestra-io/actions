@@ -76,9 +76,23 @@ runs:
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
       continue-on-error: true
       run: |
+        # Multi-module builds (kestra, kestra-ee) write allure-results per module instead of
+        # at the repo root, so it never exists there for gcloud to restore history into. For
+        # kestra-ee specifically, the OSS modules live in the sibling ../kestra checkout (see
+        # kestra-ee-backend-tests.yml's `mv kestra ../kestra`), outside this working tree.
+        # Merge every module's results (root-only for single-module plugin repos, a no-op) into
+        # one directory before restoring history, so the generated report covers the whole build.
+        mkdir -p build/allure-results
+        DEST=$(realpath build/allure-results)
+
+        while IFS= read -r dir; do
+          [ "$(realpath "$dir")" = "$DEST" ] && continue
+          cp -R "$dir"/. "$DEST"/
+        done < <(find . .. -maxdepth 6 -type d -name allure-results -not -path '*/.git/*' -not -path '*/node_modules/*' 2>/dev/null)
+
         gcloud storage cp -r gs://internal-kestra-host/${{ github.repository }}/allure/java/history build/allure-results/
-        docker run --rm -v $PWD:/work tobix/allure-cli generate /work/build/allure-results/ -o /work/build/reports/allure --clean 
-        
+        docker run --rm -v $PWD:/work tobix/allure-cli generate /work/build/allure-results/ -o /work/build/reports/allure --clean
+
         if [ -d build/reports/allure/ ]; then
           gsutil -m rsync -d -r  build/reports/allure/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'allure/java') }}
         fi
