@@ -82,7 +82,10 @@ runs:
       shell: bash
       working-directory: kestra-ee
       run: |
-        git add ui-ee/src/translations/ee_translations/*.json
+        # The fingerprints record what each translation was generated from; committing the languages
+        # without them would leave every regenerated key looking stale forever, so the next run would
+        # translate it again and push the same change in a loop.
+        git add ui-ee/src/translations/ee_translations/*.json ui-ee/scripts/translations/fingerprints.json
         if git diff --cached --quiet; then
           echo "No changes to commit. Exiting with success."
           exit 0
