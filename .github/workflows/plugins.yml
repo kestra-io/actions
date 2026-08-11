@@ -146,8 +146,9 @@ jobs:
           // The GCP Artifact Registry "maven-remote" is a server-side caching mirror of Maven
           // Central: requests are proxied from Google IPs, never the shared runner IP, so it is
           // immune to the Maven Central HTTP 429 rate-limiting that fails CI plugin/dependency
-          // resolution. Route ALL Gradle Maven reads through it and stop touching raw Maven
-          // Central (repo.maven.apache.org) and Sonatype (central.sonatype.com) entirely.
+          // resolution. Route Gradle Maven reads through it and stop touching raw Maven Central
+          // (repo.maven.apache.org) and Sonatype releases, except the Sonatype snapshots repo
+          // (see isRawPublic below), which hosts Kestra pre-release artifacts the mirror lacks.
           def injectProxy = { repos ->
               if (token && !repos.findByName("GcpMavenRemote")) {
                   repos.maven {
@@ -163,11 +164,18 @@ jobs:
           // rather than removing them: removal races with the root buildscript block, whereas an
           // "all {}" hook + excludeGroupByRegex is order- and timing-independent. An excluded repo
           // is never queried; the proxy (a Central mirror) serves the same content.
+          // Sonatype SNAPSHOTS are intentionally NOT excluded. Kestra publishes pre-release
+          // artifacts (e.g. io.kestra:platform:2.0.0-SNAPSHOT, needed by v2/SDK plugin branches)
+          // only to central.sonatype.com/repository/maven-snapshots, and the maven-remote mirror
+          // caches Central RELEASES, not Sonatype snapshots. Excluding the snapshots repo left
+          // those artifacts unresolvable. Only io.kestra:*:*-SNAPSHOT is fetched there and only on
+          // snapshot builds, so the traffic is tiny and immune to the Central 429 this proxy fixes.
           def isRawPublic = { repo ->
               repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
                   repo.url != null &&
                   (repo.url.toString().startsWith("https://repo.maven.apache.org") ||
-                   repo.url.toString().contains("central.sonatype.com"))
+                   (repo.url.toString().contains("central.sonatype.com") &&
+                    !repo.url.toString().contains("maven-snapshots")))
           }
           // Plugin/buildscript repos: neutralise raw Central/Sonatype, and for the remaining maven
           // repos use the .pom only + ignore the .module redirect. Some plugins (artifactregistry,
