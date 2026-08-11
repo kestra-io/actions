@@ -80562,7 +80562,6 @@ function stepSpanId(jobId, stepName) {
   return sha256hex(`${jobId}-${stepName}-s`).slice(16, 32);
 }
 
-const MAX_LINES_PER_JOB = 1e4;
 const LINE_RE = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s?(.*)$/;
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 function stripAnsi(text) {
@@ -80592,13 +80591,8 @@ function parseJobLog(text, job, traceId, resource) {
   }));
   const entries = [];
   let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now();
-  let truncated = false;
   for (const raw of text.split(/\r?\n/)) {
     if (raw === "") continue;
-    if (entries.length >= MAX_LINES_PER_JOB) {
-      truncated = true;
-      break;
-    }
     const m = LINE_RE.exec(raw);
     const hasTs = m !== null && !Number.isNaN(Date.parse(m[1]));
     const clean = stripAnsi(m ? m[2] : raw);
@@ -80630,9 +80624,6 @@ ${stripGhCommands(clean)}`;
     };
     return buildLogRecord(input, resource);
   });
-  if (truncated) {
-    warning(`Job "${job.name}" log exceeded ${MAX_LINES_PER_JOB} lines; remaining lines were not exported`);
-  }
   return records;
 }
 async function downloadJobLog(octokit, owner, repo, jobId) {
