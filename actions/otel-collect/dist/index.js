@@ -80785,6 +80785,7 @@ def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
 def runId = System.getenv("GITHUB_RUN_ID")
 def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
+def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
 
 def addHeaders = { builder ->
   headersEnv.split(",").each { pair ->
@@ -80799,7 +80800,7 @@ def addHeaders = { builder ->
 
 def makeResource = { name ->
   Resource.getDefault().merge(
-    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).put("vcs.repository.name", repositoryName).build()))
 }
 
 def makeTracerProvider = { name ->

@@ -19,6 +19,9 @@ test('installGradleInitScript derives distinct " - Gradle" / " - JUnit" service 
     assert.match(script, /setAttribute\("telemetry\.source", "junit"\)/)
     // one exporter/provider per layer, both flushed and shut down
     assert.match(script, /\[gradleTracerProvider, junitTracerProvider\]\.each/)
+    // vcs.repository.name is forwarded onto both layers' resources
+    assert.match(script, /def repositoryName = System\.getenv\("GITHUB_REPOSITORY"\) \?: ""/)
+    assert.match(script, /put\("vcs\.repository\.name", repositoryName\)/)
   } finally {
     if (prev === undefined) delete process.env.GRADLE_USER_HOME
     else process.env.GRADLE_USER_HOME = prev
