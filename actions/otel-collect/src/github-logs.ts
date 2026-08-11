@@ -9,9 +9,6 @@ import type { WorkflowJob } from './resolve-job.js'
 
 type Octokit = InstanceType<typeof GitHub>
 
-// Cap log lines emitted per job so a runaway log can't OOM the exporter.
-const MAX_LINES_PER_JOB = 10000
-
 // GitHub prefixes every log line with an ISO-8601 timestamp.
 const LINE_RE = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s?(.*)$/
 
@@ -80,14 +77,9 @@ export function parseJobLog(
   // untimestamped) is appended to the previous entry's body.
   const entries: { timeMs: number; message: string; severity: ReturnType<typeof severityOf> }[] = []
   let lastMs = job.started_at ? Date.parse(job.started_at) : Date.now()
-  let truncated = false
 
   for (const raw of text.split(/\r?\n/)) {
     if (raw === '') continue
-    if (entries.length >= MAX_LINES_PER_JOB) {
-      truncated = true
-      break
-    }
 
     const m = LINE_RE.exec(raw)
     const hasTs = m !== null && !Number.isNaN(Date.parse(m[1]))
@@ -125,9 +117,6 @@ export function parseJobLog(
     return buildLogRecord(input, resource)
   })
 
-  if (truncated) {
-    core.warning(`Job "${job.name}" log exceeded ${MAX_LINES_PER_JOB} lines; remaining lines were not exported`)
-  }
   return records
 }
 
@@ -158,6 +147,9 @@ export async function buildWorkflowLogs(
     // Logs are only downloadable once a job has finished; skip in-progress jobs
     // (notably the export job itself, still running while it calls this).
     if (job.status !== 'completed') continue
+    // Skipped jobs never ran a step, so GitHub never recorded any logs for them —
+    // downloading always fails, so don't bother trying.
+    if (job.conclusion === 'skipped') continue
     const text = await downloadJobLog(octokit, owner, repo, job.id)
     if (!text) continue
     all.push(...parseJobLog(text, job, traceId, resource))
