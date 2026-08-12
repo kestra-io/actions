@@ -1,3 +1,4 @@
+import * as os from 'os'
 import { credentials as grpcCredentials, Metadata } from '@grpc/grpc-js'
 import { SpanKind, SpanStatusCode, TraceFlags, type HrTime } from '@opentelemetry/api'
 import type { SeverityNumber } from '@opentelemetry/api-logs'
@@ -64,6 +65,10 @@ export function buildResource(serviceName: string): Resource {
     'service.namespace': NAMESPACE,
     'data_stream.namespace': NAMESPACE,
     'service.instance.id': serviceInstanceId(),
+    // Matches the host.name the collector.ts hostmetrics pipeline reports for this
+    // same runner (via its resourcedetection processor), so Elastic APM can link a
+    // traced service to that host's infrastructure metrics.
+    'host.name': os.hostname(),
     'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
     'github.run_id': process.env.GITHUB_RUN_ID ?? '',

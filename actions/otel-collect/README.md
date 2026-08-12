@@ -20,8 +20,8 @@ drillable end to end:
 workflow run                                       service.name = <service-name>
 └─ job
    └─ step  "Gradle - check and javadoc"            ← GitHub step span
-      └─ gradle :core:test                          service.name = <service-name>-gradle
-         └─ JUnit MyServiceTest#shouldWork           service.name = <service-name>-junit
+      └─ gradle :core:test                          service.name = <service-name> - Gradle
+         └─ JUnit MyServiceTest#shouldWork           service.name = <service-name> - JUnit
 ```
 
 GitHub Actions, Gradle and JUnit spans all nest in that **one trace** (shared
@@ -117,12 +117,12 @@ jobs:
 | `inject-java-agent` | `false` | Also inject the Java agent via `JAVA_TOOL_OPTIONS`. **Do not** enable for apps that manage their own OpenTelemetry (e.g. Kestra) — see caveat below |
 | `inject-node-agent` | `false` | Also inject the Node auto-instrumentation via `NODE_OPTIONS` / `NODE_PATH`. Same caveat as above |
 | `host-metrics-enabled` | `true` | Run the background host-metrics collector |
-| `gradle-tracing-enabled` | `false` | Install a Gradle init script emitting a span per task and per JUnit test, nested under the step span (gRPC). Daemon-side, so no conflict with the app's own OpenTelemetry — this is how you get **per-test drill-down**. Task spans use `service.name=<service-name>-gradle`, test spans `<service-name>-junit`, both tagged `telemetry.source` |
+| `gradle-tracing-enabled` | `false` | Install a Gradle init script emitting a span per task and per JUnit test, nested under the step span (gRPC). Daemon-side, so no conflict with the app's own OpenTelemetry — this is how you get **per-test drill-down**. Task spans use `service.name=<service-name> - Gradle`, test spans `<service-name> - JUnit`, both tagged `telemetry.source` |
 | `logs-enabled` | `false` | **`export-all` only.** Download each job's GitHub Actions logs and export them as OTLP log records correlated to the job/step spans (same trace id). Logs are only available from the API after jobs finish, hence `export-all`-only |
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
 | `collector-version` | `0.114.0` | `otelcol-contrib` version |
 | `java-agent-version` | `latest` | `opentelemetry-javaagent` version |
-| `service-name` | `''` | `service.name` resource attribute for the GitHub Actions layer (all signals also carry `service.namespace=github-actions`). Gradle/JUnit spans (see `gradle-tracing-enabled`) derive their own `-gradle`/`-junit` suffixed service names from this |
+| `service-name` | `''` | `service.name` resource attribute for the GitHub Actions layer (all signals also carry `service.namespace=github-actions`). Gradle/JUnit spans (see `gradle-tracing-enabled`) derive their own ` - Gradle`/` - JUnit` suffixed service names from this |
 
 ## Outputs
 

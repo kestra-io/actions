@@ -80198,6 +80198,10 @@ function buildResource(serviceName) {
     "service.namespace": NAMESPACE,
     "data_stream.namespace": NAMESPACE,
     "service.instance.id": serviceInstanceId(),
+    // Matches the host.name the collector.ts hostmetrics pipeline reports for this
+    // same runner (via its resourcedetection processor), so Elastic APM can link a
+    // traced service to that host's infrastructure metrics.
+    "host.name": os.hostname(),
     "cicd.pipeline.name": process.env.GITHUB_WORKFLOW ?? "",
     "vcs.repository.name": process.env.GITHUB_REPOSITORY ?? "",
     "github.run_id": process.env.GITHUB_RUN_ID ?? "",
@@ -80733,8 +80737,8 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
 }
 
 function buildInitScript(serviceName) {
-  const gradleServiceName = `${serviceName}-gradle`;
-  const junitServiceName = `${serviceName}-junit`;
+  const gradleServiceName = `${serviceName} - Gradle`;
+  const junitServiceName = `${serviceName} - JUnit`;
   return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanContext
@@ -80785,6 +80789,7 @@ def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
 def runId = System.getenv("GITHUB_RUN_ID")
 def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
+def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
 
 def addHeaders = { builder ->
   headersEnv.split(",").each { pair ->
@@ -80799,7 +80804,7 @@ def addHeaders = { builder ->
 
 def makeResource = { name ->
   Resource.getDefault().merge(
-    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).build()))
+    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).put("vcs.repository.name", repositoryName).build()))
 }
 
 def makeTracerProvider = { name ->
@@ -80973,7 +80978,7 @@ async function main(inputs) {
   exportVariable("OTEL_SERVICE_NAME", serviceName(inputs));
   exportVariable(
     "OTEL_RESOURCE_ATTRIBUTES",
-    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE}`
+    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${os.hostname()}`
   );
   setOutput("trace-id", tId);
   if (inputs.javaEnabled) {

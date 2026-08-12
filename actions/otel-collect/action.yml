@@ -72,8 +72,8 @@ inputs:
       Install a Gradle init script that emits a span per Gradle task and per JUnit test, nested under the
       GitHub step span (via TRACEPARENT) and exported over OTLP/gRPC. Runs in the Gradle daemon, so it does
       not conflict with an application that manages its own OpenTelemetry. Gives test-level drill-down without
-      injecting the Java agent into the test workers. Gradle task spans use service.name "<service-name>-gradle"
-      and JUnit test spans "<service-name>-junit" (each also tagged with a telemetry.source attribute), distinct
+      injecting the Java agent into the test workers. Gradle task spans use service.name "<service-name> - Gradle"
+      and JUnit test spans "<service-name> - JUnit" (each also tagged with a telemetry.source attribute), distinct
       from the GitHub Actions layer's service.name, so a trace backend can tell the three layers apart even
       though they all share one trace.
     required: false
