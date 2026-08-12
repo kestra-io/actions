@@ -6,6 +6,12 @@ on:
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
         required: true
+      OTLP_ENDPOINT:
+        description: 'OTLP endpoint for OpenTelemetry export'
+        required: false
+      OTLP_HEADERS:
+        description: 'OTLP headers for OpenTelemetry export'
+        required: false
 
 env:
   # to save corepack from itself
