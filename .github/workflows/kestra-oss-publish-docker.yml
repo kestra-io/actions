@@ -58,6 +58,11 @@ on:
         required: false
         type: boolean
         default: false
+      runner:
+        description: "The runner label to execute this job on."
+        type: string
+        default: 'ubuntu-latest'
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -65,7 +70,7 @@ env:
 jobs:
   plugins:
     name: List Plugins
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     outputs:
       plugins: ${{ steps.plugins-outputs-step.outputs.plugins }}
     steps:
@@ -107,11 +112,12 @@ jobs:
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
+      runner: ${{ inputs.runner }}
 
   docker:
     name: Publish Docker
     needs: [ plugins, build-artifacts ]
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     strategy:
       matrix:
         image:
@@ -270,7 +276,7 @@ jobs:
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest-lts{0}', matrix.image.name) }}
 
   end:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     needs:
       - docker
     if: always()

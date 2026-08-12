@@ -16,6 +16,11 @@ on:
         type: boolean
         default: false
         required: false
+      runner:
+        description: "The runner label to execute this job on."
+        type: string
+        default: 'ubuntu-latest'
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -27,13 +32,14 @@ jobs:
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
+      runner: ${{ inputs.runner }}
 
   publish:
     name: Publish Docker
     # `!cancelled()` lets this run when build-artifacts was skipped (skip-build:
     # the `exe` artifact then comes from another job of the same run).
     if: ${{ !cancelled() && needs.build-artifacts.result != 'failure' && github.event.pull_request.head.repo.full_name == github.repository }} # prevent running on forks
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     needs: build-artifacts
     env:
       GITHUB_IMAGE_PATH: "ghcr.io/kestra-io/kestra-pr"
