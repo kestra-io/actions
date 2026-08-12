@@ -66,9 +66,10 @@ export function buildResource(serviceName: string): Resource {
     'data_stream.namespace': NAMESPACE,
     'service.instance.id': serviceInstanceId(),
     // Matches the host.name the collector.ts hostmetrics pipeline reports for this
-    // same runner (via its resourcedetection processor), so Elastic APM can link a
-    // traced service to that host's infrastructure metrics.
-    'host.name': os.hostname(),
+    // same runner (an explicit override there too, since RUNNER_NAME is unique per
+    // job while the OS-level hostname isn't guaranteed to be on hosted runners), so
+    // Elastic APM can link a traced service to that host's infrastructure metrics.
+    'host.name': process.env.RUNNER_NAME ?? os.hostname(),
     'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
     'github.run_id': process.env.GITHUB_RUN_ID ?? '',
