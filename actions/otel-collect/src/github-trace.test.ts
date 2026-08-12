@@ -52,6 +52,23 @@ test('buildWorkflowTrace links root -> job -> step with deterministic ids', () =
   for (const s of [root, jobSpan, stepSpan]) assert.equal(s.attributes['telemetry.source'], 'github-actions')
 })
 
+test('buildWorkflowTrace excludes skipped jobs', () => {
+  const resource = buildResource('svc')
+  const skippedJob: WorkflowJob = {
+    ...job(789, 'skipped-job'),
+    conclusion: 'skipped',
+    started_at: null,
+    completed_at: null
+  }
+  const spans = buildWorkflowTrace([job(456, 'test'), skippedJob], '123', '1', 'CI', resource, Date.now())
+
+  const skippedJobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(789))
+  assert.equal(skippedJobSpan, undefined, 'skipped job span should not be exported')
+
+  const ranJobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(456))
+  assert.ok(ranJobSpan, 'non-skipped job span still present')
+})
+
 test('a live build span using the exported traceparent nests under the step span', () => {
   // The action exports TRACEPARENT 00-<trace>-<stepSpanId>-01; a gradle span
   // created with that parent must therefore carry the same parentSpanId the
