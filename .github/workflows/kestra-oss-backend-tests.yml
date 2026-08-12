@@ -95,7 +95,7 @@ jobs:
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
-          ./gradlew check javadoc --parallel
+          ./gradlew check javadoc --parallel --rerun-tasks
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
