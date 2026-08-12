@@ -2,6 +2,13 @@ name: 'E2E tests'
 # 'New E2E tests implementation started by Roman. Based on playwright in npm UI project, tests Kestra OSS develop docker image. These tests are written from zero, lets make them unflaky from the start!.'
 on:
   workflow_call:
+    secrets:
+      OTLP_ENDPOINT:
+        description: 'OTLP endpoint for OpenTelemetry export'
+        required: false
+      OTLP_HEADERS:
+        description: 'OTLP headers for OpenTelemetry export'
+        required: false
     inputs:
       noInputYet:
         description: 'not input yet.'
