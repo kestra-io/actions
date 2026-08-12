@@ -42,9 +42,28 @@ test('serviceInstanceId combines run id and attempt', () => {
   }
 })
 
-test('buildResource sets host.name to the runner hostname, matching the hostmetrics collector', () => {
-  const resource = buildResource('svc')
-  assert.equal(resource.attributes['host.name'], os.hostname())
+test('buildResource sets host.name to RUNNER_NAME, matching the hostmetrics collector', () => {
+  const prev = process.env.RUNNER_NAME
+  try {
+    process.env.RUNNER_NAME = 'GitHub Actions 7'
+    const resource = buildResource('svc')
+    assert.equal(resource.attributes['host.name'], 'GitHub Actions 7')
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_NAME
+    else process.env.RUNNER_NAME = prev
+  }
+})
+
+test('buildResource falls back to the OS hostname when RUNNER_NAME is unset', () => {
+  const prev = process.env.RUNNER_NAME
+  try {
+    delete process.env.RUNNER_NAME
+    const resource = buildResource('svc')
+    assert.equal(resource.attributes['host.name'], os.hostname())
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_NAME
+    else process.env.RUNNER_NAME = prev
+  }
 })
 
 test('parseHeaders splits comma-separated k=v pairs', () => {

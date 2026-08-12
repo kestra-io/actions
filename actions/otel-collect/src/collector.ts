@@ -104,6 +104,14 @@ processors:
           enabled: true
   resource:
     attributes:
+      # GitHub-hosted runners can report a non-unique OS-level hostname (Azure IMDS
+      # instance name isn't guaranteed unique per ephemeral job VM), which collapses
+      # concurrent jobs' host metrics onto the same host.name. RUNNER_NAME is set by
+      # GitHub Actions itself and is unique per job on both hosted and self-hosted
+      # runners, so it always wins over whatever resourcedetection found.
+      - key: host.name
+        value: \${env:RUNNER_NAME}
+        action: upsert
       - key: service.name
         value: ${JSON.stringify(serviceName)}
         action: upsert
