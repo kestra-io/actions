@@ -80708,8 +80708,9 @@ function buildSingleJobTrace(job, runId, runAttempt, resource, nowMs) {
 function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, nowMs) {
   const traceId$1 = traceId(runId, runAttempt);
   const rootId = rootSpanId(runId, runAttempt);
-  const starts = jobs.map((j) => parseTime(j.started_at, nowMs));
-  const ends = jobs.map((j) => parseTime(j.completed_at, nowMs));
+  const ranJobs = jobs.filter((j) => j.conclusion !== "skipped");
+  const starts = ranJobs.map((j) => parseTime(j.started_at, nowMs));
+  const ends = ranJobs.map((j) => parseTime(j.completed_at, nowMs));
   const rootStart = starts.length ? Math.min(...starts) : nowMs;
   const rootEnd = ends.length ? Math.max(...ends) : nowMs;
   const root = buildSpan(
@@ -80719,7 +80720,7 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
       spanId: rootId,
       startMs: rootStart,
       endMs: rootEnd,
-      conclusion: jobs.some((j) => j.conclusion && j.conclusion !== "success" && j.conclusion !== "skipped") ? "failure" : "success",
+      conclusion: ranJobs.some((j) => j.conclusion && j.conclusion !== "success") ? "failure" : "success",
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: "github-actions",
         "github.workflow": workflowName,
@@ -80730,7 +80731,7 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, resource, now
     resource
   );
   const spans = [root];
-  for (const job of jobs) {
+  for (const job of ranJobs) {
     spans.push(...buildJobSpans(job, traceId$1, rootId, resource, nowMs));
   }
   return spans;
