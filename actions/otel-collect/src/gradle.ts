@@ -79,6 +79,14 @@ def runAttempt = System.getenv("GITHUB_RUN_ATTEMPT") ?: "1"
 def jobId = ${jobIdLiteral}
 def instanceId = runId ? (jobId ? "Workflow " + runId + " - Job " + jobId + " - Attempt " + runAttempt : "Workflow " + runId + " - Attempt " + runAttempt) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
+// Same resource attributes as the GitHub Actions layer's buildResource() (otlp.ts) and
+// the hostmetrics collector (collector.ts), so Gradle/JUnit spans link to the same host
+// and workflow run instead of only carrying service identity.
+def hostName = System.getenv("RUNNER_NAME") ?: ""
+def workflowName = System.getenv("GITHUB_WORKFLOW") ?: ""
+def sha = System.getenv("GITHUB_SHA") ?: ""
+def ref = System.getenv("GITHUB_REF") ?: ""
+def runnerEnvironment = System.getenv("RUNNER_ENVIRONMENT") ?: ""
 
 def addHeaders = { builder ->
   headersEnv.split(",").each { pair ->
@@ -93,7 +101,21 @@ def addHeaders = { builder ->
 
 def makeResource = { name ->
   Resource.getDefault().merge(
-    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).put("vcs.repository.name", repositoryName).build()))
+    Resource.create(Attributes.builder()
+      .put("service.name", name)
+      .put("service.namespace", "github-actions")
+      .put("data_stream.namespace", "github-actions")
+      .put("service.instance.id", instanceId)
+      .put("vcs.repository.name", repositoryName)
+      .put("host.name", hostName)
+      .put("github.workflow.name", workflowName)
+      .put("github.run_id", runId ?: "")
+      .put("github.run_attempt", runAttempt)
+      .put("github.job_id", jobId ? String.valueOf(jobId) : "")
+      .put("github.sha", sha)
+      .put("github.ref", ref)
+      .put("github.runner_environment", runnerEnvironment)
+      .build()))
 }
 
 def makeTracerProvider = { name ->

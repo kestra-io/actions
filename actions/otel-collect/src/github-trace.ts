@@ -1,7 +1,7 @@
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
 import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from './otlp.js'
-import type { WorkflowJob } from './resolve-job.js'
+import { runnerEnvironmentOf, type WorkflowJob } from './resolve-job.js'
 
 const parseTime = (iso: string | null | undefined, fallback: number): number => {
   if (!iso) return fallback
@@ -19,8 +19,11 @@ export function buildJobSpans(
 ): ReadableSpan[] {
   // Scoped to this job's id, not just the run: a workflow run has many jobs, each
   // on its own runner, so a run-level instance id would collapse all their host
-  // metrics under one "instance" (see otlp.ts serviceInstanceId).
-  const resource = buildResource(serviceName, job.id)
+  // metrics under one "instance" (see otlp.ts serviceInstanceId). Pass this job's
+  // own runner_name/runner flavour explicitly — this function may run inside the
+  // export-all aggregation job, on a different (and possibly differently-flavoured)
+  // runner than the one that ran `job`.
+  const resource = buildResource(serviceName, job.id, job.runner_name ?? undefined, runnerEnvironmentOf(job))
   const spans: ReadableSpan[] = []
   const jobStart = parseTime(job.started_at, nowMs)
   const jobEnd = parseTime(job.completed_at, nowMs)

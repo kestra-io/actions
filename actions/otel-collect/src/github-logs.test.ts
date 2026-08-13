@@ -11,6 +11,7 @@ const job: WorkflowJob = {
   status: 'completed',
   conclusion: 'success',
   runner_name: 'runner-1',
+  labels: ['self-hosted'],
   started_at: '2026-06-20T10:00:00Z',
   completed_at: '2026-06-20T10:05:00Z',
   steps: [
@@ -114,6 +115,32 @@ test('appends untimestamped continuation lines to the previous entry', () => {
   const recs = parseJobLog(text, job, traceId('123', '1'), serviceName)
   assert.equal(recs.length, 1)
   assert.equal(recs[0].body, 'header\ncontinuation without timestamp')
+})
+
+test('log records get host.name from the job\'s own runner_name, not this process\'s RUNNER_NAME', () => {
+  const prev = process.env.RUNNER_NAME
+  try {
+    // buildWorkflowLogs always runs inside the export-all aggregation job, on a
+    // different runner than the one that actually produced these log lines.
+    process.env.RUNNER_NAME = 'aggregator-runner'
+    const recs = parseJobLog('2026-06-20T10:02:00.0000000Z hello world', job, traceId('123', '1'), serviceName)
+    assert.equal(recs[0].resource.attributes['host.name'], 'runner-1')
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_NAME
+    else process.env.RUNNER_NAME = prev
+  }
+})
+
+test('log records get github.runner_environment from the job\'s own labels, not this process\'s RUNNER_ENVIRONMENT', () => {
+  const prev = process.env.RUNNER_ENVIRONMENT
+  try {
+    process.env.RUNNER_ENVIRONMENT = 'github-hosted'
+    const recs = parseJobLog('2026-06-20T10:02:00.0000000Z hello world', job, traceId('123', '1'), serviceName)
+    assert.equal(recs[0].resource.attributes['github.runner_environment'], 'self-hosted')
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_ENVIRONMENT
+    else process.env.RUNNER_ENVIRONMENT = prev
+  }
 })
 
 test('buildWorkflowLogs skips in-progress and skipped jobs without downloading', async () => {

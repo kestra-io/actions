@@ -80192,7 +80192,7 @@ function serviceInstanceId(jobId) {
   if (!runId) return process.env.RUNNER_NAME ?? "github-actions";
   return jobId === void 0 ? `Workflow ${runId} - Attempt ${attempt}` : `Workflow ${runId} - Job ${jobId} - Attempt ${attempt}`;
 }
-function buildResource(serviceName, jobId) {
+function buildResource(serviceName, jobId, hostName, runnerEnvironment) {
   return resourceFromAttributes({
     "service.name": serviceName,
     "service.namespace": NAMESPACE,
@@ -80202,14 +80202,17 @@ function buildResource(serviceName, jobId) {
     // same runner (an explicit override there too, since RUNNER_NAME is unique per
     // job while the OS-level hostname isn't guaranteed to be on hosted runners), so
     // Elastic APM can link a traced service to that host's infrastructure metrics.
-    "host.name": process.env.RUNNER_NAME ?? os.hostname(),
+    "host.name": hostName ?? process.env.RUNNER_NAME ?? os.hostname(),
     "github.workflow.name": process.env.GITHUB_WORKFLOW ?? "",
     "vcs.repository.name": process.env.GITHUB_REPOSITORY ?? "",
     "github.run_id": process.env.GITHUB_RUN_ID ?? "",
     "github.run_attempt": process.env.GITHUB_RUN_ATTEMPT ?? "",
     "github.job_id": jobId !== void 0 ? String(jobId) : "",
     "github.sha": process.env.GITHUB_SHA ?? "",
-    "github.ref": process.env.GITHUB_REF ?? ""
+    "github.ref": process.env.GITHUB_REF ?? "",
+    // "github-hosted" or "self-hosted". Lets a trace backend split telemetry by
+    // runner flavour (e.g. opted-in larger runners).
+    "github.runner_environment": runnerEnvironment ?? process.env.RUNNER_ENVIRONMENT ?? ""
   });
 }
 function statusOf(conclusion) {
@@ -80458,6 +80461,12 @@ processors:
       - key: service.instance.id
         value: ${JSON.stringify(serviceInstanceId(jobId))}
         action: upsert
+      - key: vcs.repository.name
+        value: ${JSON.stringify(process.env.GITHUB_REPOSITORY ?? "")}
+        action: upsert
+      - key: github.workflow.name
+        value: ${JSON.stringify(process.env.GITHUB_WORKFLOW ?? "")}
+        action: upsert
       - key: github.run_id
         value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? "")}
         action: upsert
@@ -80467,8 +80476,17 @@ processors:
       - key: github.job_id
         value: ${JSON.stringify(jobId !== void 0 ? String(jobId) : "")}
         action: upsert
+      - key: github.sha
+        value: ${JSON.stringify(process.env.GITHUB_SHA ?? "")}
+        action: upsert
+      - key: github.ref
+        value: ${JSON.stringify(process.env.GITHUB_REF ?? "")}
+        action: upsert
       - key: github.job.name
         value: ${JSON.stringify(process.env.GITHUB_JOB ?? "")}
+        action: upsert
+      - key: github.runner_environment
+        value: \${env:RUNNER_ENVIRONMENT}
         action: upsert
   batch:
 
@@ -80582,6 +80600,38 @@ function stepSpanId(jobId, stepName) {
   return sha256hex(`${jobId}-${stepName}-s`).slice(16, 32);
 }
 
+function runnerEnvironmentOf(job) {
+  return job.labels.includes("self-hosted") ? "self-hosted" : "github-hosted";
+}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function listJobs(octokit, owner, repo, runId, runAttempt) {
+  const jobs = await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRunAttempt, {
+    owner,
+    repo,
+    run_id: runId,
+    attempt_number: runAttempt,
+    per_page: 100
+  });
+  return jobs;
+}
+async function resolveJobId(octokit, owner, repo, runId, runAttempt) {
+  const runnerName = process.env.RUNNER_NAME;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const jobs = await listJobs(octokit, owner, repo, runId, runAttempt);
+    const inProgress = jobs.filter((j) => j.status === "in_progress");
+    let match = runnerName ? inProgress.find((j) => j.runner_name === runnerName) : void 0;
+    if (!match && inProgress.length === 1) {
+      match = inProgress[0];
+    }
+    if (match) {
+      return match.id;
+    }
+    debug(`Job id not resolvable yet (attempt ${attempt + 1}/5, ${inProgress.length} in progress)`);
+    await sleep(2e3 * (attempt + 1));
+  }
+  return null;
+}
+
 const LINE_RE = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s?(.*)$/;
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 function stripAnsi(text) {
@@ -80603,7 +80653,7 @@ function spanForTime(ms, steps, jobSpan) {
   return jobSpan;
 }
 function parseJobLog(text, job, traceId, serviceName) {
-  const resource = buildResource(serviceName, job.id);
+  const resource = buildResource(serviceName, job.id, job.runner_name ?? void 0, runnerEnvironmentOf(job));
   const jobSpan = jobSpanId(job.id);
   const steps = (job.steps ?? []).filter((s) => s.started_at && s.completed_at).map((s) => ({
     spanId: stepSpanId(job.id, s.name),
@@ -80675,7 +80725,7 @@ const parseTime = (iso, fallback) => {
   return Number.isNaN(ms) ? fallback : ms;
 };
 function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
-  const resource = buildResource(serviceName, job.id);
+  const resource = buildResource(serviceName, job.id, job.runner_name ?? void 0, runnerEnvironmentOf(job));
   const spans = [];
   const jobStart = parseTime(job.started_at, nowMs);
   const jobEnd = parseTime(job.completed_at, nowMs);
@@ -80811,6 +80861,14 @@ def runAttempt = System.getenv("GITHUB_RUN_ATTEMPT") ?: "1"
 def jobId = ${jobIdLiteral}
 def instanceId = runId ? (jobId ? "Workflow " + runId + " - Job " + jobId + " - Attempt " + runAttempt : "Workflow " + runId + " - Attempt " + runAttempt) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
+// Same resource attributes as the GitHub Actions layer's buildResource() (otlp.ts) and
+// the hostmetrics collector (collector.ts), so Gradle/JUnit spans link to the same host
+// and workflow run instead of only carrying service identity.
+def hostName = System.getenv("RUNNER_NAME") ?: ""
+def workflowName = System.getenv("GITHUB_WORKFLOW") ?: ""
+def sha = System.getenv("GITHUB_SHA") ?: ""
+def ref = System.getenv("GITHUB_REF") ?: ""
+def runnerEnvironment = System.getenv("RUNNER_ENVIRONMENT") ?: ""
 
 def addHeaders = { builder ->
   headersEnv.split(",").each { pair ->
@@ -80825,7 +80883,21 @@ def addHeaders = { builder ->
 
 def makeResource = { name ->
   Resource.getDefault().merge(
-    Resource.create(Attributes.builder().put("service.name", name).put("service.namespace", "github-actions").put("data_stream.namespace", "github-actions").put("service.instance.id", instanceId).put("vcs.repository.name", repositoryName).build()))
+    Resource.create(Attributes.builder()
+      .put("service.name", name)
+      .put("service.namespace", "github-actions")
+      .put("data_stream.namespace", "github-actions")
+      .put("service.instance.id", instanceId)
+      .put("vcs.repository.name", repositoryName)
+      .put("host.name", hostName)
+      .put("github.workflow.name", workflowName)
+      .put("github.run_id", runId ?: "")
+      .put("github.run_attempt", runAttempt)
+      .put("github.job_id", jobId ? String.valueOf(jobId) : "")
+      .put("github.sha", sha)
+      .put("github.ref", ref)
+      .put("github.runner_environment", runnerEnvironment)
+      .build()))
 }
 
 def makeTracerProvider = { name ->
@@ -80916,35 +80988,6 @@ function installGradleInitScript(serviceName, jobId = null) {
   return scriptPath;
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function listJobs(octokit, owner, repo, runId, runAttempt) {
-  const jobs = await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRunAttempt, {
-    owner,
-    repo,
-    run_id: runId,
-    attempt_number: runAttempt,
-    per_page: 100
-  });
-  return jobs;
-}
-async function resolveJobId(octokit, owner, repo, runId, runAttempt) {
-  const runnerName = process.env.RUNNER_NAME;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const jobs = await listJobs(octokit, owner, repo, runId, runAttempt);
-    const inProgress = jobs.filter((j) => j.status === "in_progress");
-    let match = runnerName ? inProgress.find((j) => j.runner_name === runnerName) : void 0;
-    if (!match && inProgress.length === 1) {
-      match = inProgress[0];
-    }
-    if (match) {
-      return match.id;
-    }
-    debug(`Job id not resolvable yet (attempt ${attempt + 1}/5, ${inProgress.length} in progress)`);
-    await sleep(2e3 * (attempt + 1));
-  }
-  return null;
-}
-
 const STARTED_STATE = "otel-collect-started";
 const JOB_ID_STATE = "otel-collect-job-id";
 function readInputs() {
@@ -80999,7 +81042,7 @@ async function main(inputs) {
   exportVariable("OTEL_SERVICE_NAME", serviceName(inputs));
   exportVariable(
     "OTEL_RESOURCE_ATTRIBUTES",
-    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${os.hostname()}`
+    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${process.env.RUNNER_NAME ?? os.hostname()}`
   );
   setOutput("trace-id", tId);
   if (inputs.javaEnabled) {

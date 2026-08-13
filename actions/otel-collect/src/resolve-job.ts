@@ -9,6 +9,10 @@ export interface WorkflowJob {
   status: string
   conclusion: string | null
   runner_name: string | null
+  // The `runs-on` labels for this job. GitHub requires "self-hosted" to be one of
+  // them for a self-hosted runner (https://docs.github.com/actions/using-jobs/choosing-the-runner-for-a-job),
+  // so this is how we tell a job's runner flavour apart per-job — see runnerEnvironmentOf().
+  labels: string[]
   started_at: string | null
   completed_at: string | null
   steps?: Array<{
@@ -19,6 +23,17 @@ export interface WorkflowJob {
     started_at?: string | null
     completed_at?: string | null
   }>
+}
+
+/**
+ * "github-hosted" or "self-hosted" for this specific job, matching the values
+ * GitHub's own RUNNER_ENVIRONMENT env var takes — but derived from the job's own
+ * API data instead of the current process's env var, since callers building
+ * telemetry on behalf of a job other than the one they're running in (the
+ * export-all aggregation job) can't rely on their own RUNNER_ENVIRONMENT matching.
+ */
+export function runnerEnvironmentOf(job: Pick<WorkflowJob, 'labels'>): string {
+  return job.labels.includes('self-hosted') ? 'self-hosted' : 'github-hosted'
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
