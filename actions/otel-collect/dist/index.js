@@ -80192,7 +80192,7 @@ function serviceInstanceId(jobId) {
   if (!runId) return process.env.RUNNER_NAME ?? "github-actions";
   return jobId === void 0 ? `Workflow ${runId} - Attempt ${attempt}` : `Workflow ${runId} - Job ${jobId} - Attempt ${attempt}`;
 }
-function buildResource(serviceName, jobId, hostName, runnerEnvironment) {
+function buildResource(serviceName, jobId, hostName, runnerEnvironment, workflowName) {
   return resourceFromAttributes({
     "service.name": serviceName,
     "service.namespace": NAMESPACE,
@@ -80203,7 +80203,7 @@ function buildResource(serviceName, jobId, hostName, runnerEnvironment) {
     // job while the OS-level hostname isn't guaranteed to be on hosted runners), so
     // Elastic APM can link a traced service to that host's infrastructure metrics.
     "host.name": hostName ?? process.env.RUNNER_NAME ?? os.hostname(),
-    "github.workflow.name": process.env.GITHUB_WORKFLOW ?? "",
+    "github.workflow.name": workflowName ?? process.env.GITHUB_WORKFLOW ?? "",
     "vcs.repository.name": process.env.GITHUB_REPOSITORY ?? "",
     "github.run_id": process.env.GITHUB_RUN_ID ?? "",
     "github.run_attempt": process.env.GITHUB_RUN_ATTEMPT ?? "",
@@ -80378,7 +80378,7 @@ async function ensureCollector(version) {
   }
   return path$1.join(dir, binName);
 }
-function buildConfig(endpoint, headers, serviceName, jobId) {
+function buildConfig(endpoint, headers, serviceName, jobId, workflowName) {
   const headerLines = Object.entries(headers).map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join("\n");
   const { target, secure } = grpcTarget(endpoint);
   return `receivers:
@@ -80465,7 +80465,10 @@ processors:
         value: ${JSON.stringify(process.env.GITHUB_REPOSITORY ?? "")}
         action: upsert
       - key: github.workflow.name
-        value: ${JSON.stringify(process.env.GITHUB_WORKFLOW ?? "")}
+        # GITHUB_WORKFLOW always resolves to the top-level *caller* workflow's name
+        # for a job called via \`workflow_call\`, so this is passed in resolved from
+        # the GitHub Jobs API's per-job \`workflow_name\` (see resolve-job.ts) instead.
+        value: ${JSON.stringify(workflowName ?? process.env.GITHUB_WORKFLOW ?? "")}
         action: upsert
       - key: github.run_id
         value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? "")}
@@ -80507,12 +80510,12 @@ service:
 `;
 }
 const PID_STATE = "otel-collector-pid";
-async function startCollector(version, endpoint, rawHeaders, serviceName, jobId) {
+async function startCollector(version, endpoint, rawHeaders, serviceName, jobId, workflowName) {
   const bin = await ensureCollector(version);
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
   const configPath = path$1.join(tmp, "otel-collect-config.yaml");
   const logPath = path$1.join(tmp, "otel-collect-collector.log");
-  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId));
+  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName));
   const out = fs.openSync(logPath, "a");
   const child = spawn(bin, ["--config", configPath], {
     detached: true,
@@ -80614,7 +80617,7 @@ async function listJobs(octokit, owner, repo, runId, runAttempt) {
   });
   return jobs;
 }
-async function resolveJobId(octokit, owner, repo, runId, runAttempt) {
+async function resolveJob(octokit, owner, repo, runId, runAttempt) {
   const runnerName = process.env.RUNNER_NAME;
   for (let attempt = 0; attempt < 5; attempt++) {
     const jobs = await listJobs(octokit, owner, repo, runId, runAttempt);
@@ -80624,7 +80627,7 @@ async function resolveJobId(octokit, owner, repo, runId, runAttempt) {
       match = inProgress[0];
     }
     if (match) {
-      return match.id;
+      return match;
     }
     debug(`Job id not resolvable yet (attempt ${attempt + 1}/5, ${inProgress.length} in progress)`);
     await sleep(2e3 * (attempt + 1));
@@ -80653,7 +80656,13 @@ function spanForTime(ms, steps, jobSpan) {
   return jobSpan;
 }
 function parseJobLog(text, job, traceId, serviceName) {
-  const resource = buildResource(serviceName, job.id, job.runner_name ?? void 0, runnerEnvironmentOf(job));
+  const resource = buildResource(
+    serviceName,
+    job.id,
+    job.runner_name ?? void 0,
+    runnerEnvironmentOf(job),
+    job.workflow_name ?? void 0
+  );
   const jobSpan = jobSpanId(job.id);
   const steps = (job.steps ?? []).filter((s) => s.started_at && s.completed_at).map((s) => ({
     spanId: stepSpanId(job.id, s.name),
@@ -80725,7 +80734,13 @@ const parseTime = (iso, fallback) => {
   return Number.isNaN(ms) ? fallback : ms;
 };
 function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
-  const resource = buildResource(serviceName, job.id, job.runner_name ?? void 0, runnerEnvironmentOf(job));
+  const resource = buildResource(
+    serviceName,
+    job.id,
+    job.runner_name ?? void 0,
+    runnerEnvironmentOf(job),
+    job.workflow_name ?? void 0
+  );
   const spans = [];
   const jobStart = parseTime(job.started_at, nowMs);
   const jobEnd = parseTime(job.completed_at, nowMs);
@@ -80804,10 +80819,11 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, serviceName, 
   return spans;
 }
 
-function buildInitScript(serviceName, jobId) {
+function buildInitScript(serviceName, jobId, workflowName) {
   const gradleServiceName = `${serviceName} - Gradle`;
   const junitServiceName = `${serviceName} - JUnit`;
   const jobIdLiteral = jobId === null ? "null" : JSON.stringify(String(jobId));
+  const workflowNameLiteral = JSON.stringify(workflowName ?? "");
   return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanContext
@@ -80865,7 +80881,7 @@ def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
 // the hostmetrics collector (collector.ts), so Gradle/JUnit spans link to the same host
 // and workflow run instead of only carrying service identity.
 def hostName = System.getenv("RUNNER_NAME") ?: ""
-def workflowName = System.getenv("GITHUB_WORKFLOW") ?: ""
+def workflowName = ${workflowNameLiteral}
 def sha = System.getenv("GITHUB_SHA") ?: ""
 def ref = System.getenv("GITHUB_REF") ?: ""
 def runnerEnvironment = System.getenv("RUNNER_ENVIRONMENT") ?: ""
@@ -80979,11 +80995,11 @@ gradle.buildFinished {
 function gradleUserHome() {
   return process.env.GRADLE_USER_HOME || path$1.join(os.homedir(), ".gradle");
 }
-function installGradleInitScript(serviceName, jobId = null) {
+function installGradleInitScript(serviceName, jobId = null, workflowName = null) {
   const initDir = path$1.join(gradleUserHome(), "init.d");
   fs.mkdirSync(initDir, { recursive: true });
   const scriptPath = path$1.join(initDir, "otel-collect.gradle");
-  fs.writeFileSync(scriptPath, buildInitScript(serviceName, jobId));
+  fs.writeFileSync(scriptPath, buildInitScript(serviceName, jobId, workflowName));
   info(`Installed Gradle tracing init script: ${scriptPath}`);
   return scriptPath;
 }
@@ -81018,12 +81034,14 @@ async function main(inputs) {
   if (inputs.otlpHeaders) setSecret(inputs.otlpHeaders);
   const octokit = getOctokit(inputs.githubToken);
   const { owner, repo } = context$1.repo;
-  const jobId = await resolveJobId(octokit, owner, repo, runId(), runAttempt());
+  const job = await resolveJob(octokit, owner, repo, runId(), runAttempt());
+  const jobId = job?.id ?? null;
   if (jobId === null) {
     warning("Could not resolve the current job id; build spans may not nest correctly");
   } else {
     saveState(JOB_ID_STATE, String(jobId));
   }
+  const workflowName = job?.workflow_name ?? process.env.GITHUB_WORKFLOW ?? "";
   const tId = traceId(runId(), runAttempt());
   let parentSpanId = null;
   if (jobId !== null) {
@@ -81054,7 +81072,7 @@ async function main(inputs) {
     setOutput("node-agent-path", register);
   }
   if (inputs.gradleTracingEnabled) {
-    installGradleInitScript(serviceName(inputs), jobId);
+    installGradleInitScript(serviceName(inputs), jobId, workflowName);
   }
   if (inputs.hostMetricsEnabled) {
     await startCollector(
@@ -81062,7 +81080,8 @@ async function main(inputs) {
       inputs.otlpEndpoint,
       inputs.otlpHeaders,
       serviceName(inputs),
-      jobId ?? void 0
+      jobId ?? void 0,
+      workflowName
     );
   }
 }

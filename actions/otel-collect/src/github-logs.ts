@@ -66,7 +66,13 @@ export function parseJobLog(
   // a different runner flavour, than the one that produced these log lines), so
   // host.name/runner_environment must come from the GitHub API's data for `job`,
   // not this process's own RUNNER_NAME/RUNNER_ENVIRONMENT.
-  const resource = buildResource(serviceName, job.id, job.runner_name ?? undefined, runnerEnvironmentOf(job))
+  const resource = buildResource(
+    serviceName,
+    job.id,
+    job.runner_name ?? undefined,
+    runnerEnvironmentOf(job),
+    job.workflow_name ?? undefined
+  )
   const jobSpan = jobSpanId(job.id)
   const steps: StepWindow[] = (job.steps ?? [])
     .filter((s) => s.started_at && s.completed_at)

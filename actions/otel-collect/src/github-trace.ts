@@ -23,7 +23,13 @@ export function buildJobSpans(
   // own runner_name/runner flavour explicitly — this function may run inside the
   // export-all aggregation job, on a different (and possibly differently-flavoured)
   // runner than the one that ran `job`.
-  const resource = buildResource(serviceName, job.id, job.runner_name ?? undefined, runnerEnvironmentOf(job))
+  const resource = buildResource(
+    serviceName,
+    job.id,
+    job.runner_name ?? undefined,
+    runnerEnvironmentOf(job),
+    job.workflow_name ?? undefined
+  )
   const spans: ReadableSpan[] = []
   const jobStart = parseTime(job.started_at, nowMs)
   const jobEnd = parseTime(job.completed_at, nowMs)

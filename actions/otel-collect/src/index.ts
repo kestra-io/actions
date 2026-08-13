@@ -8,7 +8,7 @@ import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
 import { baseEndpoint, exportLogs, exportSpans, NAMESPACE, parseHeaders } from './otlp.js'
-import { listJobs, resolveJobId, type WorkflowJob } from './resolve-job.js'
+import { listJobs, resolveJob, type WorkflowJob } from './resolve-job.js'
 
 const STARTED_STATE = 'otel-collect-started'
 const JOB_ID_STATE = 'otel-collect-job-id'
@@ -65,12 +65,18 @@ async function main(inputs: Inputs): Promise<void> {
   const octokit = github.getOctokit(inputs.githubToken)
   const { owner, repo } = github.context.repo
 
-  const jobId = await resolveJobId(octokit, owner, repo, runId(), runAttempt())
+  const job = await resolveJob(octokit, owner, repo, runId(), runAttempt())
+  const jobId = job?.id ?? null
   if (jobId === null) {
     core.warning('Could not resolve the current job id; build spans may not nest correctly')
   } else {
     core.saveState(JOB_ID_STATE, String(jobId))
   }
+  // GITHUB_WORKFLOW always resolves to the top-level *caller* workflow's name for a
+  // job called via `workflow_call`; job.workflow_name (GitHub Jobs API) is the
+  // actually-running (reusable) workflow's own name, e.g. "Frontend tests" instead
+  // of "Main Workflow" — falls back to GITHUB_WORKFLOW when the job lookup above failed.
+  const workflowName = job?.workflow_name ?? process.env.GITHUB_WORKFLOW ?? ''
 
   const tId = makeTraceId(runId(), runAttempt())
   let parentSpanId: string | null = null
@@ -115,7 +121,7 @@ async function main(inputs: Inputs): Promise<void> {
   }
 
   if (inputs.gradleTracingEnabled) {
-    installGradleInitScript(serviceName(inputs), jobId)
+    installGradleInitScript(serviceName(inputs), jobId, workflowName)
   }
 
   if (inputs.hostMetricsEnabled) {
@@ -124,7 +130,8 @@ async function main(inputs: Inputs): Promise<void> {
       inputs.otlpEndpoint,
       inputs.otlpHeaders,
       serviceName(inputs),
-      jobId ?? undefined
+      jobId ?? undefined,
+      workflowName
     )
   }
 }

@@ -89,6 +89,21 @@ test('buildResource reads github.runner_environment from RUNNER_ENVIRONMENT', ()
   }
 })
 
+test('buildResource prefers the given workflowName over GITHUB_WORKFLOW', () => {
+  const prev = process.env.GITHUB_WORKFLOW
+  try {
+    process.env.GITHUB_WORKFLOW = 'Main Workflow'
+    assert.equal(
+      buildResource('svc', undefined, undefined, undefined, 'Frontend tests').attributes['github.workflow.name'],
+      'Frontend tests'
+    )
+    assert.equal(buildResource('svc').attributes['github.workflow.name'], 'Main Workflow')
+  } finally {
+    if (prev === undefined) delete process.env.GITHUB_WORKFLOW
+    else process.env.GITHUB_WORKFLOW = prev
+  }
+})
+
 test('parseHeaders splits comma-separated k=v pairs', () => {
   assert.deepEqual(parseHeaders('Authorization=ApiKey abc,x-tenant=foo'), {
     Authorization: 'ApiKey abc',
