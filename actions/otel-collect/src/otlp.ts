@@ -49,31 +49,42 @@ function msToHr(ms: number): HrTime {
 }
 
 /**
- * service.instance.id for the run — Elastic APM surfaces this as the "Node name".
- * Unique per workflow run and identical across the build and export jobs.
+ * service.instance.id — Elastic APM surfaces this as the "Node name". Scoped to a
+ * single job (one actual runner), not just the workflow run: a workflow run spans
+ * many parallel jobs, each on its own VM, so a run-level id would collapse all of
+ * them into one "instance" that Elastic can't correlate to a single host's CPU/
+ * memory. Passing jobId keeps host metrics resolvable to exactly one runner.
+ *
+ * Format: "Workflow {run_id} - Job {job_id} - Attempt {run_attempt}" (readable in
+ * the APM "Node name" column), falling back to a run-level id (no job) when no
+ * job id is available — e.g. the aggregated workflow-root span, which represents
+ * the whole run rather than one runner.
  */
-export function serviceInstanceId(): string {
+export function serviceInstanceId(jobId?: number | string): string {
   const runId = process.env.GITHUB_RUN_ID
-  const attempt = process.env.GITHUB_RUN_ATTEMPT
-  if (runId) return `${runId}-${attempt ?? '1'}`
-  return process.env.RUNNER_NAME ?? 'github-actions'
+  const attempt = process.env.GITHUB_RUN_ATTEMPT ?? '1'
+  if (!runId) return process.env.RUNNER_NAME ?? 'github-actions'
+  return jobId === undefined
+    ? `Workflow ${runId} - Attempt ${attempt}`
+    : `Workflow ${runId} - Job ${jobId} - Attempt ${attempt}`
 }
 
-export function buildResource(serviceName: string): Resource {
+export function buildResource(serviceName: string, jobId?: number | string): Resource {
   return resourceFromAttributes({
     'service.name': serviceName,
     'service.namespace': NAMESPACE,
     'data_stream.namespace': NAMESPACE,
-    'service.instance.id': serviceInstanceId(),
+    'service.instance.id': serviceInstanceId(jobId),
     // Matches the host.name the collector.ts hostmetrics pipeline reports for this
     // same runner (an explicit override there too, since RUNNER_NAME is unique per
     // job while the OS-level hostname isn't guaranteed to be on hosted runners), so
     // Elastic APM can link a traced service to that host's infrastructure metrics.
     'host.name': process.env.RUNNER_NAME ?? os.hostname(),
-    'cicd.pipeline.name': process.env.GITHUB_WORKFLOW ?? '',
+    'github.workflow.name': process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
     'github.run_id': process.env.GITHUB_RUN_ID ?? '',
     'github.run_attempt': process.env.GITHUB_RUN_ATTEMPT ?? '',
+    'github.job_id': jobId !== undefined ? String(jobId) : '',
     'github.sha': process.env.GITHUB_SHA ?? '',
     'github.ref': process.env.GITHUB_REF ?? ''
   })

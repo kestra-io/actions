@@ -21,12 +21,13 @@ test('baseEndpoint returns scheme + host[:port] with no path', () => {
   assert.equal(baseEndpoint('http://localhost:4317/v1/metrics'), 'http://localhost:4317')
 })
 
-test('serviceInstanceId combines run id and attempt', () => {
+test('serviceInstanceId is readable and scoped to a job when given one, else falls back to run-level', () => {
   const prev = { id: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, runner: process.env.RUNNER_NAME }
   try {
     process.env.GITHUB_RUN_ID = '12345'
     process.env.GITHUB_RUN_ATTEMPT = '2'
-    assert.equal(serviceInstanceId(), '12345-2')
+    assert.equal(serviceInstanceId(789), 'Workflow 12345 - Job 789 - Attempt 2')
+    assert.equal(serviceInstanceId(), 'Workflow 12345 - Attempt 2')
 
     delete process.env.GITHUB_RUN_ID
     delete process.env.GITHUB_RUN_ATTEMPT
@@ -64,6 +65,14 @@ test('buildResource falls back to the OS hostname when RUNNER_NAME is unset', ()
     if (prev === undefined) delete process.env.RUNNER_NAME
     else process.env.RUNNER_NAME = prev
   }
+})
+
+test('buildResource tags the resource with the job id when given one', () => {
+  const withJob = buildResource('svc', 789)
+  assert.equal(withJob.attributes['github.job_id'], '789')
+
+  const withoutJob = buildResource('svc')
+  assert.equal(withoutJob.attributes['github.job_id'], '')
 })
 
 test('parseHeaders splits comma-separated k=v pairs', () => {

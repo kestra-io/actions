@@ -1,10 +1,9 @@
 import * as core from '@actions/core'
 import type { GitHub } from '@actions/github/lib/utils'
 import { SeverityNumber } from '@opentelemetry/api-logs'
-import type { Resource } from '@opentelemetry/resources'
 import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { buildLogRecord, type LogInput } from './otlp.js'
+import { buildLogRecord, buildResource, type LogInput } from './otlp.js'
 import type { WorkflowJob } from './resolve-job.js'
 
 type Octokit = InstanceType<typeof GitHub>
@@ -60,8 +59,10 @@ export function parseJobLog(
   text: string,
   job: WorkflowJob,
   traceId: string,
-  resource: Resource
+  serviceName: string
 ): ReadableLogRecord[] {
+  // Scoped to this job's id, same reasoning as github-trace.ts buildJobSpans.
+  const resource = buildResource(serviceName, job.id)
   const jobSpan = jobSpanId(job.id)
   const steps: StepWindow[] = (job.steps ?? [])
     .filter((s) => s.started_at && s.completed_at)
@@ -139,7 +140,7 @@ export async function buildWorkflowLogs(
   jobs: WorkflowJob[],
   runId: string | number,
   runAttempt: string | number,
-  resource: Resource
+  serviceName: string
 ): Promise<ReadableLogRecord[]> {
   const traceId = makeTraceId(runId, runAttempt)
   const all: ReadableLogRecord[] = []
@@ -152,7 +153,7 @@ export async function buildWorkflowLogs(
     if (job.conclusion === 'skipped') continue
     const text = await downloadJobLog(octokit, owner, repo, job.id)
     if (!text) continue
-    all.push(...parseJobLog(text, job, traceId, resource))
+    all.push(...parseJobLog(text, job, traceId, serviceName))
   }
   return all
 }

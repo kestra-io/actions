@@ -19,9 +19,12 @@ import * as core from '@actions/core'
  * trace id. Everything else is read from the OTEL_* / TRACEPARENT env vars the
  * action already exports.
  */
-function buildInitScript(serviceName: string): string {
+function buildInitScript(serviceName: string, jobId: number | null): string {
   const gradleServiceName = `${serviceName} - Gradle`
   const junitServiceName = `${serviceName} - JUnit`
+  // Embedded as a literal (not read from an env var — GitHub doesn't expose the
+  // numeric job id, only the resolved-via-API id this action already looked up).
+  const jobIdLiteral = jobId === null ? 'null' : JSON.stringify(String(jobId))
 
   return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
@@ -72,7 +75,9 @@ if (endpoint == null || endpoint.trim().isEmpty()) {
 def traceparent = System.getenv("TRACEPARENT")
 def headersEnv = System.getenv("OTEL_EXPORTER_OTLP_HEADERS") ?: ""
 def runId = System.getenv("GITHUB_RUN_ID")
-def instanceId = runId ? (runId + "-" + (System.getenv("GITHUB_RUN_ATTEMPT") ?: "1")) : (System.getenv("RUNNER_NAME") ?: "github-actions")
+def runAttempt = System.getenv("GITHUB_RUN_ATTEMPT") ?: "1"
+def jobId = ${jobIdLiteral}
+def instanceId = runId ? (jobId ? "Workflow " + runId + " - Job " + jobId + " - Attempt " + runAttempt : "Workflow " + runId + " - Attempt " + runAttempt) : (System.getenv("RUNNER_NAME") ?: "github-actions")
 def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
 
 def addHeaders = { builder ->
@@ -177,11 +182,11 @@ function gradleUserHome(): string {
  * Install the tracing init script into $GRADLE_USER_HOME/init.d so every later
  * `gradle`/`./gradlew` invocation in the job is traced without any build.gradle change.
  */
-export function installGradleInitScript(serviceName: string): string {
+export function installGradleInitScript(serviceName: string, jobId: number | null = null): string {
   const initDir = path.join(gradleUserHome(), 'init.d')
   fs.mkdirSync(initDir, { recursive: true })
   const scriptPath = path.join(initDir, 'otel-collect.gradle')
-  fs.writeFileSync(scriptPath, buildInitScript(serviceName))
+  fs.writeFileSync(scriptPath, buildInitScript(serviceName, jobId))
   core.info(`Installed Gradle tracing init script: ${scriptPath}`)
   return scriptPath
 }
