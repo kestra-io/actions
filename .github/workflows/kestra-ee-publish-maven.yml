@@ -84,6 +84,8 @@ jobs:
         working-directory: kestra-ee
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
+          # Lets :script:downloadKotlp authenticate against the GitHub release-asset throttle.
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./gradlew publish
 
       # Gradle dependency

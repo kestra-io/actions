@@ -107,6 +107,11 @@ jobs:
       # timeout so a residual stall fails fast instead of burning the whole budget.
       - name: Gradle - javadoc
         timeout-minutes: 15
+        # Lets :script:downloadKotlp authenticate: GitHub throttles anonymous release-asset
+        # downloads by killing the connection, which this shared-egress-IP runner pool hits
+        # constantly, and authenticated reads get a far larger budget.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
@@ -116,6 +121,8 @@ jobs:
           ./gradlew javadoc --parallel
 
       - name: Gradle - check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json

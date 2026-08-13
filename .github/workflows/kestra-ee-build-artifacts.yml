@@ -102,6 +102,9 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           NODE_OPTIONS: "--max-old-space-size=4096"
+          # Lets :script:downloadKotlp authenticate against the GitHub release-asset throttle,
+          # which self-hosted runners behind a shared egress IP hit constantly.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd kestra-ee
           if [ "${{ steps.cloud-ee.outputs.exists }}" == "true" ]; then

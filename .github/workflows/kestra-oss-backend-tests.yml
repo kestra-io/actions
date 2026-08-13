@@ -84,6 +84,10 @@ jobs:
       - name: Gradle - check and javadoc
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
+        # Lets :script:downloadKotlp authenticate: GitHub throttles anonymous release-asset
+        # downloads by killing the connection, and authenticated reads get a far larger budget.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           ./gradlew check javadoc --parallel
 

@@ -65,6 +65,10 @@ jobs:
       # Build
       - name: Gradle - Build
         shell: bash
+        # Lets :script:downloadKotlp authenticate: GitHub throttles anonymous release-asset
+        # downloads by killing the connection, and authenticated reads get a far larger budget.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           ./gradlew executableJar
 
