@@ -12,8 +12,8 @@ inputs:
     required: false
     default: "*/build/libs/*.jar"
 
-  secrets:
-    description: 'Secrets passed as toJSON'
+  github-token:
+    description: 'GitHub token for PR comments'
     required: true
 
 runs:
@@ -47,7 +47,7 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
-        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: "🛡 Trivy"
         files: |
           ${{ github.workspace }}/trivy-result.json
@@ -60,7 +60,7 @@ runs:
           | Vulnerability | Severity | Package | Installed Version | Fixed Version |
           | :--- | :--- | :--- | :--- | :--- |
           {%- for vulnerability in suite.Vulnerabilities %}
-          | [{{ vulnerability.VulnerabilityID }}]({{ vulnerability.PrimaryURL }}) | {{ vulnerability.Severity }} | {{ vulnerability.PkgName }} | {{ vulnerability.InstalledVersion }} | {{ vulnerability.FixedVersion }} |          
+          | [{{ vulnerability.VulnerabilityID }}]({{ vulnerability.PrimaryURL }}) | {{ vulnerability.Severity }} | {{ vulnerability.PkgName }} | {{ vulnerability.InstalledVersion }} | {{ vulnerability.FixedVersion }} |
           {%- endfor %}
           {% endif %}
           {%- endfor %}
