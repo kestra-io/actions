@@ -3,7 +3,6 @@ import { test } from 'node:test'
 import { SeverityNumber } from '@opentelemetry/api-logs'
 import { buildWorkflowLogs, parseJobLog } from './github-logs.js'
 import { jobSpanId, stepSpanId, traceId } from './ids.js'
-import { buildResource } from './otlp.js'
 import type { WorkflowJob } from './resolve-job.js'
 
 const job: WorkflowJob = {
@@ -26,21 +25,21 @@ const job: WorkflowJob = {
   ]
 }
 
-const resource = buildResource('svc')
+const serviceName = 'svc'
 
 test('parses timestamped lines and assigns the trace id', () => {
   const text = '2026-06-20T10:02:00.0000000Z hello world'
-  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  const recs = parseJobLog(text, job, traceId('123', '1'), serviceName)
   assert.equal(recs.length, 1)
   assert.equal(recs[0].body, 'hello world')
   assert.equal(recs[0].spanContext?.traceId, traceId('123', '1'))
 })
 
 test('correlates a line inside a step window to the step span, else the job span', () => {
-  const inStep = parseJobLog('2026-06-20T10:02:00.0000000Z during gradle', job, traceId('123', '1'), resource)
+  const inStep = parseJobLog('2026-06-20T10:02:00.0000000Z during gradle', job, traceId('123', '1'), serviceName)
   assert.equal(inStep[0].spanContext?.spanId, stepSpanId(456, 'Test - Gradle Check'))
 
-  const outsideStep = parseJobLog('2026-06-20T10:00:30.0000000Z setup phase', job, traceId('123', '1'), resource)
+  const outsideStep = parseJobLog('2026-06-20T10:00:30.0000000Z setup phase', job, traceId('123', '1'), serviceName)
   assert.equal(outsideStep[0].spanContext?.spanId, jobSpanId(456))
 })
 
@@ -53,7 +52,7 @@ test('maps ##[error] / ##[warning] markers to severity', () => {
     ].join('\n'),
     job,
     traceId('123', '1'),
-    resource
+    serviceName
   )
   assert.equal(recs[0].severityNumber, SeverityNumber.ERROR)
   assert.equal(recs[1].severityNumber, SeverityNumber.WARN)
@@ -62,14 +61,14 @@ test('maps ##[error] / ##[warning] markers to severity', () => {
 
 test('strips ANSI escape sequences from log bodies', () => {
   const text = '2026-06-20T10:02:00.0000000Z [36;1mBUILD[0m [32msuccess[0m'
-  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  const recs = parseJobLog(text, job, traceId('123', '1'), serviceName)
   assert.equal(recs.length, 1)
   assert.equal(recs[0].body, 'BUILD success')
 })
 
 test('detects severity after ANSI codes are stripped', () => {
   const text = '2026-06-20T10:02:00.0000000Z [31m##[error][0mboom'
-  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  const recs = parseJobLog(text, job, traceId('123', '1'), serviceName)
   assert.equal(recs[0].severityNumber, SeverityNumber.ERROR)
   assert.equal(recs[0].body, 'boom')
 })
@@ -83,7 +82,7 @@ test('strips ##[group] / ##[endgroup] and other workflow-command markers', () =>
     ].join('\n'),
     job,
     traceId('123', '1'),
-    resource
+    serviceName
   )
   // ##[endgroup] becomes empty after stripping and is dropped.
   assert.deepEqual(
@@ -93,7 +92,7 @@ test('strips ##[group] / ##[endgroup] and other workflow-command markers', () =>
 })
 
 test('skips blank lines', () => {
-  const recs = parseJobLog('2026-06-20T10:02:00.0000000Z line\n\n   \n', job, traceId('123', '1'), resource)
+  const recs = parseJobLog('2026-06-20T10:02:00.0000000Z line\n\n   \n', job, traceId('123', '1'), serviceName)
   assert.equal(recs.length, 1)
 })
 
@@ -104,7 +103,7 @@ test('coalesces an indented stack trace into a single record', () => {
     '2026-06-20T10:02:00.2000000Z \tat com.foo.Baz.run(Baz.java:7)',
     '2026-06-20T10:02:01.0000000Z next log line'
   ].join('\n')
-  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  const recs = parseJobLog(text, job, traceId('123', '1'), serviceName)
   assert.equal(recs.length, 2)
   assert.match(String(recs[0].body), /AssertionError: boom\n\tat com\.foo\.Bar.*\n\tat com\.foo\.Baz/)
   assert.equal(recs[1].body, 'next log line')
@@ -112,7 +111,7 @@ test('coalesces an indented stack trace into a single record', () => {
 
 test('appends untimestamped continuation lines to the previous entry', () => {
   const text = '2026-06-20T10:02:00.0000000Z header\ncontinuation without timestamp'
-  const recs = parseJobLog(text, job, traceId('123', '1'), resource)
+  const recs = parseJobLog(text, job, traceId('123', '1'), serviceName)
   assert.equal(recs.length, 1)
   assert.equal(recs[0].body, 'header\ncontinuation without timestamp')
 })
@@ -136,6 +135,6 @@ test('buildWorkflowLogs skips in-progress and skipped jobs without downloading',
     { ...job, id: 3, status: 'in_progress', conclusion: null }
   ]
 
-  await buildWorkflowLogs(octokit, 'owner', 'repo', jobs, '123', '1', resource)
+  await buildWorkflowLogs(octokit, 'owner', 'repo', jobs, '123', '1', serviceName)
   assert.deepEqual(requestedJobIds, [1])
 })

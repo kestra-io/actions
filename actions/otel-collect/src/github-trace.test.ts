@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildWorkflowTrace } from './github-trace.js'
 import { jobSpanId, rootSpanId, stepSpanId, traceId } from './ids.js'
-import { buildResource } from './otlp.js'
 import type { WorkflowJob } from './resolve-job.js'
 
 const job = (id: number, name: string): WorkflowJob => ({
@@ -26,8 +25,7 @@ const job = (id: number, name: string): WorkflowJob => ({
 })
 
 test('buildWorkflowTrace links root -> job -> step with deterministic ids', () => {
-  const resource = buildResource('svc')
-  const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', resource, Date.now())
+  const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', 'svc', Date.now())
 
   const tId = traceId('123', '1')
   const root = spans.find((s) => s.spanContext().spanId === rootSpanId('123', '1'))
@@ -53,14 +51,13 @@ test('buildWorkflowTrace links root -> job -> step with deterministic ids', () =
 })
 
 test('buildWorkflowTrace excludes skipped jobs', () => {
-  const resource = buildResource('svc')
   const skippedJob: WorkflowJob = {
     ...job(789, 'skipped-job'),
     conclusion: 'skipped',
     started_at: null,
     completed_at: null
   }
-  const spans = buildWorkflowTrace([job(456, 'test'), skippedJob], '123', '1', 'CI', resource, Date.now())
+  const spans = buildWorkflowTrace([job(456, 'test'), skippedJob], '123', '1', 'CI', 'svc', Date.now())
 
   const skippedJobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(789))
   assert.equal(skippedJobSpan, undefined, 'skipped job span should not be exported')
@@ -69,13 +66,31 @@ test('buildWorkflowTrace excludes skipped jobs', () => {
   assert.ok(ranJobSpan, 'non-skipped job span still present')
 })
 
+test('job and step spans get a job-scoped instance id; the root span gets a run-level one', () => {
+  const prev = { id: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT }
+  process.env.GITHUB_RUN_ID = '123'
+  process.env.GITHUB_RUN_ATTEMPT = '1'
+  try {
+    const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', 'svc', Date.now())
+    const root = spans.find((s) => s.spanContext().spanId === rootSpanId('123', '1'))
+    const jobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(456))
+
+    assert.equal(root?.resource.attributes['service.instance.id'], 'Workflow 123 - Attempt 1')
+    assert.equal(jobSpan?.resource.attributes['service.instance.id'], 'Workflow 123 - Job 456 - Attempt 1')
+  } finally {
+    if (prev.id === undefined) delete process.env.GITHUB_RUN_ID
+    else process.env.GITHUB_RUN_ID = prev.id
+    if (prev.attempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT
+    else process.env.GITHUB_RUN_ATTEMPT = prev.attempt
+  }
+})
+
 test('a live build span using the exported traceparent nests under the step span', () => {
   // The action exports TRACEPARENT 00-<trace>-<stepSpanId>-01; a gradle span
   // created with that parent must therefore carry the same parentSpanId the
   // post-hoc step span is built with.
   const exportedParent = stepSpanId(456, 'Gradle - check and javadoc')
-  const resource = buildResource('svc')
-  const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', resource, Date.now())
+  const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', 'svc', Date.now())
   const stepSpan = spans.find((s) => s.spanContext().spanId === exportedParent)
   assert.ok(stepSpan, 'the step the build runs in exists with the id used in TRACEPARENT')
 })

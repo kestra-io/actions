@@ -38,7 +38,12 @@ async function ensureCollector(version: string): Promise<string> {
   return path.join(dir, binName)
 }
 
-function buildConfig(endpoint: string, headers: Record<string, string>, serviceName: string): string {
+function buildConfig(
+  endpoint: string,
+  headers: Record<string, string>,
+  serviceName: string,
+  jobId?: number
+): string {
   const headerLines = Object.entries(headers)
     .map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
     .join('\n')
@@ -122,13 +127,19 @@ processors:
         value: ${JSON.stringify(NAMESPACE)}
         action: upsert
       - key: service.instance.id
-        value: ${JSON.stringify(serviceInstanceId())}
+        value: ${JSON.stringify(serviceInstanceId(jobId))}
         action: upsert
       - key: github.run_id
         value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? '')}
         action: upsert
       - key: github.run_attempt
         value: ${JSON.stringify(process.env.GITHUB_RUN_ATTEMPT ?? '')}
+        action: upsert
+      - key: github.job_id
+        value: ${JSON.stringify(jobId !== undefined ? String(jobId) : '')}
+        action: upsert
+      - key: github.job.name
+        value: ${JSON.stringify(process.env.GITHUB_JOB ?? '')}
         action: upsert
   batch:
 
@@ -155,14 +166,15 @@ export async function startCollector(
   version: string,
   endpoint: string,
   rawHeaders: string,
-  serviceName: string
+  serviceName: string,
+  jobId?: number
 ): Promise<void> {
   const bin = await ensureCollector(version)
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp'
   const configPath = path.join(tmp, 'otel-collect-config.yaml')
   const logPath = path.join(tmp, 'otel-collect-collector.log')
 
-  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName))
+  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId))
 
   const out = fs.openSync(logPath, 'a')
   const child = spawn(bin, ['--config', configPath], {

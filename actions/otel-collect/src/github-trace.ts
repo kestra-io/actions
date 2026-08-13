@@ -1,7 +1,6 @@
-import type { Resource } from '@opentelemetry/resources'
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from './otlp.js'
+import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from './otlp.js'
 import type { WorkflowJob } from './resolve-job.js'
 
 const parseTime = (iso: string | null | undefined, fallback: number): number => {
@@ -15,9 +14,13 @@ export function buildJobSpans(
   job: WorkflowJob,
   traceId: string,
   parentSpanId: string,
-  resource: Resource,
+  serviceName: string,
   nowMs: number
 ): ReadableSpan[] {
+  // Scoped to this job's id, not just the run: a workflow run has many jobs, each
+  // on its own runner, so a run-level instance id would collapse all their host
+  // metrics under one "instance" (see otlp.ts serviceInstanceId).
+  const resource = buildResource(serviceName, job.id)
   const spans: ReadableSpan[] = []
   const jobStart = parseTime(job.started_at, nowMs)
   const jobEnd = parseTime(job.completed_at, nowMs)
@@ -33,7 +36,6 @@ export function buildJobSpans(
     conclusion: job.conclusion,
     attributes: {
       [TELEMETRY_SOURCE_ATTR]: 'github-actions',
-      'cicd.pipeline.task.run.id': job.id,
       'github.job.name': job.name,
       'github.job.status': job.status,
       'github.job.conclusion': job.conclusion ?? ''
@@ -52,6 +54,7 @@ export function buildJobSpans(
       conclusion: step.conclusion,
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: 'github-actions',
+        'github.job.name': job.name,
         'github.step.name': step.name,
         'github.step.number': step.number,
         'github.step.status': step.status,
@@ -69,12 +72,12 @@ export function buildSingleJobTrace(
   job: WorkflowJob,
   runId: string | number,
   runAttempt: string | number,
-  resource: Resource,
+  serviceName: string,
   nowMs: number
 ): ReadableSpan[] {
   const traceId = makeTraceId(runId, runAttempt)
   const rootId = rootSpanId(runId, runAttempt)
-  return buildJobSpans(job, traceId, rootId, resource, nowMs)
+  return buildJobSpans(job, traceId, rootId, serviceName, nowMs)
 }
 
 /** Build the full workflow tree: root span + every job + every step (`export-all`). */
@@ -83,7 +86,7 @@ export function buildWorkflowTrace(
   runId: string | number,
   runAttempt: string | number,
   workflowName: string,
-  resource: Resource,
+  serviceName: string,
   nowMs: number
 ): ReadableSpan[] {
   const traceId = makeTraceId(runId, runAttempt)
@@ -96,6 +99,8 @@ export function buildWorkflowTrace(
   const rootStart = starts.length ? Math.min(...starts) : nowMs
   const rootEnd = ends.length ? Math.max(...ends) : nowMs
 
+  // No single job id: this span represents the whole run, not one runner, so it
+  // gets the run-level instance id (buildResource with no jobId).
   const root = buildSpan(
     {
       name: workflowName || 'workflow',
@@ -106,17 +111,16 @@ export function buildWorkflowTrace(
       conclusion: ranJobs.some((j) => j.conclusion && j.conclusion !== 'success') ? 'failure' : 'success',
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: 'github-actions',
-        'github.workflow': workflowName,
         'github.run_id': String(runId),
         'github.run_attempt': String(runAttempt)
       }
     },
-    resource
+    buildResource(serviceName)
   )
 
   const spans: ReadableSpan[] = [root]
   for (const job of ranJobs) {
-    spans.push(...buildJobSpans(job, traceId, rootId, resource, nowMs))
+    spans.push(...buildJobSpans(job, traceId, rootId, serviceName, nowMs))
   }
   return spans
 }

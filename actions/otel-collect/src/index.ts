@@ -7,7 +7,7 @@ import { buildWorkflowLogs } from './github-logs.js'
 import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { baseEndpoint, buildResource, exportLogs, exportSpans, NAMESPACE, parseHeaders } from './otlp.js'
+import { baseEndpoint, exportLogs, exportSpans, NAMESPACE, parseHeaders } from './otlp.js'
 import { listJobs, resolveJobId, type WorkflowJob } from './resolve-job.js'
 
 const STARTED_STATE = 'otel-collect-started'
@@ -115,11 +115,17 @@ async function main(inputs: Inputs): Promise<void> {
   }
 
   if (inputs.gradleTracingEnabled) {
-    installGradleInitScript(serviceName(inputs))
+    installGradleInitScript(serviceName(inputs), jobId)
   }
 
   if (inputs.hostMetricsEnabled) {
-    await startCollector(inputs.collectorVersion, inputs.otlpEndpoint, inputs.otlpHeaders, serviceName(inputs))
+    await startCollector(
+      inputs.collectorVersion,
+      inputs.otlpEndpoint,
+      inputs.otlpHeaders,
+      serviceName(inputs),
+      jobId ?? undefined
+    )
   }
 }
 
@@ -144,8 +150,7 @@ async function post(inputs: Inputs): Promise<void> {
       return
     }
 
-    const resource = buildResource(serviceName(inputs))
-    const spans = buildSingleJobTrace(job, runId(), runAttempt(), resource, Date.now())
+    const spans = buildSingleJobTrace(job, runId(), runAttempt(), serviceName(inputs), Date.now())
     await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders))
     core.info(`Exported ${spans.length} span(s) for job "${job.name}"`)
   } catch (err) {
@@ -159,13 +164,12 @@ async function exportAll(inputs: Inputs): Promise<void> {
   const { owner, repo } = github.context.repo
   const jobs: WorkflowJob[] = await listJobs(octokit, owner, repo, runId(), runAttempt())
 
-  const resource = buildResource(serviceName(inputs))
   const spans = buildWorkflowTrace(
     jobs,
     runId(),
     runAttempt(),
     process.env.GITHUB_WORKFLOW ?? '',
-    resource,
+    serviceName(inputs),
     Date.now()
   )
   await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders))
@@ -173,7 +177,7 @@ async function exportAll(inputs: Inputs): Promise<void> {
 
   if (inputs.logsEnabled) {
     try {
-      const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), resource)
+      const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), serviceName(inputs))
       await exportLogs(logs, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders), 30000)
       core.info(`Exported ${logs.length} log record(s) for ${jobs.length} job(s)`)
     } catch (err) {

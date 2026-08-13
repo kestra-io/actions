@@ -28,3 +28,24 @@ test('installGradleInitScript derives distinct " - Gradle" / " - JUnit" service 
     fs.rmSync(gradleUserHome, { recursive: true, force: true })
   }
 })
+
+test('installGradleInitScript embeds a job-scoped instance id when given a job id, else falls back to run-level', () => {
+  const gradleUserHome = fs.mkdtempSync(path.join(os.tmpdir(), 'otel-collect-gradle-'))
+  const prev = process.env.GRADLE_USER_HOME
+  process.env.GRADLE_USER_HOME = gradleUserHome
+  try {
+    const withJob = fs.readFileSync(installGradleInitScript('svc', 789), 'utf8')
+    assert.match(withJob, /def jobId = "789"/)
+    assert.match(
+      withJob,
+      /"Workflow " \+ runId \+ " - Job " \+ jobId \+ " - Attempt " \+ runAttempt/
+    )
+
+    const withoutJob = fs.readFileSync(installGradleInitScript('svc'), 'utf8')
+    assert.match(withoutJob, /def jobId = null/)
+  } finally {
+    if (prev === undefined) delete process.env.GRADLE_USER_HOME
+    else process.env.GRADLE_USER_HOME = prev
+    fs.rmSync(gradleUserHome, { recursive: true, force: true })
+  }
+})
