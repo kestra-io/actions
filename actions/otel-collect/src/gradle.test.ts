@@ -26,7 +26,10 @@ test('installGradleInitScript derives distinct " - Gradle" / " - JUnit" service 
     // hostmetrics collector (collector.ts), so Gradle/JUnit spans aren't the only
     // ones missing host.name / github.* in a trace backend.
     assert.match(script, /def hostName = System\.getenv\("RUNNER_NAME"\) \?: ""/)
-    assert.match(script, /def workflowName = System\.getenv\("GITHUB_WORKFLOW"\) \?: ""/)
+    // workflowName is embedded as a literal (not read from GITHUB_WORKFLOW), like jobId
+    // above — GITHUB_WORKFLOW always resolves to the top-level caller workflow's name for
+    // a job called via `workflow_call`, so the action resolves the real one via the API.
+    assert.match(script, /def workflowName = ""/)
     assert.match(script, /def sha = System\.getenv\("GITHUB_SHA"\) \?: ""/)
     assert.match(script, /def ref = System\.getenv\("GITHUB_REF"\) \?: ""/)
     assert.match(script, /def runnerEnvironment = System\.getenv\("RUNNER_ENVIRONMENT"\) \?: ""/)
@@ -58,6 +61,20 @@ test('installGradleInitScript embeds a job-scoped instance id when given a job i
 
     const withoutJob = fs.readFileSync(installGradleInitScript('svc'), 'utf8')
     assert.match(withoutJob, /def jobId = null/)
+  } finally {
+    if (prev === undefined) delete process.env.GRADLE_USER_HOME
+    else process.env.GRADLE_USER_HOME = prev
+    fs.rmSync(gradleUserHome, { recursive: true, force: true })
+  }
+})
+
+test('installGradleInitScript embeds the resolved (reusable) workflow name as a literal', () => {
+  const gradleUserHome = fs.mkdtempSync(path.join(os.tmpdir(), 'otel-collect-gradle-'))
+  const prev = process.env.GRADLE_USER_HOME
+  process.env.GRADLE_USER_HOME = gradleUserHome
+  try {
+    const script = fs.readFileSync(installGradleInitScript('svc', 789, 'Frontend tests'), 'utf8')
+    assert.match(script, /def workflowName = "Frontend tests"/)
   } finally {
     if (prev === undefined) delete process.env.GRADLE_USER_HOME
     else process.env.GRADLE_USER_HOME = prev

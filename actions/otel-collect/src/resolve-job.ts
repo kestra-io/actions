@@ -6,6 +6,12 @@ type Octokit = InstanceType<typeof GitHub>
 export interface WorkflowJob {
   id: number
   name: string
+  // The name of the (reusable) workflow file that actually ran this job — distinct
+  // from GITHUB_WORKFLOW/github.workflow, which the Actions runtime always resolves
+  // to the top-level *caller* workflow's name when this job belongs to a workflow
+  // called via `workflow_call`. This is the only way to recover the callee's own
+  // `name:` (e.g. "Frontend tests") for that case.
+  workflow_name: string | null
   status: string
   conclusion: string | null
   runner_name: string | null
@@ -56,20 +62,20 @@ export async function listJobs(
 }
 
 /**
- * Resolve the numeric id of the job this action is currently running in.
+ * Resolve the job this action is currently running in.
  *
  * The job id is not exposed as a default GitHub env var, so we list the jobs of
  * the current run attempt and match ours. Matrix jobs can share a name, so we
  * disambiguate on RUNNER_NAME among the in-progress jobs, retrying since the job
  * row can be momentarily absent from the API right after a job starts.
  */
-export async function resolveJobId(
+export async function resolveJob(
   octokit: Octokit,
   owner: string,
   repo: string,
   runId: number,
   runAttempt: number
-): Promise<number | null> {
+): Promise<WorkflowJob | null> {
   const runnerName = process.env.RUNNER_NAME
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -81,7 +87,7 @@ export async function resolveJobId(
       match = inProgress[0]
     }
     if (match) {
-      return match.id
+      return match
     }
 
     core.debug(`Job id not resolvable yet (attempt ${attempt + 1}/5, ${inProgress.length} in progress)`)
@@ -89,4 +95,16 @@ export async function resolveJobId(
   }
 
   return null
+}
+
+/** Convenience wrapper over resolveJob() for callers that only need the numeric id. */
+export async function resolveJobId(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  runId: number,
+  runAttempt: number
+): Promise<number | null> {
+  const job = await resolveJob(octokit, owner, repo, runId, runAttempt)
+  return job?.id ?? null
 }

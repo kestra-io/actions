@@ -7,6 +7,7 @@ import type { WorkflowJob } from './resolve-job.js'
 const job = (id: number, name: string): WorkflowJob => ({
   id,
   name,
+  workflow_name: 'Reusable Workflow',
   status: 'completed',
   conclusion: 'success',
   runner_name: 'runner-1',
@@ -119,6 +120,21 @@ test('job and step spans get github.runner_environment from the job\'s own label
   } finally {
     if (prev === undefined) delete process.env.RUNNER_ENVIRONMENT
     else process.env.RUNNER_ENVIRONMENT = prev
+  }
+})
+
+test('job and step spans get github.workflow.name from the job\'s own workflow_name, not GITHUB_WORKFLOW', () => {
+  const prev = process.env.GITHUB_WORKFLOW
+  try {
+    // GITHUB_WORKFLOW resolves to the top-level *caller* workflow's name for a job
+    // called via `workflow_call` — it must not leak onto the reusable workflow's own spans.
+    process.env.GITHUB_WORKFLOW = 'Main Workflow'
+    const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', 'svc', Date.now())
+    const jobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(456))
+    assert.equal(jobSpan?.resource.attributes['github.workflow.name'], 'Reusable Workflow')
+  } finally {
+    if (prev === undefined) delete process.env.GITHUB_WORKFLOW
+    else process.env.GITHUB_WORKFLOW = prev
   }
 })
 

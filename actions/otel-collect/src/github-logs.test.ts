@@ -8,6 +8,7 @@ import type { WorkflowJob } from './resolve-job.js'
 const job: WorkflowJob = {
   id: 456,
   name: 'test',
+  workflow_name: 'Reusable Workflow',
   status: 'completed',
   conclusion: 'success',
   runner_name: 'runner-1',

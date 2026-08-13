@@ -42,7 +42,8 @@ function buildConfig(
   endpoint: string,
   headers: Record<string, string>,
   serviceName: string,
-  jobId?: number
+  jobId?: number,
+  workflowName?: string
 ): string {
   const headerLines = Object.entries(headers)
     .map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
@@ -133,7 +134,10 @@ processors:
         value: ${JSON.stringify(process.env.GITHUB_REPOSITORY ?? '')}
         action: upsert
       - key: github.workflow.name
-        value: ${JSON.stringify(process.env.GITHUB_WORKFLOW ?? '')}
+        # GITHUB_WORKFLOW always resolves to the top-level *caller* workflow's name
+        # for a job called via \`workflow_call\`, so this is passed in resolved from
+        # the GitHub Jobs API's per-job \`workflow_name\` (see resolve-job.ts) instead.
+        value: ${JSON.stringify(workflowName ?? process.env.GITHUB_WORKFLOW ?? '')}
         action: upsert
       - key: github.run_id
         value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? '')}
@@ -182,14 +186,15 @@ export async function startCollector(
   endpoint: string,
   rawHeaders: string,
   serviceName: string,
-  jobId?: number
+  jobId?: number,
+  workflowName?: string
 ): Promise<void> {
   const bin = await ensureCollector(version)
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp'
   const configPath = path.join(tmp, 'otel-collect-config.yaml')
   const logPath = path.join(tmp, 'otel-collect-collector.log')
 
-  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId))
+  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName))
 
   const out = fs.openSync(logPath, 'a')
   const child = spawn(bin, ['--config', configPath], {

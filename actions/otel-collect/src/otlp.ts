@@ -74,19 +74,26 @@ export function serviceInstanceId(jobId?: number | string): string {
  * API's `runner_name` (github-trace.ts / github-logs.ts pass `job.runner_name`).
  * @param runnerEnvironment "github-hosted"/"self-hosted" for this job, e.g. via
  * resolve-job.ts's `runnerEnvironmentOf(job)`.
- * Both required whenever the resource is built for a job other than the one this
- * process is currently running in — the `export-all` aggregation job builds
- * spans/logs for every job in the run from its own single process, so reading
- * this process's own RUNNER_NAME/RUNNER_ENVIRONMENT would mislabel every other
- * job's telemetry with the aggregator's own host and runner flavour. Both fall
- * back to this process's own env vars (correct for the per-job `post` hook,
- * which only ever builds resources for the job it's running in).
+ * @param workflowName The name of the (reusable) workflow that actually ran this
+ * job, e.g. from the GitHub Jobs API's `workflow_name` (github-trace.ts /
+ * github-logs.ts pass `job.workflow_name`). Falls back to GITHUB_WORKFLOW, which
+ * the Actions runtime resolves to the top-level *caller* workflow's name — correct
+ * for the run-root span (no job), but wrong for a job called via `workflow_call`.
+ * All four (jobId/hostName/runnerEnvironment/workflowName) required whenever the
+ * resource is built for a job other than the one this process is currently
+ * running in — the `export-all` aggregation job builds spans/logs for every job in
+ * the run from its own single process, so reading this process's own env vars
+ * would mislabel every other job's telemetry with the aggregator's own host,
+ * runner flavour, and (top-level) workflow name. All fall back to this process's
+ * own env vars (correct for the per-job `post` hook, which only ever builds
+ * resources for the job it's running in).
  */
 export function buildResource(
   serviceName: string,
   jobId?: number | string,
   hostName?: string,
-  runnerEnvironment?: string
+  runnerEnvironment?: string,
+  workflowName?: string
 ): Resource {
   return resourceFromAttributes({
     'service.name': serviceName,
@@ -98,7 +105,7 @@ export function buildResource(
     // job while the OS-level hostname isn't guaranteed to be on hosted runners), so
     // Elastic APM can link a traced service to that host's infrastructure metrics.
     'host.name': hostName ?? process.env.RUNNER_NAME ?? os.hostname(),
-    'github.workflow.name': process.env.GITHUB_WORKFLOW ?? '',
+    'github.workflow.name': workflowName ?? process.env.GITHUB_WORKFLOW ?? '',
     'vcs.repository.name': process.env.GITHUB_REPOSITORY ?? '',
     'github.run_id': process.env.GITHUB_RUN_ID ?? '',
     'github.run_attempt': process.env.GITHUB_RUN_ATTEMPT ?? '',

@@ -19,12 +19,17 @@ import * as core from '@actions/core'
  * trace id. Everything else is read from the OTEL_* / TRACEPARENT env vars the
  * action already exports.
  */
-function buildInitScript(serviceName: string, jobId: number | null): string {
+function buildInitScript(serviceName: string, jobId: number | null, workflowName: string | null): string {
   const gradleServiceName = `${serviceName} - Gradle`
   const junitServiceName = `${serviceName} - JUnit`
   // Embedded as a literal (not read from an env var — GitHub doesn't expose the
   // numeric job id, only the resolved-via-API id this action already looked up).
   const jobIdLiteral = jobId === null ? 'null' : JSON.stringify(String(jobId))
+  // Also embedded as a literal: GITHUB_WORKFLOW always resolves to the top-level
+  // *caller* workflow's name for a job called via `workflow_call`, so this action
+  // resolves the actual (reusable) workflow name via the GitHub Jobs API's
+  // `workflow_name` up front (see resolve-job.ts) rather than reading it here.
+  const workflowNameLiteral = JSON.stringify(workflowName ?? '')
 
   return String.raw`import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
@@ -83,7 +88,7 @@ def repositoryName = System.getenv("GITHUB_REPOSITORY") ?: ""
 // the hostmetrics collector (collector.ts), so Gradle/JUnit spans link to the same host
 // and workflow run instead of only carrying service identity.
 def hostName = System.getenv("RUNNER_NAME") ?: ""
-def workflowName = System.getenv("GITHUB_WORKFLOW") ?: ""
+def workflowName = ${workflowNameLiteral}
 def sha = System.getenv("GITHUB_SHA") ?: ""
 def ref = System.getenv("GITHUB_REF") ?: ""
 def runnerEnvironment = System.getenv("RUNNER_ENVIRONMENT") ?: ""
@@ -204,11 +209,15 @@ function gradleUserHome(): string {
  * Install the tracing init script into $GRADLE_USER_HOME/init.d so every later
  * `gradle`/`./gradlew` invocation in the job is traced without any build.gradle change.
  */
-export function installGradleInitScript(serviceName: string, jobId: number | null = null): string {
+export function installGradleInitScript(
+  serviceName: string,
+  jobId: number | null = null,
+  workflowName: string | null = null
+): string {
   const initDir = path.join(gradleUserHome(), 'init.d')
   fs.mkdirSync(initDir, { recursive: true })
   const scriptPath = path.join(initDir, 'otel-collect.gradle')
-  fs.writeFileSync(scriptPath, buildInitScript(serviceName, jobId))
+  fs.writeFileSync(scriptPath, buildInitScript(serviceName, jobId, workflowName))
   core.info(`Installed Gradle tracing init script: ${scriptPath}`)
   return scriptPath
 }
