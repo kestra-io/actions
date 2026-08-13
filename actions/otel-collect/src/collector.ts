@@ -129,6 +129,12 @@ processors:
       - key: service.instance.id
         value: ${JSON.stringify(serviceInstanceId(jobId))}
         action: upsert
+      - key: vcs.repository.name
+        value: ${JSON.stringify(process.env.GITHUB_REPOSITORY ?? '')}
+        action: upsert
+      - key: github.workflow.name
+        value: ${JSON.stringify(process.env.GITHUB_WORKFLOW ?? '')}
+        action: upsert
       - key: github.run_id
         value: ${JSON.stringify(process.env.GITHUB_RUN_ID ?? '')}
         action: upsert
@@ -138,8 +144,17 @@ processors:
       - key: github.job_id
         value: ${JSON.stringify(jobId !== undefined ? String(jobId) : '')}
         action: upsert
+      - key: github.sha
+        value: ${JSON.stringify(process.env.GITHUB_SHA ?? '')}
+        action: upsert
+      - key: github.ref
+        value: ${JSON.stringify(process.env.GITHUB_REF ?? '')}
+        action: upsert
       - key: github.job.name
         value: ${JSON.stringify(process.env.GITHUB_JOB ?? '')}
+        action: upsert
+      - key: github.runner_environment
+        value: \${env:RUNNER_ENVIRONMENT}
         action: upsert
   batch:
 

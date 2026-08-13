@@ -22,6 +22,21 @@ test('installGradleInitScript derives distinct " - Gradle" / " - JUnit" service 
     // vcs.repository.name is forwarded onto both layers' resources
     assert.match(script, /def repositoryName = System\.getenv\("GITHUB_REPOSITORY"\) \?: ""/)
     assert.match(script, /put\("vcs\.repository\.name", repositoryName\)/)
+    // Same host/workflow resource attributes as buildResource() (otlp.ts) and the
+    // hostmetrics collector (collector.ts), so Gradle/JUnit spans aren't the only
+    // ones missing host.name / github.* in a trace backend.
+    assert.match(script, /def hostName = System\.getenv\("RUNNER_NAME"\) \?: ""/)
+    assert.match(script, /def workflowName = System\.getenv\("GITHUB_WORKFLOW"\) \?: ""/)
+    assert.match(script, /def sha = System\.getenv\("GITHUB_SHA"\) \?: ""/)
+    assert.match(script, /def ref = System\.getenv\("GITHUB_REF"\) \?: ""/)
+    assert.match(script, /def runnerEnvironment = System\.getenv\("RUNNER_ENVIRONMENT"\) \?: ""/)
+    assert.match(script, /put\("host\.name", hostName\)/)
+    assert.match(script, /put\("github\.workflow\.name", workflowName\)/)
+    assert.match(script, /put\("github\.run_id", runId \?: ""\)/)
+    assert.match(script, /put\("github\.run_attempt", runAttempt\)/)
+    assert.match(script, /put\("github\.sha", sha\)/)
+    assert.match(script, /put\("github\.ref", ref\)/)
+    assert.match(script, /put\("github\.runner_environment", runnerEnvironment\)/)
   } finally {
     if (prev === undefined) delete process.env.GRADLE_USER_HOME
     else process.env.GRADLE_USER_HOME = prev

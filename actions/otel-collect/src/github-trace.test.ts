@@ -10,6 +10,7 @@ const job = (id: number, name: string): WorkflowJob => ({
   status: 'completed',
   conclusion: 'success',
   runner_name: 'runner-1',
+  labels: ['self-hosted'],
   started_at: '2026-06-20T10:00:00Z',
   completed_at: '2026-06-20T10:05:00Z',
   steps: [
@@ -82,6 +83,42 @@ test('job and step spans get a job-scoped instance id; the root span gets a run-
     else process.env.GITHUB_RUN_ID = prev.id
     if (prev.attempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT
     else process.env.GITHUB_RUN_ATTEMPT = prev.attempt
+  }
+})
+
+test('job and step spans get host.name from the job\'s own runner_name, not this process\'s RUNNER_NAME', () => {
+  const prev = process.env.RUNNER_NAME
+  try {
+    // The current process's runner (e.g. the export-all aggregation job) must not
+    // leak onto another job's spans.
+    process.env.RUNNER_NAME = 'aggregator-runner'
+    const spans = buildWorkflowTrace([job(456, 'test')], '123', '1', 'CI', 'svc', Date.now())
+    const jobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(456))
+    assert.equal(jobSpan?.resource.attributes['host.name'], 'runner-1')
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_NAME
+    else process.env.RUNNER_NAME = prev
+  }
+})
+
+test('job and step spans get github.runner_environment from the job\'s own labels, not this process\'s RUNNER_ENVIRONMENT', () => {
+  const prev = process.env.RUNNER_ENVIRONMENT
+  try {
+    // A workflow run can mix self-hosted and github-hosted jobs; the aggregator's
+    // own flavour must not leak onto another job's spans.
+    process.env.RUNNER_ENVIRONMENT = 'github-hosted'
+    const selfHosted = job(456, 'test')
+    const spans = buildWorkflowTrace([selfHosted], '123', '1', 'CI', 'svc', Date.now())
+    const jobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(456))
+    assert.equal(jobSpan?.resource.attributes['github.runner_environment'], 'self-hosted')
+
+    const hosted: WorkflowJob = { ...job(789, 'test2'), labels: ['ubuntu-latest'] }
+    const hostedSpans = buildWorkflowTrace([hosted], '123', '1', 'CI', 'svc', Date.now())
+    const hostedJobSpan = hostedSpans.find((s) => s.spanContext().spanId === jobSpanId(789))
+    assert.equal(hostedJobSpan?.resource.attributes['github.runner_environment'], 'github-hosted')
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_ENVIRONMENT
+    else process.env.RUNNER_ENVIRONMENT = prev
   }
 })
 

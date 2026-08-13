@@ -101,7 +101,7 @@ async function main(inputs: Inputs): Promise<void> {
   // these agents' services to this runner's infrastructure metrics too.
   core.exportVariable(
     'OTEL_RESOURCE_ATTRIBUTES',
-    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${os.hostname()}`
+    `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${process.env.RUNNER_NAME ?? os.hostname()}`
   )
   core.setOutput('trace-id', tId)
 

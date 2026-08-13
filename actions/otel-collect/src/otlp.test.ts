@@ -75,6 +75,20 @@ test('buildResource tags the resource with the job id when given one', () => {
   assert.equal(withoutJob.attributes['github.job_id'], '')
 })
 
+test('buildResource reads github.runner_environment from RUNNER_ENVIRONMENT', () => {
+  const prev = process.env.RUNNER_ENVIRONMENT
+  try {
+    process.env.RUNNER_ENVIRONMENT = 'github-hosted'
+    assert.equal(buildResource('svc').attributes['github.runner_environment'], 'github-hosted')
+
+    delete process.env.RUNNER_ENVIRONMENT
+    assert.equal(buildResource('svc').attributes['github.runner_environment'], '')
+  } finally {
+    if (prev === undefined) delete process.env.RUNNER_ENVIRONMENT
+    else process.env.RUNNER_ENVIRONMENT = prev
+  }
+})
+
 test('parseHeaders splits comma-separated k=v pairs', () => {
   assert.deepEqual(parseHeaders('Authorization=ApiKey abc,x-tenant=foo'), {
     Authorization: 'ApiKey abc',
