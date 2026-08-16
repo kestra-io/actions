@@ -58,7 +58,7 @@ env:
 jobs:
   plugins:
     name: List Plugins
-    runs-on: kestra-private-standard
+    runs-on: kestra-private-4cpu-4gb
     outputs:
       plugins: ${{ steps.plugins-outputs-step.outputs.plugins }}
     steps:
@@ -112,7 +112,7 @@ jobs:
   # ********************************************************************************************************************
   docker:
     name: Publish docker
-    runs-on: kestra-private-standard
+    runs-on: kestra-private-4cpu-4gb
     needs: [ plugins, build-artifacts ]
     strategy:
       matrix:
