@@ -111,7 +111,6 @@ jobs:
   docker:
     name: Publish Docker
     needs: [ plugins, build-artifacts ]
-    if: always() && !cancelled()
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -289,3 +288,8 @@ jobs:
         uses: kestra-io/actions/composite/slack-status@main
         with:
           webhook-url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+      # 'end' runs with always(), so without this gate it stays green on a failed
+      # run and anything watching the terminal job reads the release as successful.
+      - name: Fail when publish did not succeed
+        if: ${{ needs.docker.result != 'success' }}
+        run: exit 1
