@@ -11,6 +11,10 @@ inputs:
     description: "Java version for running the executable"
     required: false
     default: '25'
+  kestra-command:
+    description: "Kestra CLI command to run for schema generation (e.g. 'configuration-schema' or 'plugins-schema')"
+    required: false
+    default: "configuration-schema"
   output-path:
     description: "Output file name for the generated schema"
     required: false
@@ -51,6 +55,7 @@ runs:
       env:
         KESTRA_VERSION_RAW: ${{ inputs.kestra-version }}
         EDITION: ${{ inputs.edition }}
+        KESTRA_COMMAND: ${{ inputs.kestra-command }}
         EXECUTABLE: ${{ inputs.executable-path }}
         GCP_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
       run: |
@@ -69,7 +74,11 @@ runs:
           exit 0
         }
 
-        if [ "$EDITION" = "ee" ]; then
+        if [ "$KESTRA_COMMAND" = "plugins-schema" ]; then
+          # plugins-schema builds the full editor-autocompletion bundle, so it needs every OSS plugin,
+          # not just storage/secret (which is all configuration-schema installs).
+          JQ_FILTER='.[] | select(.license == "OPENSOURCE") | "\(.groupId):\(.artifactId):\(.version)"'
+        elif [ "$EDITION" = "ee" ]; then
           JQ_FILTER='.[] | select(.groupId == "io.kestra.storage" or .groupId == "io.kestra.ee.secret") | "\(.groupId):\(.artifactId):\(.version)"'
         else
           JQ_FILTER='.[] | select(.groupId == "io.kestra.storage") | "\(.groupId):\(.artifactId):\(.version)"'
@@ -95,20 +104,21 @@ runs:
         "$EXECUTABLE" plugins install --plugins="$PLUGINS_DIR" $REPO_FLAGS $PLUGINS
         echo "plugins-dir=$PLUGINS_DIR" >> "$GITHUB_OUTPUT"
 
-    - name: Generate configuration schema
+    - name: Generate schema
       shell: bash
       env:
         EXECUTABLE: ${{ inputs.executable-path }}
+        KESTRA_COMMAND: ${{ inputs.kestra-command }}
         PLUGINS_DIR: ${{ steps.install-plugins.outputs.plugins-dir }}
         OUTPUT_PATH: ${{ inputs.output-path }}
       run: |
         set -euo pipefail
         PLUGINS_FLAG=""
-        if [ -n "$PLUGINS_DIR" ]; then
+        if [ -n "${PLUGINS_DIR:-}" ]; then
           PLUGINS_FLAG="--plugins=$PLUGINS_DIR"
         fi
 
-        "$EXECUTABLE" configuration-schema $PLUGINS_FLAG -o "$OUTPUT_PATH"
+        "$EXECUTABLE" $KESTRA_COMMAND $PLUGINS_FLAG -o "$OUTPUT_PATH"
         echo "Schema generated at $OUTPUT_PATH"
 
     - name: Upload schema to GCS
