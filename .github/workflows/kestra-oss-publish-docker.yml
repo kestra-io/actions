@@ -107,6 +107,9 @@ jobs:
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
+      embed-plugins-schema-bundle: true
+    secrets:
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
   docker:
     name: Publish Docker
