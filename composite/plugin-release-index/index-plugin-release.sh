@@ -44,8 +44,9 @@ index() {
     fi
 
     semver_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
-    if [[ ! $VERSION =~ $semver_regex ]]; then
-        echo "Error: Invalid pluginVersion '$VERSION'. Expected format MAJOR.MINOR.PATCH"
+    plugin_semver_regex="^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$"
+    if [[ ! $VERSION =~ $plugin_semver_regex ]]; then
+        echo "Error: Invalid pluginVersion '$VERSION'. Expected format MAJOR.MINOR.PATCH[-rcN]"
         exit 1
     fi
 
