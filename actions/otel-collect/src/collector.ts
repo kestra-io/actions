@@ -43,7 +43,8 @@ function buildConfig(
   headers: Record<string, string>,
   serviceName: string,
   jobId?: number,
-  workflowName?: string
+  workflowName?: string,
+  jobFullName?: string
 ): string {
   const headerLines = Object.entries(headers)
     .map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
@@ -157,6 +158,12 @@ processors:
       - key: github.job.name
         value: ${JSON.stringify(process.env.GITHUB_JOB ?? '')}
         action: upsert
+      - key: github.job.fullName
+        # The matrix-resolved display name from the Jobs API (e.g. "build (18.x)"),
+        # matching the github.job.name attribute traces/logs already export — GITHUB_JOB
+        # above never carries matrix context, so it can't be derived from env alone.
+        value: ${JSON.stringify(jobFullName ?? '')}
+        action: upsert
       - key: github.runner_environment
         value: \${env:RUNNER_ENVIRONMENT}
         action: upsert
@@ -187,14 +194,18 @@ export async function startCollector(
   rawHeaders: string,
   serviceName: string,
   jobId?: number,
-  workflowName?: string
+  workflowName?: string,
+  jobFullName?: string
 ): Promise<void> {
   const bin = await ensureCollector(version)
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp'
   const configPath = path.join(tmp, 'otel-collect-config.yaml')
   const logPath = path.join(tmp, 'otel-collect-collector.log')
 
-  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName))
+  fs.writeFileSync(
+    configPath,
+    buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName, jobFullName)
+  )
 
   const out = fs.openSync(logPath, 'a')
   const child = spawn(bin, ['--config', configPath], {
