@@ -80383,7 +80383,9 @@ function buildConfig(endpoint, headers, serviceName, jobId, workflowName, jobFul
   const { target, secure } = grpcTarget(endpoint);
   return `receivers:
   hostmetrics:
-    collection_interval: 10s
+    # Short-lived jobs (a few seconds) can otherwise finish and get SIGTERM'd
+    # before a 10s-interval scrape ever fires, exporting zero data points.
+    collection_interval: 1s
     scrapers:
       cpu:
         metrics:
