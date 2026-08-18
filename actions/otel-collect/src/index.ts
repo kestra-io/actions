@@ -131,7 +131,8 @@ async function main(inputs: Inputs): Promise<void> {
       inputs.otlpHeaders,
       serviceName(inputs),
       jobId ?? undefined,
-      workflowName
+      workflowName,
+      job?.name
     )
   }
 }

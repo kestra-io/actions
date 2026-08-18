@@ -80378,7 +80378,7 @@ async function ensureCollector(version) {
   }
   return path$1.join(dir, binName);
 }
-function buildConfig(endpoint, headers, serviceName, jobId, workflowName) {
+function buildConfig(endpoint, headers, serviceName, jobId, workflowName, jobFullName) {
   const headerLines = Object.entries(headers).map(([k, v]) => `      ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join("\n");
   const { target, secure } = grpcTarget(endpoint);
   return `receivers:
@@ -80488,6 +80488,12 @@ processors:
       - key: github.job.name
         value: ${JSON.stringify(process.env.GITHUB_JOB ?? "")}
         action: upsert
+      - key: github.job.fullName
+        # The matrix-resolved display name from the Jobs API (e.g. "build (18.x)"),
+        # matching the github.job.name attribute traces/logs already export \u2014 GITHUB_JOB
+        # above never carries matrix context, so it can't be derived from env alone.
+        value: ${JSON.stringify(jobFullName ?? "")}
+        action: upsert
       - key: github.runner_environment
         value: \${env:RUNNER_ENVIRONMENT}
         action: upsert
@@ -80510,12 +80516,15 @@ service:
 `;
 }
 const PID_STATE = "otel-collector-pid";
-async function startCollector(version, endpoint, rawHeaders, serviceName, jobId, workflowName) {
+async function startCollector(version, endpoint, rawHeaders, serviceName, jobId, workflowName, jobFullName) {
   const bin = await ensureCollector(version);
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
   const configPath = path$1.join(tmp, "otel-collect-config.yaml");
   const logPath = path$1.join(tmp, "otel-collect-collector.log");
-  fs.writeFileSync(configPath, buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName));
+  fs.writeFileSync(
+    configPath,
+    buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName, jobFullName)
+  );
   const out = fs.openSync(logPath, "a");
   const child = spawn(bin, ["--config", configPath], {
     detached: true,
@@ -81081,7 +81090,8 @@ async function main(inputs) {
       inputs.otlpHeaders,
       serviceName(inputs),
       jobId ?? void 0,
-      workflowName
+      workflowName,
+      job?.name
     );
   }
 }
