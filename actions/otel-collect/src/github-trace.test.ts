@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { SpanStatusCode } from '@opentelemetry/api'
 import { buildWorkflowTrace } from './github-trace.js'
 import { jobSpanId, rootSpanId, stepSpanId, traceId } from './ids.js'
 import type { WorkflowJob } from './resolve-job.js'
@@ -136,6 +137,36 @@ test('job and step spans get github.workflow.name from the job\'s own workflow_n
     if (prev === undefined) delete process.env.GITHUB_WORKFLOW
     else process.env.GITHUB_WORKFLOW = prev
   }
+})
+
+test('a still-in-progress job/step (the exporting job itself) is faked as ended/success, not left UNSET', () => {
+  const nowMs = Date.parse('2026-06-20T10:05:00Z')
+  const exportingJob: WorkflowJob = {
+    ...job(999, 'otel-export-trace'),
+    status: 'in_progress',
+    conclusion: null,
+    completed_at: null,
+    steps: [
+      {
+        name: 'OpenTelemetry - Export trace',
+        status: 'in_progress',
+        conclusion: null,
+        number: 1,
+        started_at: '2026-06-20T10:04:55Z',
+        completed_at: null
+      }
+    ]
+  }
+  const spans = buildWorkflowTrace([exportingJob], '123', '1', 'CI', 'svc', nowMs)
+  const jobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(999))
+  const stepSpan = spans.find((s) => s.spanContext().spanId === stepSpanId(999, 'OpenTelemetry - Export trace'))
+
+  assert.equal(jobSpan?.status.code, SpanStatusCode.OK)
+  assert.equal(jobSpan?.attributes['github.job.conclusion'], 'success')
+  assert.equal(jobSpan?.endTime[0] * 1000 + jobSpan.endTime[1] / 1e6, nowMs)
+
+  assert.equal(stepSpan?.status.code, SpanStatusCode.OK)
+  assert.equal(stepSpan?.attributes['github.step.conclusion'], 'success')
 })
 
 test('a live build span using the exported traceparent nests under the step span', () => {

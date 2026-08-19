@@ -35,6 +35,14 @@ export function buildJobSpans(
   const jobEnd = parseTime(job.completed_at, nowMs)
   const jSpanId = jobSpanId(job.id)
 
+  // The job running this export (in export-all mode, the otel-collect step itself)
+  // is still `in_progress` — job.conclusion is null — at the moment it queries the
+  // API, since it can't know its own outcome before it finishes. Fake it as
+  // "success" rather than exporting an UNSET status next to an already-elapsed
+  // end time, which reads as broken/stuck rather than as the exporter's own
+  // unavoidable blind spot.
+  const jobConclusion = job.conclusion ?? 'success'
+
   const jobInput: SpanInput = {
     name: job.name,
     traceId,
@@ -42,17 +50,20 @@ export function buildJobSpans(
     parentSpanId,
     startMs: jobStart,
     endMs: jobEnd,
-    conclusion: job.conclusion,
+    conclusion: jobConclusion,
     attributes: {
       [TELEMETRY_SOURCE_ATTR]: 'github-actions',
       'github.job.name': job.name,
       'github.job.status': job.status,
-      'github.job.conclusion': job.conclusion ?? ''
+      'github.job.conclusion': jobConclusion
     }
   }
   spans.push(buildSpan(jobInput, resource))
 
   for (const step of job.steps ?? []) {
+    // Same fake-as-success reasoning as jobConclusion above: the step running this
+    // very export is still in_progress and has no conclusion of its own yet.
+    const stepConclusion = step.conclusion ?? 'success'
     const stepInput: SpanInput = {
       name: step.name,
       traceId,
@@ -60,14 +71,14 @@ export function buildJobSpans(
       parentSpanId: jSpanId,
       startMs: parseTime(step.started_at, jobStart),
       endMs: parseTime(step.completed_at, jobEnd),
-      conclusion: step.conclusion,
+      conclusion: stepConclusion,
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: 'github-actions',
         'github.job.name': job.name,
         'github.step.name': step.name,
         'github.step.number': step.number,
         'github.step.status': step.status,
-        'github.step.conclusion': step.conclusion ?? ''
+        'github.step.conclusion': stepConclusion
       }
     }
     spans.push(buildSpan(stepInput, resource))
