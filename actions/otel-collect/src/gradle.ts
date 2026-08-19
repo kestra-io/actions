@@ -165,6 +165,8 @@ gradle.taskGraph.afterTask { task ->
   span.setAttribute("telemetry.source", "gradle")
   span.setAttribute("gradle.task.path", task.path)
   span.setAttribute("gradle.task.did_work", task.state.didWork)
+  // "EXECUTED", or Gradle's own skip reason: "UP-TO-DATE", "FROM-CACHE", "SKIPPED" or "NO-SOURCE".
+  span.setAttribute("gradle.task.state", task.state.skipMessage ?: "EXECUTED")
   def failure = task.state.failure
   if (failure != null) span.setStatus(StatusCode.ERROR, String.valueOf(failure.message))
   span.end(Instant.now())
