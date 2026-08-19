@@ -80968,6 +80968,7 @@ gradle.taskGraph.afterTask { task ->
     .setStartTimestamp(Instant.ofEpochMilli(start)).startSpan()
   span.setAttribute("telemetry.source", "gradle")
   span.setAttribute("gradle.task.path", task.path)
+  span.setAttribute("gradle.task", task.name)
   span.setAttribute("gradle.module", task.project.path)
   span.setAttribute("gradle.task.did_work", task.state.didWork)
   // "EXECUTED", or Gradle's own skip reason: "UP-TO-DATE", "FROM-CACHE", "SKIPPED" or "NO-SOURCE".
