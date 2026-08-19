@@ -80756,6 +80756,7 @@ function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
   const jobStart = parseTime(job.started_at, nowMs);
   const jobEnd = parseTime(job.completed_at, nowMs);
   const jSpanId = jobSpanId(job.id);
+  const jobConclusion = job.conclusion ?? "success";
   const jobInput = {
     name: job.name,
     traceId,
@@ -80763,16 +80764,17 @@ function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
     parentSpanId,
     startMs: jobStart,
     endMs: jobEnd,
-    conclusion: job.conclusion,
+    conclusion: jobConclusion,
     attributes: {
       [TELEMETRY_SOURCE_ATTR]: "github-actions",
       "github.job.name": job.name,
       "github.job.status": job.status,
-      "github.job.conclusion": job.conclusion ?? ""
+      "github.job.conclusion": jobConclusion
     }
   };
   spans.push(buildSpan(jobInput, resource));
   for (const step of job.steps ?? []) {
+    const stepConclusion = step.conclusion ?? "success";
     const stepInput = {
       name: step.name,
       traceId,
@@ -80780,14 +80782,14 @@ function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
       parentSpanId: jSpanId,
       startMs: parseTime(step.started_at, jobStart),
       endMs: parseTime(step.completed_at, jobEnd),
-      conclusion: step.conclusion,
+      conclusion: stepConclusion,
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: "github-actions",
         "github.job.name": job.name,
         "github.step.name": step.name,
         "github.step.number": step.number,
         "github.step.status": step.status,
-        "github.step.conclusion": step.conclusion ?? ""
+        "github.step.conclusion": stepConclusion
       }
     };
     spans.push(buildSpan(stepInput, resource));
