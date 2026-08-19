@@ -80968,7 +80968,11 @@ gradle.taskGraph.afterTask { task ->
     .setStartTimestamp(Instant.ofEpochMilli(start)).startSpan()
   span.setAttribute("telemetry.source", "gradle")
   span.setAttribute("gradle.task.path", task.path)
+  span.setAttribute("gradle.task", task.name)
+  span.setAttribute("gradle.module", task.project.path)
   span.setAttribute("gradle.task.did_work", task.state.didWork)
+  // "EXECUTED", or Gradle's own skip reason: "UP-TO-DATE", "FROM-CACHE", "SKIPPED" or "NO-SOURCE".
+  span.setAttribute("gradle.task.state", task.state.skipMessage ?: "EXECUTED")
   def failure = task.state.failure
   if (failure != null) span.setStatus(StatusCode.ERROR, String.valueOf(failure.message))
   span.end(Instant.now())
@@ -80982,6 +80986,7 @@ allprojects { prj ->
       def span = junitTracer.spanBuilder(name).setParent(buildContext)
         .setStartTimestamp(Instant.ofEpochMilli(result.startTime)).startSpan()
       span.setAttribute("telemetry.source", "junit")
+      span.setAttribute("test.module", prj.path)
       span.setAttribute("test.class", String.valueOf(desc.className))
       span.setAttribute("test.name", String.valueOf(desc.name))
       span.setAttribute("test.result", String.valueOf(result.resultType))
