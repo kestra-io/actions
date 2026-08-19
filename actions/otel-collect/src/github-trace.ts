@@ -31,8 +31,14 @@ export function buildJobSpans(
     job.workflow_name ?? undefined
   )
   const spans: ReadableSpan[] = []
-  const jobStart = parseTime(job.started_at, nowMs)
+  // started_at is null for a job GitHub cancelled while still queued (e.g. via
+  // `concurrency: cancel-in-progress`) — completed_at (the cancellation time) is
+  // still set. Falling back started_at to nowMs (the export's own wall clock,
+  // potentially long after that cancellation) would put jobStart after jobEnd,
+  // producing a negative span duration. Fall back to jobEnd instead, so such a
+  // job gets a 0-duration span rather than an inverted one.
   const jobEnd = parseTime(job.completed_at, nowMs)
+  const jobStart = parseTime(job.started_at, jobEnd)
   const jSpanId = jobSpanId(job.id)
 
   // The job running this export (in export-all mode, the otel-collect step itself)
@@ -114,8 +120,12 @@ export function buildWorkflowTrace(
 
   const ranJobs = jobs.filter((j) => j.conclusion !== 'skipped')
 
-  const starts = ranJobs.map((j) => parseTime(j.started_at, nowMs))
+  // Same started_at-null fallback as buildJobSpans above: fall back to each job's
+  // own end, not nowMs, so a cancelled-while-queued job can't skew the root span's
+  // start later than its end (min/max across jobs usually masks this, but not when
+  // every job in the run is affected).
   const ends = ranJobs.map((j) => parseTime(j.completed_at, nowMs))
+  const starts = ranJobs.map((j, i) => parseTime(j.started_at, ends[i]))
   const rootStart = starts.length ? Math.min(...starts) : nowMs
   const rootEnd = ends.length ? Math.max(...ends) : nowMs
 

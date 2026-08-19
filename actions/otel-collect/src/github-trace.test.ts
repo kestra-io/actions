@@ -169,6 +169,27 @@ test('a still-in-progress job/step (the exporting job itself) is faked as ended/
   assert.equal(stepSpan?.attributes['github.step.conclusion'], 'success')
 })
 
+test('a job cancelled while still queued (started_at null, completed_at set) never gets a negative duration', () => {
+  const nowMs = Date.parse('2026-06-20T11:00:00Z') // long after the cancellation below
+  const cancelledJob: WorkflowJob = {
+    ...job(321, 'cancelled-while-queued'),
+    status: 'completed',
+    conclusion: 'cancelled',
+    started_at: null,
+    completed_at: '2026-06-20T10:05:00Z',
+    steps: []
+  }
+  const spans = buildWorkflowTrace([cancelledJob], '123', '1', 'CI', 'svc', nowMs)
+  const jobSpan = spans.find((s) => s.spanContext().spanId === jobSpanId(321))
+  const root = spans.find((s) => s.spanContext().spanId === rootSpanId('123', '1'))
+
+  const toMs = (t: [number, number]) => t[0] * 1000 + t[1] / 1e6
+  assert.ok(jobSpan, 'job span present')
+  assert.ok(root, 'root span present')
+  assert.ok(toMs(jobSpan.endTime) >= toMs(jobSpan.startTime), 'job span start must not be after its end')
+  assert.ok(toMs(root.endTime) >= toMs(root.startTime), 'root span start must not be after its end')
+})
+
 test('a live build span using the exported traceparent nests under the step span', () => {
   // The action exports TRACEPARENT 00-<trace>-<stepSpanId>-01; a gradle span
   // created with that parent must therefore carry the same parentSpanId the
