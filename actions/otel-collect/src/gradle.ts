@@ -181,6 +181,7 @@ allprojects { prj ->
       def span = junitTracer.spanBuilder(name).setParent(buildContext)
         .setStartTimestamp(Instant.ofEpochMilli(result.startTime)).startSpan()
       span.setAttribute("telemetry.source", "junit")
+      span.setAttribute("gradle.module", prj.path)
       span.setAttribute("test.class", String.valueOf(desc.className))
       span.setAttribute("test.name", String.valueOf(desc.name))
       span.setAttribute("test.result", String.valueOf(result.resultType))
