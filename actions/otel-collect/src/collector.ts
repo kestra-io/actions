@@ -158,13 +158,15 @@ processors:
         value: ${JSON.stringify(process.env.GITHUB_REF ?? '')}
         action: upsert
       - key: github.job.name
-        value: ${JSON.stringify(process.env.GITHUB_JOB ?? '')}
+        # Matrix-resolved display name from the Jobs API (e.g. "build (18.x)"), matching
+        # the github.job.name attribute traces/logs export — falls back to GITHUB_JOB
+        # (which never carries matrix context) only if that lookup failed.
+        value: ${JSON.stringify(jobFullName ?? process.env.GITHUB_JOB ?? '')}
         action: upsert
-      - key: github.job.fullName
-        # The matrix-resolved display name from the Jobs API (e.g. "build (18.x)"),
-        # matching the github.job.name attribute traces/logs already export — GITHUB_JOB
-        # above never carries matrix context, so it can't be derived from env alone.
-        value: ${JSON.stringify(jobFullName ?? '')}
+      - key: github.job.key
+        # The workflow YAML's short job key (e.g. "build"), distinct from the
+        # matrix-resolved github.job.name above.
+        value: ${JSON.stringify(process.env.GITHUB_JOB ?? '')}
         action: upsert
       - key: github.runner_environment
         value: \${env:RUNNER_ENVIRONMENT}
