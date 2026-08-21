@@ -60,14 +60,15 @@ function buildConfig(
 
   return `receivers:
   hostmetrics:
-    # Short-lived jobs (a few seconds) can otherwise finish and get SIGTERM'd
-    # before a 10s-interval scrape ever fires, exporting zero data points. 1s
-    # was too aggressive though: adjacent scrapes could collide on the same
-    # millisecond, doubling up data points for that instant and corrupting any
-    # per-timestamp aggregation (e.g. summing cpu utilization across cores to
-    # get "cores busy" would spike past the actual core count). 5s still covers
-    # short jobs while avoiding that, and cuts document volume ~5x.
-    collection_interval: 5s
+    # 1s was chosen so short-lived jobs (a few seconds) couldn't finish and get
+    # SIGTERM'd before a scrape ever fired. That is already handled by
+    # initial_delay (default 1s), which is independent of collection_interval —
+    # the first scrape lands ~1s in whatever this is set to — so the interval
+    # only trades document volume against resolution. 1s cost ~843k documents
+    # for a single 32-minute 16-core job (128 cpu data points *per second*,
+    # before the other scrapers); 2s halves that and is still finer than any
+    # CI dashboard needs.
+    collection_interval: 2s
     scrapers:
       cpu:
         metrics:
