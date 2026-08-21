@@ -22,9 +22,12 @@ inputs:
 
   mode:
     description: >
-      "instrument" (default) sets up the root span, agents and host metrics inside a job and
-      exports that job's step spans on post. "export-all" reconstructs and exports the whole
-      workflow tree (use it in a final job with needs:[...] and if: always()).
+      "instrument" (default) sets up the root span, agents and host metrics inside a job, and
+      flushes those metrics on post. It exports no spans: job/step span ids are deterministic,
+      so a job exporting its own tree would double-index the very spans "export-all" emits —
+      and from inside the job its own conclusion and duration are not known yet. "export-all"
+      reconstructs and exports the whole workflow tree and is therefore *required* for any
+      job/step spans at all: run it in a final job with needs:[...] and if: always().
     required: false
     default: 'instrument'
 

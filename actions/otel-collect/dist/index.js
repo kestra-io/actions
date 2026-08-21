@@ -80956,11 +80956,6 @@ function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
   }
   return spans;
 }
-function buildSingleJobTrace(job, runId, runAttempt, serviceName, nowMs) {
-  const traceId$1 = traceId(runId, runAttempt);
-  const rootId = rootSpanId(runId, runAttempt);
-  return buildJobSpans(job, traceId$1, rootId, serviceName, nowMs);
-}
 function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, serviceName, nowMs) {
   const traceId$1 = traceId(runId, runAttempt);
   const rootId = rootSpanId(runId, runAttempt);
@@ -81183,7 +81178,6 @@ function installGradleInitScript(serviceName, jobId = null, workflowName = null)
 }
 
 const STARTED_STATE = "otel-collect-started";
-const JOB_ID_STATE = "otel-collect-job-id";
 function readInputs() {
   return {
     githubToken: getInput("github-token", { required: true }),
@@ -81217,8 +81211,6 @@ async function main(inputs) {
   const jobId = job?.id ?? null;
   if (jobId === null) {
     warning("Could not resolve the current job id; build spans may not nest correctly");
-  } else {
-    saveState(JOB_ID_STATE, String(jobId));
   }
   const workflowName = job?.workflow_name ?? process.env.GITHUB_WORKFLOW ?? "";
   const tId = traceId(runId(), runAttempt());
@@ -81268,30 +81260,9 @@ async function main(inputs) {
     }
   }
 }
-async function post(inputs) {
+async function post() {
   await stopCgroupPoller();
   await stopCollector();
-  const jobIdRaw = getState(JOB_ID_STATE);
-  if (!jobIdRaw) {
-    info("No resolved job id in state; skipping step-span export");
-    return;
-  }
-  const jobId = Number(jobIdRaw);
-  try {
-    const octokit = getOctokit(inputs.githubToken);
-    const { owner, repo } = context$1.repo;
-    const jobs = await listJobs(octokit, owner, repo, runId(), runAttempt());
-    const job = jobs.find((j) => j.id === jobId);
-    if (!job) {
-      warning(`Job ${jobId} not found in API response; skipping export`);
-      return;
-    }
-    const spans = buildSingleJobTrace(job, runId(), runAttempt(), serviceName(inputs), Date.now());
-    await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders));
-    info(`Exported ${spans.length} span(s) for job "${job.name}"`);
-  } catch (err) {
-    warning(`Failed to export step spans: ${err.message}`);
-  }
 }
 async function exportAll(inputs) {
   const octokit = getOctokit(inputs.githubToken);
@@ -81330,7 +81301,7 @@ async function run() {
     if (inputs.mode === "export-all") {
       if (!isPost) await exportAll(inputs);
     } else if (isPost) {
-      await post(inputs);
+      await post();
     } else {
       await main(inputs);
     }

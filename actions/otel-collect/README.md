@@ -56,13 +56,24 @@ When used in a job (`mode: instrument`, the default), on **`main`** it:
 4. Optionally starts a background **`otelcol-contrib`** collector capturing host
    metrics (cpu / memory / network / disk io / load / paging).
 
-On **`post`** (end of the job) it stops the collector (flushing metrics) and
-exports the step spans for that job.
+On **`post`** (end of the job) it stops the collector, flushing its metrics. It
+exports no spans.
 
-Run it once more in a final aggregation job with `mode: export-all` (and
-`needs: [...] / if: always()`) to emit the whole workflow → job → step tree.
-With `logs-enabled: 'true'` that job also downloads each job's GitHub Actions
-logs and exports them as OTLP log records correlated to the job/step spans.
+You must therefore run it **once more in a final aggregation job** with
+`mode: export-all` (and `needs: [...] / if: always()`) to emit the whole
+workflow → job → step tree. Without that job a run still produces host metrics
+and live build spans, but no GitHub Actions job/step spans at all.
+
+That split is deliberate: job and step span ids are deterministic (they match the
+Collector `githubreceiver` scheme), so a job exporting its own tree on `post` and
+`export-all` re-exporting it would emit the *same* span id twice — and a traces
+data stream appends rather than upserts. The copy written from inside the job is
+also the wrong one: at that point the Jobs API still reports the job as
+`in_progress` with no conclusion, so it would land with a faked "success" and a
+wall-clock end time. `export-all` is the single source of truth.
+
+With `logs-enabled: 'true'` the aggregation job also downloads each job's GitHub
+Actions logs and exports them as OTLP log records correlated to the job/step spans.
 
 ## Usage
 
@@ -111,7 +122,7 @@ jobs:
 | `github-token` | — (required) | Token used to query the run's jobs/steps |
 | `otlp-endpoint` | — (required) | OTLP **gRPC** endpoint (e.g. `https://<id>.ingest.<region>.elastic-cloud.com`; `https://` → TLS on :443) |
 | `otlp-headers` | `''` | Comma-separated `k=v` headers, e.g. `Authorization=ApiKey <key>` (marked secret) |
-| `mode` | `instrument` | `instrument` (per-job) or `export-all` (whole workflow) |
+| `mode` | `instrument` | `instrument` (per-job: trace context, agents, host metrics — no span export) or `export-all` (whole workflow → job → step tree; **required** for any job/step spans) |
 | `java-enabled` | `false` | Download the Java agent (path via `java-agent-path` output) |
 | `node-enabled` | `false` | Install the Node auto-instrumentation (path via `node-agent-path` output) |
 | `inject-java-agent` | `false` | Also inject the Java agent via `JAVA_TOOL_OPTIONS`. **Do not** enable for apps that manage their own OpenTelemetry (e.g. Kestra) — see caveat below |

@@ -11,14 +11,13 @@ import {
 } from './cgroup.js'
 import { CGROUP_METRICS_ENDPOINT, startCollector, stopCollector } from './collector.js'
 import { buildWorkflowLogs } from './github-logs.js'
-import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
+import { buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
 import { baseEndpoint, exportLogs, exportSpans, NAMESPACE, parseHeaders } from './otlp.js'
 import { listJobs, resolveJob, type WorkflowJob } from './resolve-job.js'
 
 const STARTED_STATE = 'otel-collect-started'
-const JOB_ID_STATE = 'otel-collect-job-id'
 
 interface Inputs {
   githubToken: string
@@ -78,8 +77,6 @@ async function main(inputs: Inputs): Promise<void> {
   const jobId = job?.id ?? null
   if (jobId === null) {
     core.warning('Could not resolve the current job id; build spans may not nest correctly')
-  } else {
-    core.saveState(JOB_ID_STATE, String(jobId))
   }
   // GITHUB_WORKFLOW always resolves to the top-level *caller* workflow's name for a
   // job called via `workflow_call`; job.workflow_name (GitHub Jobs API) is the
@@ -153,34 +150,21 @@ async function main(inputs: Inputs): Promise<void> {
   }
 }
 
-/** Per-job post: stop the collector and export this job's step spans. */
-async function post(inputs: Inputs): Promise<void> {
+/**
+ * Per-job post: stop the cgroup poller and the collector so their metrics are flushed.
+ *
+ * It deliberately exports no spans. Job and step span ids are deterministic
+ * (jobSpanId/stepSpanId), so a job exporting its own tree here and the final
+ * `export-all` job re-exporting it would emit the *same* span twice — and a
+ * traces data stream appends rather than upserts on trace_id+span_id. The copy
+ * written from inside the job is also the wrong one: the Jobs API still reports
+ * that job as `in_progress` with no conclusion, so it lands with a faked
+ * "success" and a Date.now() end time. `export-all` is the single source of
+ * truth for the GitHub Actions span layer.
+ */
+async function post(): Promise<void> {
   await stopCgroupPoller()
   await stopCollector()
-
-  const jobIdRaw = core.getState(JOB_ID_STATE)
-  if (!jobIdRaw) {
-    core.info('No resolved job id in state; skipping step-span export')
-    return
-  }
-  const jobId = Number(jobIdRaw)
-
-  try {
-    const octokit = github.getOctokit(inputs.githubToken)
-    const { owner, repo } = github.context.repo
-    const jobs = await listJobs(octokit, owner, repo, runId(), runAttempt())
-    const job = jobs.find((j) => j.id === jobId)
-    if (!job) {
-      core.warning(`Job ${jobId} not found in API response; skipping export`)
-      return
-    }
-
-    const spans = buildSingleJobTrace(job, runId(), runAttempt(), serviceName(inputs), Date.now())
-    await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders))
-    core.info(`Exported ${spans.length} span(s) for job "${job.name}"`)
-  } catch (err) {
-    core.warning(`Failed to export step spans: ${(err as Error).message}`)
-  }
 }
 
 /** Final aggregation job: export the whole workflow tree. */
@@ -234,7 +218,7 @@ async function run(): Promise<void> {
       // Export once, on the main invocation only — not again in post (would duplicate).
       if (!isPost) await exportAll(inputs)
     } else if (isPost) {
-      await post(inputs)
+      await post()
     } else {
       await main(inputs)
     }
