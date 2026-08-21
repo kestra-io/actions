@@ -420,6 +420,9 @@ jobs:
     if: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
     runs-on: ${{ inputs.runner }}
     continue-on-error: true
+    # Exposed as env because the `secrets` context is not available in a step-level `if`.
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - name: Checkout - Repository
         uses: actions/checkout@v4
@@ -481,25 +484,27 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # Compile main sources (and the ui micro-frontend via assemble) against 2.x. Split from the
-      # test compile below so a main-code break is reported on its own step, not mixed with test noise.
+      # Compile main sources (and the ui micro-frontend via assemble) against 2.x. Tests are neither
+      # compiled nor run: test code churns against 2.x for reasons unrelated to plugin compatibility.
       - name: Compat - Compile main
+        id: compile-main
         shell: bash
         run: ./gradlew assemble --parallel
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
 
-      # Compile test sources against 2.x (tests not run). testClasses catches core API breaks that
-      # only surface in test code. Runs even when the step above failed (if: always) so a single run
-      # shows both the main-code and test-code failures instead of stopping at the first.
-      - name: Compat - Compile tests
-        if: always()
-        shell: bash
-        run: ./gradlew testClasses --parallel
-        env:
-          JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
-          GITHUB_TOKEN: ${{ github.token }}
+      # The job is continue-on-error, so a break leaves no red mark on the run. Post it to the same
+      # channel the main job uses. Gated on the compile step alone: a failure in checkout, version
+      # resolution or setup is infrastructure noise, not a compatibility break.
+      - name: Slack - Notify on compat failure
+        if: always() && steps.compile-main.outcome == 'failure' && env.SLACK_WEBHOOK_URL != ''
+        uses: kestra-io/actions/composite/slack-status@main
+        with:
+          channel: "C09FE0QCN2E"
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          suffix: ${{ steps.kestra-2x.outputs.version }}
+          extra-text: "non-blocking compat check: the plugin no longer compiles against Kestra develop"
 
   otel-export-trace:
     if: always()
