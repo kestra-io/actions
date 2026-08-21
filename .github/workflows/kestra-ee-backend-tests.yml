@@ -122,7 +122,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check --parallel --rerun-tasks --max-workers=7
+          ./gradlew check --parallel --rerun-tasks --max-workers=5 -PheavyTestSlots=1
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
