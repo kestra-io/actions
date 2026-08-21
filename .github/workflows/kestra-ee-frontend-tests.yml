@@ -19,7 +19,7 @@ env:
 jobs:
   check:
     name: Check
-    runs-on: kestra-private-standard
+    runs-on: kestra-private-4cpu-4gb
     timeout-minutes: 60
     steps:
       # Checkout

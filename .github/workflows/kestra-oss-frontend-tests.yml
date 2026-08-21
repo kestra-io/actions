@@ -2,6 +2,12 @@ name: Frontend - Tests
 
 on:
   workflow_call:
+    inputs:
+      runner:
+        description: "The runner label to execute this job on."
+        type: string
+        default: 'ubuntu-latest'
+        required: false
     secrets:
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
@@ -24,7 +30,7 @@ env:
 jobs:
   test:
     name: Frontend - Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5

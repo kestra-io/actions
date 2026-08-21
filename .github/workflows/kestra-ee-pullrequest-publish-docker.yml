@@ -51,7 +51,7 @@ jobs:
   # ********************************************************************************************************************
   docker:
     name: Publish docker
-    runs-on: kestra-private-standard
+    runs-on: kestra-private-4cpu-4gb
     needs: build-artifacts
     # `!cancelled()` lets this run when build-artifacts was skipped (skip-build:
     # the `exe` artifact then comes from another job of the same run).

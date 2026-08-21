@@ -29,6 +29,11 @@ on:
         type: string
         default: '21'
         required: false
+      runner:
+        description: "The runner label to execute this job on."
+        type: string
+        default: 'ubuntu-latest'
+        required: false
 
 permissions:
   contents: write
@@ -42,7 +47,7 @@ env:
 jobs:
   test:
     name: Backend - Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 90
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
@@ -85,7 +90,7 @@ jobs:
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
-          ./gradlew check javadoc --parallel
+          ./gradlew check javadoc --parallel --rerun-tasks --max-workers=8
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
