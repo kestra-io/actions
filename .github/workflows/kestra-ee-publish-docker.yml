@@ -13,7 +13,11 @@ on:
       DOCKERHUB_TOKEN:
         description: "The DockerHub token"
         required: true
+      SLACK_WEBHOOK_URL:
+        description: "Webhook for the CI channel."
+        required: false
       SLACK_RELEASES_WEBHOOK_URL:
+        description: "Webhook for the releases channel."
         required: false
     inputs:
       retag-latest:
@@ -343,15 +347,27 @@ jobs:
       - docker
     if: always()
     env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
     steps:
+      - name: Slack notification on failure
+        if: ${{ needs.docker.result != 'success' && inputs.notify-in-slack-release-channel == true && env.SLACK_WEBHOOK_URL != 0 }}
+        uses: kestra-io/actions/composite/slack-status@main
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: ${{ needs.docker.result }}
+          users-map: ${{ vars.GH_TO_SLACK_MAP }}
+          extra-text: "the docker publish ended with `${{ needs.docker.result }}`, nothing was released"
+
       - name: Slack notification on success
-        if: ${{ inputs.notify-in-slack-release-channel == true && !failure() && !cancelled() && !inputs.dry-run && env.SLACK_RELEASES_WEBHOOK_URL != 0 }}
+        if: ${{ needs.docker.result == 'success' && inputs.notify-in-slack-release-channel == true && !inputs.dry-run && env.SLACK_RELEASES_WEBHOOK_URL != 0 }}
         uses: kestra-io/actions/composite/slack-status@main
         with:
           webhook-url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
-      # 'end' runs with always(), so without this gate it stays green on a failed
-      # run and anything watching the terminal job reads the release as successful.
+          status: ${{ needs.docker.result }}
+
       - name: Fail when publish did not succeed
         if: ${{ needs.docker.result != 'success' }}
-        run: exit 1
+        run: |
+          echo "::error::the docker publish ended with '${{ needs.docker.result }}'"
+          exit 1
