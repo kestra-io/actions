@@ -122,7 +122,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check --parallel --rerun-tasks
+          ./gradlew check --parallel --rerun-tasks --max-workers=8
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
@@ -138,7 +138,7 @@ jobs:
 
       # Report Java
       - name: Report - Java
-        uses: kestra-io/actions/composite/report-java@main
+        uses: kestra-io/actions/composite/report-java@feat/opt-in-larger-runners
         if: ${{ !cancelled() }}
         with:
           secrets: ${{ toJSON(secrets) }}
