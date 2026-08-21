@@ -59,6 +59,20 @@ inputs:
     required: false
     default: 'true'
 
+  cgroup-metrics-enabled:
+    description: >
+      Start a background poller capturing this job's own cgroup v2 CPU/memory metrics
+      (container.cpu.*/container.memory.*), pushed into the host-metrics collector above.
+      Unlike the host-metrics cpu/memory scrapers, which read /proc and therefore report the
+      whole node (not the job's actual CPU/memory limit on Kubernetes runners), these reflect
+      the cgroup enforced on this job — including CPU throttling, which node-wide metrics
+      can't show at all. CPU is exported as the cumulative container.cpu.time counter, so
+      cores-used is rate(container.cpu.time) and utilization is that over container.cpu.limit.
+      Logs and skips on hosts with no cgroup v2 (macOS/Windows runners).
+      Only takes effect when host-metrics-enabled is also true.
+    required: false
+    default: 'true'
+
   logs-enabled:
     description: >
       In "export-all" mode, download each job's GitHub Actions logs and export them as OTLP log records,

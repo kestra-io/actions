@@ -2,7 +2,14 @@ import * as os from 'os'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { setupJavaAgent, setupNodeAgent } from './agents.js'
-import { startCollector, stopCollector } from './collector.js'
+import {
+  CGROUP_POLLER_ENDPOINT_ENV,
+  CGROUP_POLLER_ENV,
+  runCgroupPollerProcess,
+  startCgroupPoller,
+  stopCgroupPoller
+} from './cgroup.js'
+import { CGROUP_METRICS_ENDPOINT, startCollector, stopCollector } from './collector.js'
 import { buildWorkflowLogs } from './github-logs.js'
 import { buildSingleJobTrace, buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
@@ -23,6 +30,7 @@ interface Inputs {
   injectJavaAgent: boolean
   injectNodeAgent: boolean
   hostMetricsEnabled: boolean
+  cgroupMetricsEnabled: boolean
   gradleTracingEnabled: boolean
   logsEnabled: boolean
   parentStepName: string
@@ -42,6 +50,7 @@ function readInputs(): Inputs {
     injectJavaAgent: core.getBooleanInput('inject-java-agent'),
     injectNodeAgent: core.getBooleanInput('inject-node-agent'),
     hostMetricsEnabled: core.getBooleanInput('host-metrics-enabled'),
+    cgroupMetricsEnabled: core.getBooleanInput('cgroup-metrics-enabled'),
     gradleTracingEnabled: core.getBooleanInput('gradle-tracing-enabled'),
     logsEnabled: core.getBooleanInput('logs-enabled'),
     parentStepName: core.getInput('parent-step-name'),
@@ -134,11 +143,19 @@ async function main(inputs: Inputs): Promise<void> {
       workflowName,
       job?.name
     )
+
+    // Needs the collector above running: it pushes into its local OTLP receiver
+    // rather than exporting directly (see cgroup.ts), so its container.cpu.*/
+    // container.memory.* metrics pick up the same resource attributes.
+    if (inputs.cgroupMetricsEnabled) {
+      await startCgroupPoller(CGROUP_METRICS_ENDPOINT)
+    }
   }
 }
 
 /** Per-job post: stop the collector and export this job's step spans. */
 async function post(inputs: Inputs): Promise<void> {
+  await stopCgroupPoller()
   await stopCollector()
 
   const jobIdRaw = core.getState(JOB_ID_STATE)
@@ -198,6 +215,15 @@ async function exportAll(inputs: Inputs): Promise<void> {
 
 async function run(): Promise<void> {
   try {
+    // startCgroupPoller() re-invokes this same entrypoint (process.argv[1]) with
+    // this flag set, so this detached process loops sampling cgroup stats instead
+    // of running the action — never reaches readInputs()/core.getState() below,
+    // which expect the normal main/post action environment.
+    if (process.env[CGROUP_POLLER_ENV] === '1') {
+      runCgroupPollerProcess(process.env[CGROUP_POLLER_ENDPOINT_ENV] ?? CGROUP_METRICS_ENDPOINT)
+      return
+    }
+
     const inputs = readInputs()
     // The action's main and post hooks share this entrypoint. STARTED_STATE is set
     // on the first (main) invocation, so a 'true' value here means we're in post.

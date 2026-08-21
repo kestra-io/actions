@@ -7,6 +7,13 @@ import { grpcTarget, parseHeaders, serviceInstanceId, NAMESPACE } from './otlp.j
 
 const RELEASES = 'https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download'
 
+// Loopback-only OTLP/HTTP receiver the collector exposes for cgroup.ts's poller to push
+// into, so container CPU/memory metrics get the same resourcedetection/resource/batch
+// processing (and therefore the same github.*/host.name attributes) as hostmetrics.
+// Non-default port to avoid colliding with a job's own app under test.
+const CGROUP_METRICS_PORT = 14318
+export const CGROUP_METRICS_ENDPOINT = `http://127.0.0.1:${CGROUP_METRICS_PORT}`
+
 interface Asset {
   file: string
   isZip: boolean
@@ -53,9 +60,15 @@ function buildConfig(
 
   return `receivers:
   hostmetrics:
-    # Short-lived jobs (a few seconds) can otherwise finish and get SIGTERM'd
-    # before a 10s-interval scrape ever fires, exporting zero data points.
-    collection_interval: 1s
+    # 1s was chosen so short-lived jobs (a few seconds) couldn't finish and get
+    # SIGTERM'd before a scrape ever fired. That is already handled by
+    # initial_delay (default 1s), which is independent of collection_interval —
+    # the first scrape lands ~1s in whatever this is set to — so the interval
+    # only trades document volume against resolution. 1s cost ~843k documents
+    # for a single 32-minute 16-core job (128 cpu data points *per second*,
+    # before the other scrapers); 2s halves that and is still finer than any
+    # CI dashboard needs.
+    collection_interval: 2s
     scrapers:
       cpu:
         metrics:
@@ -73,6 +86,12 @@ function buildConfig(
       filesystem:
       network:
       paging:
+  otlp:
+    # Receives container.cpu.*/container.memory.* pushed by cgroup.ts's poller
+    # process — hostmetrics above can't see the pod's cgroup, only the node's.
+    protocols:
+      http:
+        endpoint: 127.0.0.1:${CGROUP_METRICS_PORT}
 
 processors:
   resourcedetection:
@@ -183,7 +202,7 @@ ${headerLines ? `    headers:\n${headerLines}` : ''}
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [hostmetrics, otlp]
       processors: [resourcedetection, resource, batch]
       exporters: [otlp]
 `

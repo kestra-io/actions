@@ -38988,6 +38988,150 @@ async function setupNodeAgent(inject) {
   return path$1.join(modulesDir, pkg, "register.js");
 }
 
+const CGROUP_ROOT = "/sys/fs/cgroup";
+function parseCpuMax(content) {
+  const [quotaRaw, periodRaw] = content.trim().split(/\s+/);
+  if (!quotaRaw || quotaRaw === "max" || !periodRaw) return null;
+  const quota = Number(quotaRaw);
+  const period = Number(periodRaw);
+  if (!Number.isFinite(quota) || !Number.isFinite(period) || period <= 0) return null;
+  return quota / period;
+}
+function parseKeyValueStat(content) {
+  const out = {};
+  for (const line of content.trim().split("\n")) {
+    const [key, value] = line.trim().split(/\s+/);
+    if (key === void 0 || value === void 0) continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return out;
+}
+function parseMemoryValue(content) {
+  const trimmed = content.trim();
+  if (trimmed === "max") return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+function tryRead(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+function readCgroupSnapshot(nowNanos = process.hrtime.bigint()) {
+  const cpuStat = tryRead(`${CGROUP_ROOT}/cpu.stat`);
+  if (cpuStat === null) return null;
+  const stat = parseKeyValueStat(cpuStat);
+  const cpuMax = tryRead(`${CGROUP_ROOT}/cpu.max`);
+  const memCurrent = tryRead(`${CGROUP_ROOT}/memory.current`);
+  const memMax = tryRead(`${CGROUP_ROOT}/memory.max`);
+  return {
+    timeNanos: nowNanos,
+    cpuUsageUsec: stat.usage_usec ?? 0,
+    cpuLimitCores: cpuMax !== null ? parseCpuMax(cpuMax) : null,
+    nrPeriods: stat.nr_periods ?? null,
+    nrThrottled: stat.nr_throttled ?? null,
+    throttledUsec: stat.throttled_usec ?? null,
+    memoryUsageBytes: memCurrent !== null ? parseMemoryValue(memCurrent) : null,
+    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null
+  };
+}
+const SCOPE = { name: "kestra-io/actions/otel-collect/cgroup", version: "1.0.0" };
+const CUMULATIVE = 2;
+function gauge(name, unit, value, timeUnixNano) {
+  return { name, unit, gauge: { dataPoints: [{ timeUnixNano, asDouble: value }] } };
+}
+function cumulativeSum(name, unit, value, startTimeUnixNano, timeUnixNano) {
+  return {
+    name,
+    unit,
+    sum: { aggregationTemporality: CUMULATIVE, isMonotonic: true, dataPoints: [{ startTimeUnixNano, timeUnixNano, asDouble: value }] }
+  };
+}
+function buildMetricsPayload(curr, startTimeNanos) {
+  const startTimeUnixNano = startTimeNanos.toString();
+  const timeUnixNano = curr.timeNanos.toString();
+  const metrics = [cumulativeSum("container.cpu.time", "s", curr.cpuUsageUsec / 1e6, startTimeUnixNano, timeUnixNano)];
+  if (curr.nrPeriods !== null) metrics.push(cumulativeSum("container.cpu.periods", "{period}", curr.nrPeriods, startTimeUnixNano, timeUnixNano));
+  if (curr.nrThrottled !== null) {
+    metrics.push(cumulativeSum("container.cpu.throttled.periods", "{period}", curr.nrThrottled, startTimeUnixNano, timeUnixNano));
+  }
+  if (curr.throttledUsec !== null) {
+    metrics.push(cumulativeSum("container.cpu.throttled.time", "s", curr.throttledUsec / 1e6, startTimeUnixNano, timeUnixNano));
+  }
+  if (curr.cpuLimitCores !== null) metrics.push(gauge("container.cpu.limit", "{cpu}", curr.cpuLimitCores, timeUnixNano));
+  if (curr.memoryUsageBytes !== null) metrics.push(gauge("container.memory.usage", "By", curr.memoryUsageBytes, timeUnixNano));
+  if (curr.memoryLimitBytes !== null) metrics.push(gauge("container.memory.limit", "By", curr.memoryLimitBytes, timeUnixNano));
+  return { resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [{ scope: SCOPE, metrics }] }] };
+}
+async function postMetrics(endpoint, payload) {
+  try {
+    const res = await fetch(`${endpoint}/v1/metrics`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) warning(`cgroup metrics export failed: ${res.status} ${res.statusText}`);
+  } catch (err) {
+    warning(`cgroup metrics export failed: ${err.message}`);
+  }
+}
+const CGROUP_POLLER_ENV = "OTEL_COLLECT_CGROUP_POLLER";
+const CGROUP_POLLER_ENDPOINT_ENV = "OTEL_COLLECT_CGROUP_ENDPOINT";
+const PID_STATE$1 = "otel-cgroup-poller-pid";
+const DEFAULT_INTERVAL_MS = 5e3;
+function runCgroupPollerProcess(endpoint, intervalMs = DEFAULT_INTERVAL_MS) {
+  const startTimeNanos = process.hrtime.bigint();
+  const tick = async () => {
+    const curr = readCgroupSnapshot();
+    if (curr === null) return;
+    await postMetrics(endpoint, buildMetricsPayload(curr, startTimeNanos));
+  };
+  const timer = setInterval(() => void tick(), intervalMs);
+  const shutdown = () => {
+    clearInterval(timer);
+    void tick().finally(() => process.exit(0));
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+  void tick();
+}
+async function startCgroupPoller(otlpHttpEndpoint) {
+  if (readCgroupSnapshot() === null) {
+    info("No cgroup v2 filesystem found; skipping container CPU/memory metrics");
+    return;
+  }
+  const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
+  const logPath = path$1.join(tmp, "otel-collect-cgroup-poller.log");
+  const out = fs.openSync(logPath, "a");
+  const child = spawn(process.execPath, [process.argv[1]], {
+    detached: true,
+    stdio: ["ignore", out, out],
+    env: { ...process.env, [CGROUP_POLLER_ENV]: "1", [CGROUP_POLLER_ENDPOINT_ENV]: otlpHttpEndpoint }
+  });
+  child.unref();
+  if (child.pid) {
+    saveState(PID_STATE$1, String(child.pid));
+    info(`Started cgroup metrics poller (pid ${child.pid}), logging to ${logPath}`);
+  } else {
+    warning("Failed to start cgroup metrics poller");
+  }
+}
+async function stopCgroupPoller() {
+  const pidRaw = getState(PID_STATE$1);
+  if (!pidRaw) return;
+  const pid = Number(pidRaw);
+  if (!Number.isInteger(pid)) return;
+  try {
+    process.kill(pid, "SIGTERM");
+    info(`Sent SIGTERM to cgroup metrics poller (pid ${pid})`);
+  } catch (err) {
+    debug(`cgroup metrics poller already stopped: ${err.message}`);
+  }
+}
+
 var src$5 = {};
 
 var callCredentials = {};
@@ -80356,6 +80500,8 @@ async function exportLogs(logs, endpoint, headers, timeoutMs = 15e3) {
 }
 
 const RELEASES = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download";
+const CGROUP_METRICS_PORT = 14318;
+const CGROUP_METRICS_ENDPOINT = `http://127.0.0.1:${CGROUP_METRICS_PORT}`;
 function assetFor(version) {
   const osMap = { linux: "linux", darwin: "darwin", win32: "windows" };
   const archMap = { x64: "amd64", arm64: "arm64" };
@@ -80383,9 +80529,15 @@ function buildConfig(endpoint, headers, serviceName, jobId, workflowName, jobFul
   const { target, secure } = grpcTarget(endpoint);
   return `receivers:
   hostmetrics:
-    # Short-lived jobs (a few seconds) can otherwise finish and get SIGTERM'd
-    # before a 10s-interval scrape ever fires, exporting zero data points.
-    collection_interval: 1s
+    # 1s was chosen so short-lived jobs (a few seconds) couldn't finish and get
+    # SIGTERM'd before a scrape ever fired. That is already handled by
+    # initial_delay (default 1s), which is independent of collection_interval \u2014
+    # the first scrape lands ~1s in whatever this is set to \u2014 so the interval
+    # only trades document volume against resolution. 1s cost ~843k documents
+    # for a single 32-minute 16-core job (128 cpu data points *per second*,
+    # before the other scrapers); 2s halves that and is still finer than any
+    # CI dashboard needs.
+    collection_interval: 2s
     scrapers:
       cpu:
         metrics:
@@ -80403,6 +80555,12 @@ function buildConfig(endpoint, headers, serviceName, jobId, workflowName, jobFul
       filesystem:
       network:
       paging:
+  otlp:
+    # Receives container.cpu.*/container.memory.* pushed by cgroup.ts's poller
+    # process \u2014 hostmetrics above can't see the pod's cgroup, only the node's.
+    protocols:
+      http:
+        endpoint: 127.0.0.1:${CGROUP_METRICS_PORT}
 
 processors:
   resourcedetection:
@@ -80514,7 +80672,7 @@ ${headerLines}` : ""}
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [hostmetrics, otlp]
       processors: [resourcedetection, resource, batch]
       exporters: [otlp]
 `;
@@ -81037,6 +81195,7 @@ function readInputs() {
     injectJavaAgent: getBooleanInput("inject-java-agent"),
     injectNodeAgent: getBooleanInput("inject-node-agent"),
     hostMetricsEnabled: getBooleanInput("host-metrics-enabled"),
+    cgroupMetricsEnabled: getBooleanInput("cgroup-metrics-enabled"),
     gradleTracingEnabled: getBooleanInput("gradle-tracing-enabled"),
     logsEnabled: getBooleanInput("logs-enabled"),
     parentStepName: getInput("parent-step-name"),
@@ -81104,9 +81263,13 @@ async function main(inputs) {
       workflowName,
       job?.name
     );
+    if (inputs.cgroupMetricsEnabled) {
+      await startCgroupPoller(CGROUP_METRICS_ENDPOINT);
+    }
   }
 }
 async function post(inputs) {
+  await stopCgroupPoller();
   await stopCollector();
   const jobIdRaw = getState(JOB_ID_STATE);
   if (!jobIdRaw) {
@@ -81157,6 +81320,10 @@ async function exportAll(inputs) {
 }
 async function run() {
   try {
+    if (process.env[CGROUP_POLLER_ENV] === "1") {
+      runCgroupPollerProcess(process.env[CGROUP_POLLER_ENDPOINT_ENV] ?? CGROUP_METRICS_ENDPOINT);
+      return;
+    }
     const inputs = readInputs();
     const isPost = getState(STARTED_STATE) === "true";
     saveState(STARTED_STATE, "true");
