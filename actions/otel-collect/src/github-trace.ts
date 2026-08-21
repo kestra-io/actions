@@ -20,7 +20,7 @@ export function buildJobSpans(
   // Scoped to this job's id, not just the run: a workflow run has many jobs, each
   // on its own runner, so a run-level instance id would collapse all their host
   // metrics under one "instance" (see otlp.ts serviceInstanceId). Pass this job's
-  // own runner_name/runner flavour explicitly — this function may run inside the
+  // own runner_name/runner flavour explicitly — this function runs inside the
   // export-all aggregation job, on a different (and possibly differently-flavoured)
   // runner than the one that ran `job`.
   const resource = buildResource(
@@ -41,8 +41,8 @@ export function buildJobSpans(
   const jobStart = parseTime(job.started_at, jobEnd)
   const jSpanId = jobSpanId(job.id)
 
-  // The job running this export (in export-all mode, the otel-collect step itself)
-  // is still `in_progress` — job.conclusion is null — at the moment it queries the
+  // The job running this export (the export-all aggregation job itself) is still
+  // `in_progress` — job.conclusion is null — at the moment it queries the
   // API, since it can't know its own outcome before it finishes. Fake it as
   // "success" rather than exporting an UNSET status next to an already-elapsed
   // end time, which reads as broken/stuck rather than as the exporter's own
@@ -91,19 +91,6 @@ export function buildJobSpans(
   }
 
   return spans
-}
-
-/** Build only one job's spans (the per-job `post` hook). */
-export function buildSingleJobTrace(
-  job: WorkflowJob,
-  runId: string | number,
-  runAttempt: string | number,
-  serviceName: string,
-  nowMs: number
-): ReadableSpan[] {
-  const traceId = makeTraceId(runId, runAttempt)
-  const rootId = rootSpanId(runId, runAttempt)
-  return buildJobSpans(job, traceId, rootId, serviceName, nowMs)
 }
 
 /** Build the full workflow tree: root span + every job + every step (`export-all`). */
