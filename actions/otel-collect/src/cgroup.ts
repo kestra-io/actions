@@ -7,34 +7,36 @@ import * as core from '@actions/core'
  * `hostmetrics` (collector.ts) reads /proc/stat, which is not cgroup-aware: on a
  * Kubernetes runner it reports the whole node's CPUs, not the pod's CPU limit —
  * a 4-CPU-limited pod shows up with the node's full CPU count. This module reads
- * the pod's own cgroup instead, so "CPU busy" can be expressed as a fraction of
- * the limit actually enforced on this job, and throttling (nr_throttled) — which
- * no node-wide reading can show at all — becomes visible.
+ * the pod's own cgroup instead, so CPU usage can be expressed against the limit
+ * actually enforced on this job, and throttling (nr_throttled) — which no
+ * node-wide reading can show at all — becomes visible.
  *
- * Runs as a second detached process (mirroring collector.ts's daemon), because it
- * needs to keep sampling on an interval to compute a rate from cumulative kernel
- * counters. It POSTs OTLP/HTTP JSON straight into the hostmetrics collector's own
- * OTLP receiver (see CGROUP_METRICS_ENDPOINT / collector.ts's buildConfig) rather
- * than exporting directly, so the collector's existing `resource` processor
- * stamps every github.* / host.name / service.instance.id attribute for us —
- * these metrics land pre-joined to the hostmetrics ones without duplicating that list.
+ * otelcol-contrib has no cgroup receiver and `hostmetrics` has no cgroup scraper
+ * (its `root_path` option does the opposite: it makes a containerized collector
+ * report the host). `kubeletstats` does expose k8s.pod.cpu_limit_utilization
+ * natively, but only with nodes/stats + nodes/pods RBAC and a downward-API node
+ * name configured on the runner pod — cluster-side config this action can't ship,
+ * and nothing at all on non-Kubernetes runners. Hence reading cgroup v2 directly.
+ *
+ * Runs as a second detached process (mirroring collector.ts's daemon) because a
+ * time series needs sampling on an interval. It POSTs OTLP/HTTP JSON straight
+ * into the hostmetrics collector's own OTLP receiver (CGROUP_METRICS_ENDPOINT in
+ * collector.ts) rather than exporting directly, so the collector's existing
+ * `resource` processor stamps every github.* / host.name / service.instance.id
+ * attribute for us — these land pre-joined to the hostmetrics ones.
+ *
+ * Everything here is cgroup v2 only (the runners are Ubuntu 24.04, which is
+ * v2-exclusive). Hosts without it are logged and skipped rather than silently
+ * producing nothing.
  */
 
-const V2_ROOT = '/sys/fs/cgroup'
-// Some distros mount the v1 cpu and cpuacct controllers together, some separately.
-const V1_CPU_ROOTS = ['/sys/fs/cgroup/cpu,cpuacct', '/sys/fs/cgroup/cpu', '/sys/fs/cgroup/cpuacct']
-const V1_MEMORY_ROOT = '/sys/fs/cgroup/memory'
-// cgroup v1 has no "unlimited" sentinel string; it reports a huge byte count
-// instead (typically ~2^63, sometimes rounded to a page boundary).
-const V1_UNLIMITED_MEMORY_THRESHOLD = 1e18
+const CGROUP_ROOT = '/sys/fs/cgroup'
 
 export interface CgroupSnapshot {
-  /** Monotonic sample time (process.hrtime.bigint()), used for rate math — never wall clock. */
+  /** Monotonic sample time (process.hrtime.bigint()), never wall clock. */
   timeNanos: bigint
   /** Cumulative CPU time consumed since the cgroup was created, in microseconds. */
   cpuUsageUsec: number
-  cpuUserUsec: number | null
-  cpuSystemUsec: number | null
   /** CPU limit in cores, or null when unlimited/unknown. */
   cpuLimitCores: number | null
   nrPeriods: number | null
@@ -46,7 +48,7 @@ export interface CgroupSnapshot {
   memoryLimitBytes: number | null
 }
 
-/** Parse cgroup v2's `cpu.max` ("<quota> <period>" in microseconds, or "max <period>" when unlimited) into a core-count limit. */
+/** Parse `cpu.max` ("<quota> <period>" in microseconds, or "max <period>" when unlimited) into a core-count limit. */
 export function parseCpuMax(content: string): number | null {
   const [quotaRaw, periodRaw] = content.trim().split(/\s+/)
   if (!quotaRaw || quotaRaw === 'max' || !periodRaw) return null
@@ -56,15 +58,7 @@ export function parseCpuMax(content: string): number | null {
   return quota / period
 }
 
-/** Combine cgroup v1's split `cpu.cfs_quota_us` (-1 = unlimited) / `cpu.cfs_period_us` into a core-count limit. */
-export function parseCpuQuotaV1(quotaRaw: string, periodRaw: string): number | null {
-  const quota = Number(quotaRaw.trim())
-  const period = Number(periodRaw.trim())
-  if (!Number.isFinite(quota) || quota < 0 || !Number.isFinite(period) || period <= 0) return null
-  return quota / period
-}
-
-/** Parse a cgroup "key value\n..." stat file (cpu.stat in both v1 and v2) into a map. */
+/** Parse a cgroup "key value\n..." stat file (cpu.stat) into a map. */
 export function parseKeyValueStat(content: string): Record<string, number> {
   const out: Record<string, number> = {}
   for (const line of content.trim().split('\n')) {
@@ -76,17 +70,12 @@ export function parseKeyValueStat(content: string): Record<string, number> {
   return out
 }
 
-/** Parse a cgroup v2 byte-count file (`memory.current`/`memory.max`, "max" = unlimited). */
-export function parseMemoryValueV2(content: string): number | null {
+/** Parse a byte-count file (`memory.current`/`memory.max`, "max" = unlimited). */
+export function parseMemoryValue(content: string): number | null {
   const trimmed = content.trim()
   if (trimmed === 'max') return null
   const n = Number(trimmed)
   return Number.isFinite(n) ? n : null
-}
-
-/** Normalize a cgroup v1 memory limit, treating the huge "no limit" sentinel as null. */
-export function normalizeV1MemoryLimit(bytes: number): number | null {
-  return bytes >= V1_UNLIMITED_MEMORY_THRESHOLD ? null : bytes
 }
 
 function tryRead(filePath: string): string | null {
@@ -98,57 +87,29 @@ function tryRead(filePath: string): string | null {
 }
 
 /**
- * Read the current process's cgroup CPU/memory stats (v2 preferred, v1
- * fallback). Returns null when there's no cgroup filesystem at all — macOS,
- * Windows, and non-containerized GitHub-hosted runners — so callers can no-op
- * instead of exporting a permanently-empty metric.
+ * Read this process's cgroup v2 CPU/memory stats. Returns null when there is no
+ * cgroup v2 filesystem — macOS, Windows, and non-containerized runners — so
+ * callers can skip instead of exporting a permanently-empty metric.
  */
 export function readCgroupSnapshot(nowNanos: bigint = process.hrtime.bigint()): CgroupSnapshot | null {
-  const v2CpuStat = tryRead(`${V2_ROOT}/cpu.stat`)
-  if (v2CpuStat !== null) {
-    const stat = parseKeyValueStat(v2CpuStat)
-    const cpuMax = tryRead(`${V2_ROOT}/cpu.max`)
-    const memCurrent = tryRead(`${V2_ROOT}/memory.current`)
-    const memMax = tryRead(`${V2_ROOT}/memory.max`)
-    return {
-      timeNanos: nowNanos,
-      cpuUsageUsec: stat.usage_usec ?? 0,
-      cpuUserUsec: stat.user_usec ?? null,
-      cpuSystemUsec: stat.system_usec ?? null,
-      cpuLimitCores: cpuMax !== null ? parseCpuMax(cpuMax) : null,
-      nrPeriods: stat.nr_periods ?? null,
-      nrThrottled: stat.nr_throttled ?? null,
-      throttledUsec: stat.throttled_usec ?? null,
-      memoryUsageBytes: memCurrent !== null ? parseMemoryValueV2(memCurrent) : null,
-      memoryLimitBytes: memMax !== null ? parseMemoryValueV2(memMax) : null
-    }
-  }
+  const cpuStat = tryRead(`${CGROUP_ROOT}/cpu.stat`)
+  if (cpuStat === null) return null
 
-  for (const root of V1_CPU_ROOTS) {
-    const usageNs = tryRead(`${root}/cpuacct.usage`)
-    if (usageNs === null) continue
-    const quota = tryRead(`${root}/cpu.cfs_quota_us`)
-    const period = tryRead(`${root}/cpu.cfs_period_us`)
-    const statRaw = tryRead(`${root}/cpu.stat`)
-    const stat = statRaw !== null ? parseKeyValueStat(statRaw) : {}
-    const memUsage = tryRead(`${V1_MEMORY_ROOT}/memory.usage_in_bytes`)
-    const memLimit = tryRead(`${V1_MEMORY_ROOT}/memory.limit_in_bytes`)
-    return {
-      timeNanos: nowNanos,
-      cpuUsageUsec: Number(usageNs.trim()) / 1000,
-      cpuUserUsec: null,
-      cpuSystemUsec: null,
-      cpuLimitCores: quota !== null && period !== null ? parseCpuQuotaV1(quota, period) : null,
-      nrPeriods: stat.nr_periods ?? null,
-      nrThrottled: stat.nr_throttled ?? null,
-      // v1's cpu.stat reports throttled_time in nanoseconds, unlike v2's throttled_usec.
-      throttledUsec: stat.throttled_time !== undefined ? stat.throttled_time / 1000 : null,
-      memoryUsageBytes: memUsage !== null ? parseMemoryValueV2(memUsage) : null,
-      memoryLimitBytes: memLimit !== null ? normalizeV1MemoryLimit(Number(memLimit.trim())) : null
-    }
-  }
+  const stat = parseKeyValueStat(cpuStat)
+  const cpuMax = tryRead(`${CGROUP_ROOT}/cpu.max`)
+  const memCurrent = tryRead(`${CGROUP_ROOT}/memory.current`)
+  const memMax = tryRead(`${CGROUP_ROOT}/memory.max`)
 
-  return null
+  return {
+    timeNanos: nowNanos,
+    cpuUsageUsec: stat.usage_usec ?? 0,
+    cpuLimitCores: cpuMax !== null ? parseCpuMax(cpuMax) : null,
+    nrPeriods: stat.nr_periods ?? null,
+    nrThrottled: stat.nr_throttled ?? null,
+    throttledUsec: stat.throttled_usec ?? null,
+    memoryUsageBytes: memCurrent !== null ? parseMemoryValue(memCurrent) : null,
+    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null
+  }
 }
 
 interface OtlpMetric {
@@ -186,14 +147,14 @@ function cumulativeSum(name: string, unit: string, value: number, startTimeUnixN
 }
 
 /**
- * Build an OTLP/HTTP JSON metrics payload from a cgroup snapshot. The counters
- * (cpu time, throttling) are raw cumulative totals straight from the kernel, so
- * they're emitted with CUMULATIVE temporality against a fixed start time — no
- * delta needed. `container.cpu.utilization` is the exception: it's a rate, so it
- * needs the delta between two samples (usage / elapsed wall time / limit) and is
- * omitted on the very first sample (no `prev` yet) or when the limit is unknown.
+ * Build an OTLP/HTTP JSON metrics payload from a cgroup snapshot. The CPU and
+ * throttling counters are raw cumulative kernel totals, emitted with CUMULATIVE
+ * temporality against a fixed start time — no rate is computed here on purpose:
+ * cores-used is `rate(container.cpu.time)` and utilization is
+ * `rate(container.cpu.time) / container.cpu.limit` in the query layer, which
+ * already does this better than re-deriving it per sample would.
  */
-export function buildMetricsPayload(curr: CgroupSnapshot, prev: CgroupSnapshot | null, startTimeNanos: bigint): OtlpMetricsPayload {
+export function buildMetricsPayload(curr: CgroupSnapshot, startTimeNanos: bigint): OtlpMetricsPayload {
   const startTimeUnixNano = startTimeNanos.toString()
   const timeUnixNano = curr.timeNanos.toString()
   const metrics: OtlpMetric[] = [cumulativeSum('container.cpu.time', 's', curr.cpuUsageUsec / 1e6, startTimeUnixNano, timeUnixNano)]
@@ -205,19 +166,12 @@ export function buildMetricsPayload(curr: CgroupSnapshot, prev: CgroupSnapshot |
   if (curr.throttledUsec !== null) {
     metrics.push(cumulativeSum('container.cpu.throttled.time', 's', curr.throttledUsec / 1e6, startTimeUnixNano, timeUnixNano))
   }
+  // Limits are emitted as numeric gauges rather than resource attributes: Elastic
+  // indexes resource attributes as keywords, which would force TO_DOUBLE() before
+  // any arithmetic and add a dimension to every hostmetrics series too.
   if (curr.cpuLimitCores !== null) metrics.push(gauge('container.cpu.limit', '{cpu}', curr.cpuLimitCores, timeUnixNano))
   if (curr.memoryUsageBytes !== null) metrics.push(gauge('container.memory.usage', 'By', curr.memoryUsageBytes, timeUnixNano))
   if (curr.memoryLimitBytes !== null) metrics.push(gauge('container.memory.limit', 'By', curr.memoryLimitBytes, timeUnixNano))
-
-  if (prev !== null && curr.cpuLimitCores !== null && curr.cpuLimitCores > 0) {
-    const elapsedNanos = curr.timeNanos - prev.timeNanos
-    if (elapsedNanos > 0n) {
-      const deltaUsageUsec = curr.cpuUsageUsec - prev.cpuUsageUsec
-      const elapsedUsec = Number(elapsedNanos) / 1000
-      const utilization = deltaUsageUsec / elapsedUsec / curr.cpuLimitCores
-      metrics.push(gauge('container.cpu.utilization', '1', utilization, timeUnixNano))
-    }
-  }
 
   return { resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [{ scope: SCOPE, metrics }] }] }
 }
@@ -250,13 +204,11 @@ const DEFAULT_INTERVAL_MS = 5000
  */
 export function runCgroupPollerProcess(endpoint: string, intervalMs: number = DEFAULT_INTERVAL_MS): void {
   const startTimeNanos = process.hrtime.bigint()
-  let prev: CgroupSnapshot | null = null
 
   const tick = async (): Promise<void> => {
     const curr = readCgroupSnapshot()
     if (curr === null) return
-    await postMetrics(endpoint, buildMetricsPayload(curr, prev, startTimeNanos))
-    prev = curr
+    await postMetrics(endpoint, buildMetricsPayload(curr, startTimeNanos))
   }
 
   const timer = setInterval(() => void tick(), intervalMs)
@@ -275,12 +227,12 @@ export function runCgroupPollerProcess(endpoint: string, intervalMs: number = DE
  * Spawn a detached process that re-runs this action's own entrypoint
  * (process.argv[1] — always dist/index.js, since the whole action bundles into
  * one file) with CGROUP_POLLER_ENV set, so it takes the poller branch in
- * index.ts's run() instead of the normal action logic. No-ops when this host
- * has no cgroup filesystem (macOS/Windows runners, non-containerized jobs).
+ * index.ts's run() instead of the normal action logic. No-ops when this host has
+ * no cgroup v2 filesystem (macOS/Windows runners, non-containerized jobs).
  */
 export async function startCgroupPoller(otlpHttpEndpoint: string): Promise<void> {
   if (readCgroupSnapshot() === null) {
-    core.debug('No cgroup filesystem found; skipping container CPU/memory metrics')
+    core.info('No cgroup v2 filesystem found; skipping container CPU/memory metrics')
     return
   }
 

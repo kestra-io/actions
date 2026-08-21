@@ -38988,22 +38988,13 @@ async function setupNodeAgent(inject) {
   return path$1.join(modulesDir, pkg, "register.js");
 }
 
-const V2_ROOT = "/sys/fs/cgroup";
-const V1_CPU_ROOTS = ["/sys/fs/cgroup/cpu,cpuacct", "/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpuacct"];
-const V1_MEMORY_ROOT = "/sys/fs/cgroup/memory";
-const V1_UNLIMITED_MEMORY_THRESHOLD = 1e18;
+const CGROUP_ROOT = "/sys/fs/cgroup";
 function parseCpuMax(content) {
   const [quotaRaw, periodRaw] = content.trim().split(/\s+/);
   if (!quotaRaw || quotaRaw === "max" || !periodRaw) return null;
   const quota = Number(quotaRaw);
   const period = Number(periodRaw);
   if (!Number.isFinite(quota) || !Number.isFinite(period) || period <= 0) return null;
-  return quota / period;
-}
-function parseCpuQuotaV1(quotaRaw, periodRaw) {
-  const quota = Number(quotaRaw.trim());
-  const period = Number(periodRaw.trim());
-  if (!Number.isFinite(quota) || quota < 0 || !Number.isFinite(period) || period <= 0) return null;
   return quota / period;
 }
 function parseKeyValueStat(content) {
@@ -39016,14 +39007,11 @@ function parseKeyValueStat(content) {
   }
   return out;
 }
-function parseMemoryValueV2(content) {
+function parseMemoryValue(content) {
   const trimmed = content.trim();
   if (trimmed === "max") return null;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
-}
-function normalizeV1MemoryLimit(bytes) {
-  return bytes >= V1_UNLIMITED_MEMORY_THRESHOLD ? null : bytes;
 }
 function tryRead(filePath) {
   try {
@@ -39033,49 +39021,22 @@ function tryRead(filePath) {
   }
 }
 function readCgroupSnapshot(nowNanos = process.hrtime.bigint()) {
-  const v2CpuStat = tryRead(`${V2_ROOT}/cpu.stat`);
-  if (v2CpuStat !== null) {
-    const stat = parseKeyValueStat(v2CpuStat);
-    const cpuMax = tryRead(`${V2_ROOT}/cpu.max`);
-    const memCurrent = tryRead(`${V2_ROOT}/memory.current`);
-    const memMax = tryRead(`${V2_ROOT}/memory.max`);
-    return {
-      timeNanos: nowNanos,
-      cpuUsageUsec: stat.usage_usec ?? 0,
-      cpuUserUsec: stat.user_usec ?? null,
-      cpuSystemUsec: stat.system_usec ?? null,
-      cpuLimitCores: cpuMax !== null ? parseCpuMax(cpuMax) : null,
-      nrPeriods: stat.nr_periods ?? null,
-      nrThrottled: stat.nr_throttled ?? null,
-      throttledUsec: stat.throttled_usec ?? null,
-      memoryUsageBytes: memCurrent !== null ? parseMemoryValueV2(memCurrent) : null,
-      memoryLimitBytes: memMax !== null ? parseMemoryValueV2(memMax) : null
-    };
-  }
-  for (const root of V1_CPU_ROOTS) {
-    const usageNs = tryRead(`${root}/cpuacct.usage`);
-    if (usageNs === null) continue;
-    const quota = tryRead(`${root}/cpu.cfs_quota_us`);
-    const period = tryRead(`${root}/cpu.cfs_period_us`);
-    const statRaw = tryRead(`${root}/cpu.stat`);
-    const stat = statRaw !== null ? parseKeyValueStat(statRaw) : {};
-    const memUsage = tryRead(`${V1_MEMORY_ROOT}/memory.usage_in_bytes`);
-    const memLimit = tryRead(`${V1_MEMORY_ROOT}/memory.limit_in_bytes`);
-    return {
-      timeNanos: nowNanos,
-      cpuUsageUsec: Number(usageNs.trim()) / 1e3,
-      cpuUserUsec: null,
-      cpuSystemUsec: null,
-      cpuLimitCores: quota !== null && period !== null ? parseCpuQuotaV1(quota, period) : null,
-      nrPeriods: stat.nr_periods ?? null,
-      nrThrottled: stat.nr_throttled ?? null,
-      // v1's cpu.stat reports throttled_time in nanoseconds, unlike v2's throttled_usec.
-      throttledUsec: stat.throttled_time !== void 0 ? stat.throttled_time / 1e3 : null,
-      memoryUsageBytes: memUsage !== null ? parseMemoryValueV2(memUsage) : null,
-      memoryLimitBytes: memLimit !== null ? normalizeV1MemoryLimit(Number(memLimit.trim())) : null
-    };
-  }
-  return null;
+  const cpuStat = tryRead(`${CGROUP_ROOT}/cpu.stat`);
+  if (cpuStat === null) return null;
+  const stat = parseKeyValueStat(cpuStat);
+  const cpuMax = tryRead(`${CGROUP_ROOT}/cpu.max`);
+  const memCurrent = tryRead(`${CGROUP_ROOT}/memory.current`);
+  const memMax = tryRead(`${CGROUP_ROOT}/memory.max`);
+  return {
+    timeNanos: nowNanos,
+    cpuUsageUsec: stat.usage_usec ?? 0,
+    cpuLimitCores: cpuMax !== null ? parseCpuMax(cpuMax) : null,
+    nrPeriods: stat.nr_periods ?? null,
+    nrThrottled: stat.nr_throttled ?? null,
+    throttledUsec: stat.throttled_usec ?? null,
+    memoryUsageBytes: memCurrent !== null ? parseMemoryValue(memCurrent) : null,
+    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null
+  };
 }
 const SCOPE = { name: "kestra-io/actions/otel-collect/cgroup", version: "1.0.0" };
 const CUMULATIVE = 2;
@@ -39089,7 +39050,7 @@ function cumulativeSum(name, unit, value, startTimeUnixNano, timeUnixNano) {
     sum: { aggregationTemporality: CUMULATIVE, isMonotonic: true, dataPoints: [{ startTimeUnixNano, timeUnixNano, asDouble: value }] }
   };
 }
-function buildMetricsPayload(curr, prev, startTimeNanos) {
+function buildMetricsPayload(curr, startTimeNanos) {
   const startTimeUnixNano = startTimeNanos.toString();
   const timeUnixNano = curr.timeNanos.toString();
   const metrics = [cumulativeSum("container.cpu.time", "s", curr.cpuUsageUsec / 1e6, startTimeUnixNano, timeUnixNano)];
@@ -39103,15 +39064,6 @@ function buildMetricsPayload(curr, prev, startTimeNanos) {
   if (curr.cpuLimitCores !== null) metrics.push(gauge("container.cpu.limit", "{cpu}", curr.cpuLimitCores, timeUnixNano));
   if (curr.memoryUsageBytes !== null) metrics.push(gauge("container.memory.usage", "By", curr.memoryUsageBytes, timeUnixNano));
   if (curr.memoryLimitBytes !== null) metrics.push(gauge("container.memory.limit", "By", curr.memoryLimitBytes, timeUnixNano));
-  if (prev !== null && curr.cpuLimitCores !== null && curr.cpuLimitCores > 0) {
-    const elapsedNanos = curr.timeNanos - prev.timeNanos;
-    if (elapsedNanos > 0n) {
-      const deltaUsageUsec = curr.cpuUsageUsec - prev.cpuUsageUsec;
-      const elapsedUsec = Number(elapsedNanos) / 1e3;
-      const utilization = deltaUsageUsec / elapsedUsec / curr.cpuLimitCores;
-      metrics.push(gauge("container.cpu.utilization", "1", utilization, timeUnixNano));
-    }
-  }
   return { resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [{ scope: SCOPE, metrics }] }] };
 }
 async function postMetrics(endpoint, payload) {
@@ -39132,12 +39084,10 @@ const PID_STATE$1 = "otel-cgroup-poller-pid";
 const DEFAULT_INTERVAL_MS = 5e3;
 function runCgroupPollerProcess(endpoint, intervalMs = DEFAULT_INTERVAL_MS) {
   const startTimeNanos = process.hrtime.bigint();
-  let prev = null;
   const tick = async () => {
     const curr = readCgroupSnapshot();
     if (curr === null) return;
-    await postMetrics(endpoint, buildMetricsPayload(curr, prev, startTimeNanos));
-    prev = curr;
+    await postMetrics(endpoint, buildMetricsPayload(curr, startTimeNanos));
   };
   const timer = setInterval(() => void tick(), intervalMs);
   const shutdown = () => {
@@ -39150,7 +39100,7 @@ function runCgroupPollerProcess(endpoint, intervalMs = DEFAULT_INTERVAL_MS) {
 }
 async function startCgroupPoller(otlpHttpEndpoint) {
   if (readCgroupSnapshot() === null) {
-    debug("No cgroup filesystem found; skipping container CPU/memory metrics");
+    info("No cgroup v2 filesystem found; skipping container CPU/memory metrics");
     return;
   }
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";

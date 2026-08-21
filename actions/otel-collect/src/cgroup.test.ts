@@ -1,14 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import {
-  buildMetricsPayload,
-  normalizeV1MemoryLimit,
-  parseCpuMax,
-  parseCpuQuotaV1,
-  parseKeyValueStat,
-  parseMemoryValueV2,
-  type CgroupSnapshot
-} from './cgroup.js'
+import { buildMetricsPayload, parseCpuMax, parseKeyValueStat, parseMemoryValue, type CgroupSnapshot } from './cgroup.js'
 
 test('parseCpuMax reads "<quota> <period>" microseconds into a core-count limit', () => {
   assert.equal(parseCpuMax('800000 100000'), 8)
@@ -25,50 +17,26 @@ test('parseCpuMax rejects malformed content instead of throwing', () => {
   assert.equal(parseCpuMax('100000 0'), null)
 })
 
-test('parseCpuQuotaV1 combines cfs_quota_us/cfs_period_us into a core-count limit', () => {
-  assert.equal(parseCpuQuotaV1('400000', '100000'), 4)
-})
-
-test('parseCpuQuotaV1 treats -1 quota as unlimited', () => {
-  assert.equal(parseCpuQuotaV1('-1', '100000'), null)
-})
-
-test('parseKeyValueStat parses cgroup v2 cpu.stat', () => {
-  const content = 'usage_usec 1234567\nuser_usec 1000000\nsystem_usec 234567\nnr_periods 42\nnr_throttled 3\nthrottled_usec 5000\n'
+test('parseKeyValueStat parses cpu.stat', () => {
+  const content = 'usage_usec 1234567\nuser_usec 1000000\nnr_periods 42\nnr_throttled 3\nthrottled_usec 5000\n'
   assert.deepEqual(parseKeyValueStat(content), {
     usage_usec: 1234567,
     user_usec: 1000000,
-    system_usec: 234567,
     nr_periods: 42,
     nr_throttled: 3,
     throttled_usec: 5000
   })
 })
 
-test('parseKeyValueStat parses cgroup v1 cpu.stat (nanosecond throttled_time)', () => {
-  assert.deepEqual(parseKeyValueStat('nr_periods 10\nnr_throttled 1\nthrottled_time 2000000\n'), {
-    nr_periods: 10,
-    nr_throttled: 1,
-    throttled_time: 2000000
-  })
-})
-
-test('parseMemoryValueV2 treats "max" as unlimited', () => {
-  assert.equal(parseMemoryValueV2('max\n'), null)
-  assert.equal(parseMemoryValueV2('134217728\n'), 134217728)
-})
-
-test('normalizeV1MemoryLimit treats the huge v1 sentinel as unlimited', () => {
-  assert.equal(normalizeV1MemoryLimit(9223372036854771712), null)
-  assert.equal(normalizeV1MemoryLimit(134217728), 134217728)
+test('parseMemoryValue treats "max" as unlimited', () => {
+  assert.equal(parseMemoryValue('max\n'), null)
+  assert.equal(parseMemoryValue('134217728\n'), 134217728)
 })
 
 function snapshot(overrides: Partial<CgroupSnapshot> = {}): CgroupSnapshot {
   return {
     timeNanos: 0n,
     cpuUsageUsec: 0,
-    cpuUserUsec: null,
-    cpuSystemUsec: null,
     cpuLimitCores: null,
     nrPeriods: null,
     nrThrottled: null,
@@ -79,77 +47,51 @@ function snapshot(overrides: Partial<CgroupSnapshot> = {}): CgroupSnapshot {
   }
 }
 
-test('buildMetricsPayload always emits cumulative container.cpu.time from raw kernel usage', () => {
-  const curr = snapshot({ timeNanos: 5_000_000_000n, cpuUsageUsec: 2_000_000 })
-  const payload = buildMetricsPayload(curr, null, 0n)
-  const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics
-  const cpuTime = metrics.find((m) => m.name === 'container.cpu.time')
+test('buildMetricsPayload emits container.cpu.time as a monotonic cumulative counter in seconds', () => {
+  const payload = buildMetricsPayload(snapshot({ timeNanos: 5_000_000_000n, cpuUsageUsec: 2_000_000 }), 0n)
+  const cpuTime = payload.resourceMetrics[0].scopeMetrics[0].metrics.find((m) => m.name === 'container.cpu.time')
   assert.ok(cpuTime?.sum)
   assert.equal(cpuTime.sum?.dataPoints[0].asDouble, 2) // 2,000,000us -> 2s
   assert.equal(cpuTime.sum?.isMonotonic, true)
   assert.equal(cpuTime.sum?.aggregationTemporality, 2)
+  assert.equal(cpuTime.sum?.dataPoints[0].startTimeUnixNano, '0')
+  assert.equal(cpuTime.sum?.dataPoints[0].timeUnixNano, '5000000000')
 })
 
-test('buildMetricsPayload omits container.cpu.utilization on the first sample (no prev)', () => {
-  const curr = snapshot({ cpuLimitCores: 4, cpuUsageUsec: 1000 })
-  const payload = buildMetricsPayload(curr, null, 0n)
+test('buildMetricsPayload converts throttled_usec to seconds and keeps period counts raw', () => {
+  const payload = buildMetricsPayload(snapshot({ nrPeriods: 42, nrThrottled: 3, throttledUsec: 5_000_000 }), 0n)
   const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics
-  assert.equal(
-    metrics.find((m) => m.name === 'container.cpu.utilization'),
-    undefined
-  )
+  assert.equal(metrics.find((m) => m.name === 'container.cpu.throttled.time')?.sum?.dataPoints[0].asDouble, 5)
+  assert.equal(metrics.find((m) => m.name === 'container.cpu.throttled.periods')?.sum?.dataPoints[0].asDouble, 3)
+  assert.equal(metrics.find((m) => m.name === 'container.cpu.periods')?.sum?.dataPoints[0].asDouble, 42)
 })
 
-test('buildMetricsPayload computes container.cpu.utilization as a fraction of the limit from the usage delta', () => {
-  // 4-core limit, 2 cores' worth of usage accrued over 1 second -> 0.5 utilization.
-  const prev = snapshot({ timeNanos: 0n, cpuUsageUsec: 0, cpuLimitCores: 4 })
-  const curr = snapshot({ timeNanos: 1_000_000_000n, cpuUsageUsec: 2_000_000, cpuLimitCores: 4 })
-  const payload = buildMetricsPayload(curr, prev, 0n)
-  const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics
-  const utilization = metrics.find((m) => m.name === 'container.cpu.utilization')
-  assert.ok(utilization?.gauge)
-  assert.equal(utilization.gauge?.dataPoints[0].asDouble, 0.5)
-})
-
-test('buildMetricsPayload never reports utilization above 1 for a job pinned at its limit', () => {
-  // 8-core limit, fully saturated for 1 second -> 8,000,000us of usage -> utilization 1.0, not 2.
-  const prev = snapshot({ timeNanos: 0n, cpuUsageUsec: 0, cpuLimitCores: 8 })
-  const curr = snapshot({ timeNanos: 1_000_000_000n, cpuUsageUsec: 8_000_000, cpuLimitCores: 8 })
-  const payload = buildMetricsPayload(curr, prev, 0n)
-  const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics
-  const utilization = metrics.find((m) => m.name === 'container.cpu.utilization')
-  assert.equal(utilization?.gauge?.dataPoints[0].asDouble, 1)
-})
-
-test('buildMetricsPayload omits container.cpu.utilization when the limit is unknown', () => {
-  const prev = snapshot({ timeNanos: 0n, cpuUsageUsec: 0, cpuLimitCores: null })
-  const curr = snapshot({ timeNanos: 1_000_000_000n, cpuUsageUsec: 2_000_000, cpuLimitCores: null })
-  const payload = buildMetricsPayload(curr, prev, 0n)
-  const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics
-  assert.equal(
-    metrics.find((m) => m.name === 'container.cpu.utilization'),
-    undefined
-  )
+test('buildMetricsPayload emits the cpu limit as a numeric gauge, not a resource attribute', () => {
+  const payload = buildMetricsPayload(snapshot({ cpuLimitCores: 8 }), 0n)
+  const limit = payload.resourceMetrics[0].scopeMetrics[0].metrics.find((m) => m.name === 'container.cpu.limit')
+  assert.equal(limit?.gauge?.dataPoints[0].asDouble, 8)
+  assert.deepEqual(payload.resourceMetrics[0].resource.attributes, [])
 })
 
 test('buildMetricsPayload only emits optional metrics that have a value', () => {
-  const curr = snapshot({ cpuUsageUsec: 100 })
-  const payload = buildMetricsPayload(curr, null, 0n)
+  const payload = buildMetricsPayload(snapshot({ cpuUsageUsec: 100 }), 0n)
   const names = payload.resourceMetrics[0].scopeMetrics[0].metrics.map((m) => m.name)
   assert.deepEqual(names, ['container.cpu.time'])
 })
 
 test('buildMetricsPayload emits throttling and memory metrics when present', () => {
-  const curr = snapshot({
-    cpuUsageUsec: 100,
-    nrPeriods: 42,
-    nrThrottled: 3,
-    throttledUsec: 5_000_000,
-    memoryUsageBytes: 1024,
-    memoryLimitBytes: 2048,
-    cpuLimitCores: 2
-  })
-  const payload = buildMetricsPayload(curr, null, 0n)
+  const payload = buildMetricsPayload(
+    snapshot({
+      cpuUsageUsec: 100,
+      nrPeriods: 42,
+      nrThrottled: 3,
+      throttledUsec: 5_000_000,
+      memoryUsageBytes: 1024,
+      memoryLimitBytes: 2048,
+      cpuLimitCores: 2
+    }),
+    0n
+  )
   const names = payload.resourceMetrics[0].scopeMetrics[0].metrics.map((m) => m.name)
   assert.deepEqual(
     new Set(names),
