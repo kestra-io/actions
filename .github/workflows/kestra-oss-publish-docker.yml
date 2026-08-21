@@ -107,6 +107,9 @@ jobs:
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
+      embed-plugins-schema-bundle: true
+    secrets:
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
   docker:
     name: Publish Docker
@@ -115,10 +118,12 @@ jobs:
     strategy:
       matrix:
         image:
-          - name: "-no-plugins"
+          # -slim replaces the former -no-plugins image; the -no-plugins tags are still pushed as
+          # deprecated aliases for one release so downstream consumers can migrate.
+          - name: "-slim"
             plugins: ""
-            base-image-jre25: "ghcr.io/kestra-io/kestra-base:latest-jre25-no-plugins"
-            base-image-jre21: "ghcr.io/kestra-io/kestra-base:latest-jre21-no-plugins"
+            base-image-jre25: "ghcr.io/kestra-io/kestra-base:latest-jre25-slim"
+            base-image-jre21: "ghcr.io/kestra-io/kestra-base:latest-jre21-slim"
             packages: jattach
             python-libs: ""
           - name: ""
@@ -180,19 +185,19 @@ jobs:
 
       # Plugins
       - name: Authenticate to Google Cloud
-        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Install kestractl
-        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Download Kestra plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
         run: |
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             MAVEN_REPOSITORY="https://central.sonatype.com/repository/maven-snapshots/"
@@ -208,7 +213,7 @@ jobs:
             --concurrency 50
 
       - name: Create empty plugins dir
-        if: ${{ inputs.use-kestra-base-images && matrix.image.name == '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name == '-slim' }}
         run: mkdir -p plugins
 
       # Docker setup
@@ -228,12 +233,14 @@ jobs:
         with:
           context: .
           push: ${{ inputs.dry-run == false }}
-          tags: ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }}
+          tags: |
+            ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }}
+            ${{ matrix.image.name == '-slim' && format('kestra/kestra:{0}-no-plugins', steps.vars.outputs.tag) || '' }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha,scope=docker${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=docker${{ matrix.image.name }}
           build-args: |
-            BASE_IMAGE=${{ inputs.use-kestra-base-images && (inputs.java-version == '21' && matrix.image.base-image-jre21 || matrix.image.base-image-jre25) || 'ghcr.io/kestra-io/kestra-base:latest-no-plugins' }}
+            BASE_IMAGE=${{ inputs.use-kestra-base-images && (inputs.java-version == '21' && matrix.image.base-image-jre21 || matrix.image.base-image-jre25) || 'ghcr.io/kestra-io/kestra-base:latest-slim' }}
             KESTRA_PLUGINS=${{ !inputs.use-kestra-base-images && steps.vars.outputs.plugins || '' }}
             APT_PACKAGES=${{ matrix.image.packages }}
             PYTHON_LIBRARIES=${{ matrix.image.python-libs }}
@@ -246,6 +253,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != ''  && (inputs.dry-run == false)
         run: |
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.minor_semver, matrix.image.name) }}
+          if [[ "${{ matrix.image.name }}" == "-slim" ]]; then
+            regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:{0}-no-plugins', steps.vars.outputs.minor_semver) }}
+          fi
 
       - name: Retag to latest
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true')  && (inputs.dry-run == false)
@@ -257,6 +267,9 @@ jobs:
           fi
 
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest{0}', matrix.image.name) }}
+          if [[ "${{ matrix.image.name }}" == "-slim" ]]; then
+            regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} kestra/kestra:latest-no-plugins
+          fi
 
       - name: Retag to LTS
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true') && (inputs.dry-run == false)
@@ -268,6 +281,9 @@ jobs:
           fi
 
           regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} ${{ format('kestra/kestra:latest-lts{0}', matrix.image.name) }}
+          if [[ "${{ matrix.image.name }}" == "-slim" ]]; then
+            regctl image copy ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }} kestra/kestra:latest-lts-no-plugins
+          fi
 
   end:
     runs-on: ubuntu-latest

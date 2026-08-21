@@ -117,7 +117,9 @@ jobs:
     strategy:
       matrix:
         image:
-          - tag: -no-plugins
+          # -slim replaces the former -no-plugins image; the -no-plugins tags are still pushed as
+          # deprecated aliases for one release so downstream consumers can migrate.
+          - tag: -slim
             plugins: ""
             packages: jattach
             node-apt-packages: ""
@@ -174,6 +176,7 @@ jobs:
           TAG=${GITHUB_REF#refs/*/}
 
           echo "tag=${TAG}${{ matrix.image.tag }}" >> $GITHUB_OUTPUT
+          echo "base_tag=${TAG}" >> $GITHUB_OUTPUT
 
           if [[ $GITHUB_REF == refs/tags/* && $TAG != *-rc* ]]; then
             if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -196,13 +199,13 @@ jobs:
 
       # Plugins — new path (use-kestra-base-images: true)
       - name: Install kestractl
-        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Download EE plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
         run: |
           kestractl plugins download ${{ github.ref_name }} \
             --edition EE \
@@ -213,7 +216,7 @@ jobs:
             --concurrency 50
 
       - name: Download OSS plugins
-        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
         run: |
           kestractl plugins download ${{ github.ref_name }} \
             --edition OSS \
@@ -224,7 +227,7 @@ jobs:
             --concurrency 50
 
       - name: Create empty plugins dir
-        if: ${{ inputs.use-kestra-base-images && matrix.image.tag == '-no-plugins' }}
+        if: ${{ inputs.use-kestra-base-images && matrix.image.tag == '-slim' }}
         run: mkdir -p kestra-ee/plugins
 
       # Download executable from artifact
@@ -269,6 +272,8 @@ jobs:
           tags: |
             ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
             ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
+            ${{ matrix.image.tag == '-slim' && format('{0}:{1}-no-plugins', env.GITHUB_IMAGE_PATH, steps.vars.outputs.base_tag) || '' }}
+            ${{ matrix.image.tag == '-slim' && format('{0}:{1}-no-plugins', env.GCP_IMAGE_PATH, steps.vars.outputs.base_tag) || '' }}
           platforms: linux/amd64,linux/arm64
           network: host
           build-args: |
@@ -296,6 +301,10 @@ jobs:
         run: |
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
+          if [[ "${{ matrix.image.tag }}" == "-slim" ]]; then
+            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}-no-plugins
+            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}-no-plugins
+          fi
 
       - name: Retag to latest
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-latest == true || inputs.retag-latest == 'true') && (inputs.dry-run == false)
@@ -308,6 +317,10 @@ jobs:
 
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest${{ matrix.image.tag }}
+          if [[ "${{ matrix.image.tag }}" == "-slim" ]]; then
+            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-no-plugins
+            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-no-plugins
+          fi
 
       - name: Retag to LTS
         if: startsWith(github.ref, 'refs/tags/v') && (inputs.retag-lts == true || inputs.retag-lts == 'true') && (inputs.dry-run == false)
@@ -321,6 +334,10 @@ jobs:
 
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
+          if [[ "${{ matrix.image.tag }}" == "-slim" ]]; then
+            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts-no-plugins
+            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts-no-plugins
+          fi
 
       - name: Cloud - Retag to minor semver version
         if: startsWith(github.ref, 'refs/tags/v') && steps.vars.outputs.minor_semver != '' && (inputs.dry-run == false) && matrix.image.tag == '' && steps.cloud-ee.outputs.exists == 'true'
