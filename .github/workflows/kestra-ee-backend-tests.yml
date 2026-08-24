@@ -86,14 +86,9 @@ jobs:
         run: |
           mv kestra ../kestra
 
-      # Services
+      # Services - start async
       - name: Setup - Start docker compose
-        # --wait blocks until every service with a healthcheck reports healthy (and the rest
-        # are running), so the Gradle check below no longer races container startup. This
-        # removes environmental failures like 'Connection refused' / MySQL 'Communications
-        # link failure' from tests that connect before the shared services are ready.
-        # Requires the healthchecks added in kestra-ee's docker-compose-ci.yml.
-        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
+        run: docker compose -f docker-compose-ci.yml up -d
 
       # Gradle: javadoc and check run as two separate steps.
       #
@@ -114,6 +109,15 @@ jobs:
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
           ./gradlew javadoc --parallel
+
+      # Services - start async
+      - name: Setup - Start docker compose
+        # --wait blocks until every service with a healthcheck reports healthy (and the rest
+        # are running), so the Gradle check below no longer races container startup. This
+        # removes environmental failures like 'Connection refused' / MySQL 'Communications
+        # link failure' from tests that connect before the shared services are ready.
+        # Requires the healthchecks added in kestra-ee's docker-compose-ci.yml.
+        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       - name: Gradle - check
         run: |

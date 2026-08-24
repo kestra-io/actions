@@ -54,6 +54,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Services - start async
+      - name: Setup - Start docker compose
+        shell: bash
+        run: docker compose -f docker-compose-ci.yml up -d
+
       # Setup build
       - uses: kestra-io/actions/composite/setup-build@main
         name: Setup - Build
@@ -75,10 +80,10 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      # Services
-      - name: Setup - Start docker compose
+      # Services - wait to be ready
+      - name: Setup - Wait docker compose
         shell: bash
-        run: docker compose -f docker-compose-ci.yml up -d
+        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       # Gradle check
       - name: Gradle - check and javadoc
