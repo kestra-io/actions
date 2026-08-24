@@ -100,6 +100,8 @@ jobs:
       # persist between steps in the same job, so `check` reuses the already-compiled classes
       # (compileJava UP-TO-DATE) — no double compilation. The javadoc step gets its own short
       # timeout so a residual stall fails fast instead of burning the whole budget.
+      # testClasses is also added to compile before all test so that the test scheduling is respected
+      # https://github.com/kestra-io/gradle-plugin/#test-scheduling
       - name: Gradle - javadoc
         timeout-minutes: 15
         run: |
@@ -108,7 +110,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew javadoc --parallel
+          ./gradlew javadoc testClasses --parallel
 
       # Services - start async
       - name: Setup - Start docker compose
@@ -126,7 +128,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check --parallel --rerun-tasks --max-workers=4 -PheavyTestSlots=1
+          ./gradlew check --parallel --max-workers=4
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
