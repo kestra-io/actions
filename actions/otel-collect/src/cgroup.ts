@@ -32,8 +32,13 @@ import * as core from '@actions/core'
 
 const CGROUP_ROOT = '/sys/fs/cgroup'
 
+/** Nanoseconds since the Unix epoch, as OTLP's timeUnixNano/startTimeUnixNano require. */
+function nowUnixNanos(): bigint {
+  return BigInt(Date.now()) * 1_000_000n
+}
+
 export interface CgroupSnapshot {
-  /** Monotonic sample time (process.hrtime.bigint()), never wall clock. */
+  /** Wall-clock sample time in Unix epoch nanoseconds (see nowUnixNanos). */
   timeNanos: bigint
   /** Cumulative CPU time consumed since the cgroup was created, in microseconds. */
   cpuUsageUsec: number
@@ -91,7 +96,7 @@ function tryRead(filePath: string): string | null {
  * cgroup v2 filesystem — macOS, Windows, and non-containerized runners — so
  * callers can skip instead of exporting a permanently-empty metric.
  */
-export function readCgroupSnapshot(nowNanos: bigint = process.hrtime.bigint()): CgroupSnapshot | null {
+export function readCgroupSnapshot(nowNanos: bigint = nowUnixNanos()): CgroupSnapshot | null {
   const cpuStat = tryRead(`${CGROUP_ROOT}/cpu.stat`)
   if (cpuStat === null) return null
 
@@ -203,7 +208,7 @@ const DEFAULT_INTERVAL_MS = 5000
  * (sent by stopCgroupPoller), flushing one last sample before exiting.
  */
 export function runCgroupPollerProcess(endpoint: string, intervalMs: number = DEFAULT_INTERVAL_MS): void {
-  const startTimeNanos = process.hrtime.bigint()
+  const startTimeNanos = nowUnixNanos()
 
   const tick = async (): Promise<void> => {
     const curr = readCgroupSnapshot()
