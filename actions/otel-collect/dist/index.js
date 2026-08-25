@@ -38989,6 +38989,9 @@ async function setupNodeAgent(inject) {
 }
 
 const CGROUP_ROOT = "/sys/fs/cgroup";
+function nowUnixNanos() {
+  return BigInt(Date.now()) * 1000000n;
+}
 function parseCpuMax(content) {
   const [quotaRaw, periodRaw] = content.trim().split(/\s+/);
   if (!quotaRaw || quotaRaw === "max" || !periodRaw) return null;
@@ -39020,7 +39023,7 @@ function tryRead(filePath) {
     return null;
   }
 }
-function readCgroupSnapshot(nowNanos = process.hrtime.bigint()) {
+function readCgroupSnapshot(nowNanos = nowUnixNanos()) {
   const cpuStat = tryRead(`${CGROUP_ROOT}/cpu.stat`);
   if (cpuStat === null) return null;
   const stat = parseKeyValueStat(cpuStat);
@@ -39083,7 +39086,7 @@ const CGROUP_POLLER_ENDPOINT_ENV = "OTEL_COLLECT_CGROUP_ENDPOINT";
 const PID_STATE$1 = "otel-cgroup-poller-pid";
 const DEFAULT_INTERVAL_MS = 5e3;
 function runCgroupPollerProcess(endpoint, intervalMs = DEFAULT_INTERVAL_MS) {
-  const startTimeNanos = process.hrtime.bigint();
+  const startTimeNanos = nowUnixNanos();
   const tick = async () => {
     const curr = readCgroupSnapshot();
     if (curr === null) return;
