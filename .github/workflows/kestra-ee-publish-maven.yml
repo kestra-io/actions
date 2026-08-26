@@ -82,7 +82,7 @@ jobs:
         working-directory: kestra-ee
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: ./gradlew publish
+        run: ./gradlew publish --console=plain -q
 
       # Gradle dependency
       - name: Java - Gradle dependency graph

@@ -110,7 +110,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew javadoc testClasses --parallel
+          ./gradlew javadoc testClasses --parallel --console=plain -q 
 
       # Services - start async
       - name: Setup - Start docker compose
@@ -128,7 +128,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check --parallel --max-workers=4
+          ./gradlew check --parallel --max-workers=4 --console=plain -q
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
