@@ -322,8 +322,9 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # Cleanup disk space to avoid "no space left on device" errors during Trivy scan
+      # Cleanup disk space to avoid "no space left on device" errors during Trivy scan (needed for plugin-jdbc only, which installs many docker images)
       - name: Cleanup - Free up disk space
+        if: ${{ github.repository == 'kestra-io/plugin-jdbc' }}
         run: |
           echo "🧹 Freeing up disk space on the runner..."
           sudo docker system prune -a -f --volumes
