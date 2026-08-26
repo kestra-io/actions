@@ -124,11 +124,13 @@ jobs:
             packages: jattach
             node-apt-packages: ""
             python-libraries: ""
+            deprecated-alias: -no-plugins
 
           - tag: ""
             plugins: ${{needs.plugins.outputs.plugins}}
             packages: python3 python-is-python3 python3-pip curl jattach
             python-libraries: kestra
+            deprecated-alias: ""
     env:
       GCP_IMAGE_PATH: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
       GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee
@@ -272,8 +274,8 @@ jobs:
           tags: |
             ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
             ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }}
-            ${{ matrix.image.tag == '-slim' && format('{0}:{1}-no-plugins', env.GITHUB_IMAGE_PATH, steps.vars.outputs.base_tag) || '' }}
-            ${{ matrix.image.tag == '-slim' && format('{0}:{1}-no-plugins', env.GCP_IMAGE_PATH, steps.vars.outputs.base_tag) || '' }}
+            ${{ matrix.image.deprecated-alias != '' && format('{0}:{1}{2}', env.GITHUB_IMAGE_PATH, steps.vars.outputs.base_tag, matrix.image.deprecated-alias) || '' }}
+            ${{ matrix.image.deprecated-alias != '' && format('{0}:{1}{2}', env.GCP_IMAGE_PATH, steps.vars.outputs.base_tag, matrix.image.deprecated-alias) || '' }}
           platforms: linux/amd64,linux/arm64
           network: host
           build-args: |
@@ -301,9 +303,9 @@ jobs:
         run: |
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.tag }}
-          if [[ "${{ matrix.image.tag }}" == "-slim" ]]; then
-            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}-no-plugins
-            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}-no-plugins
+          if [[ -n "${{ matrix.image.deprecated-alias }}" ]]; then
+            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.deprecated-alias }}
+            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.minor_semver }}${{ matrix.image.deprecated-alias }}
           fi
 
       - name: Retag to latest
@@ -317,9 +319,9 @@ jobs:
 
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest${{ matrix.image.tag }}
-          if [[ "${{ matrix.image.tag }}" == "-slim" ]]; then
-            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-no-plugins
-            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-no-plugins
+          if [[ -n "${{ matrix.image.deprecated-alias }}" ]]; then
+            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest${{ matrix.image.deprecated-alias }}
+            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest${{ matrix.image.deprecated-alias }}
           fi
 
       - name: Retag to LTS
@@ -334,9 +336,9 @@ jobs:
 
           regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
           regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.tag }}
-          if [[ "${{ matrix.image.tag }}" == "-slim" ]]; then
-            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts-no-plugins
-            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts-no-plugins
+          if [[ -n "${{ matrix.image.deprecated-alias }}" ]]; then
+            regctl image copy ${{ env.GCP_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GCP_IMAGE_PATH }}:latest-lts${{ matrix.image.deprecated-alias }}
+            regctl image copy ${{ env.GITHUB_IMAGE_PATH }}:${{ steps.vars.outputs.tag }} ${{ env.GITHUB_IMAGE_PATH }}:latest-lts${{ matrix.image.deprecated-alias }}
           fi
 
       - name: Cloud - Retag to minor semver version
