@@ -2,24 +2,26 @@ name: '[Probe] Parallel steps support'
 
 # Scratch workflow to confirm the runner accepts the GitHub Actions `parallel`/`background`/`wait`
 # keys (shipped 2026-06-25) before rolling them out across the reusable workflows. Not meant to be
-# called by anything — dispatch manually, read the run, then delete this file.
+# called by anything — delete this file once both matrix legs are confirmed.
 # See: https://github.blog/changelog/2026-06-25-actions-steps-can-now-be-run-in-parallel/
+#
+# Triggered on push rather than workflow_dispatch: GitHub only allows dispatching a
+# workflow_dispatch workflow that already exists on the default branch, so a branch-only
+# workflow_dispatch 404s. `push`/`pull_request` triggers are read straight from the branch that
+# was pushed, no merge to main required — every push to this branch re-runs both legs below.
 
 on:
-  workflow_dispatch:
-    inputs:
-      runner:
-        description: 'Runner to probe'
-        required: true
-        type: choice
-        options:
-          - ubuntu-latest
-          - kestra-private-standard
-        default: ubuntu-latest
+  push:
+    branches:
+      - propose-parallel-composite-actions
 
 jobs:
   probe:
-    runs-on: ${{ inputs.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, kestra-private-standard]
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Timing - start
         id: t0
@@ -97,4 +99,4 @@ jobs:
       - name: Probe - summary
         if: always()
         shell: bash
-        run: echo "::notice::Probe complete on runner=${{ inputs.runner }}"
+        run: echo "::notice::Probe complete on runner=${{ matrix.runner }}"
