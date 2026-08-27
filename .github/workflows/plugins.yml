@@ -13,10 +13,10 @@ on:
         type: boolean
         default: true
       runner:
-        description: "The runner to use."
+        description: "Deprecated, ignored. The runner is now selected automatically based on whether the calling repository is private or public."
         required: false
         type: string
-        default: "ubuntu-latest"
+        default: ""
       generate-shadowjar:
         description: "Does we generate a shadow jar"
         required: false
@@ -51,7 +51,7 @@ env:
 
 jobs:
   main:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     steps:
       # Check out
       - name: Checkout - Repository
@@ -242,7 +242,7 @@ jobs:
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel
+        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel --console=plain -q
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
@@ -419,7 +419,7 @@ jobs:
   compat-kestra-develop:
     name: Compat Kestra develop
     if: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     continue-on-error: true
     # Exposed as env because the `secrets` context is not available in a step-level `if`.
     env:
@@ -490,7 +490,7 @@ jobs:
       - name: Compat - Compile main
         id: compile-main
         shell: bash
-        run: ./gradlew assemble --parallel
+        run: ./gradlew assemble --parallel --console=plain -q
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
