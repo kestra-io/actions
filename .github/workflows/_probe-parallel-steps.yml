@@ -1,0 +1,100 @@
+name: '[Probe] Parallel steps support'
+
+# Scratch workflow to confirm the runner accepts the GitHub Actions `parallel`/`background`/`wait`
+# keys (shipped 2026-06-25) before rolling them out across the reusable workflows. Not meant to be
+# called by anything — dispatch manually, read the run, then delete this file.
+# See: https://github.blog/changelog/2026-06-25-actions-steps-can-now-be-run-in-parallel/
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner to probe'
+        required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - kestra-private-standard
+        default: ubuntu-latest
+
+jobs:
+  probe:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Timing - start
+        id: t0
+        shell: bash
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # --- Core gate: does `parallel:` run steps concurrently at all? ---
+      - parallel:
+          - name: Probe - parallel sleep A
+            shell: bash
+            run: sleep 8 && echo "A done"
+          - name: Probe - parallel sleep B
+            shell: bash
+            run: sleep 8 && echo "B done"
+
+      - name: Timing - assert concurrency
+        shell: bash
+        env:
+          START: ${{ steps.t0.outputs.epoch }}
+        run: |
+          NOW=$(date +%s)
+          ELAPSED=$(( NOW - START ))
+          echo "Elapsed since start: ${ELAPSED}s (expect ~8-10s if parallel, ~16s+ if sequential)"
+          if [ "$ELAPSED" -ge 14 ]; then
+            echo "::error::parallel: block did not overlap — steps ran sequentially (${ELAPSED}s)"
+            exit 1
+          fi
+
+      # --- Unverified #1: uses: step inside a parallel: block ---
+      - parallel:
+          - name: Probe - parallel run step
+            shell: bash
+            run: echo "run step ok"
+          - name: Probe - parallel uses step
+            uses: actions/checkout@v5
+            with:
+              fetch-depth: 1
+
+      # --- Unverified #2: per-step if: inside a parallel: block ---
+      - parallel:
+          - name: Probe - if true (should run)
+            if: ${{ true }}
+            shell: bash
+            run: echo "::notice::if-true step ran (expected)"
+          - name: Probe - if false (should skip)
+            if: ${{ false }}
+            shell: bash
+            run: echo "::error::if-false step ran — should have been skipped"
+
+      # --- background: + wait: gate ---
+      - name: Probe - background step
+        id: bg
+        background: true
+        shell: bash
+        run: |
+          sleep 6
+          echo "value=hello-from-background" >> "$GITHUB_OUTPUT"
+
+      - name: Probe - work while background runs
+        shell: bash
+        run: echo "doing other work while background step is in flight"
+
+      - name: Probe - wait for background step
+        wait: [bg]
+
+      - name: Probe - assert background output visible after wait
+        shell: bash
+        run: |
+          if [ "${{ steps.bg.outputs.value }}" != "hello-from-background" ]; then
+            echo "::error::background step output not visible after wait: '${{ steps.bg.outputs.value }}'"
+            exit 1
+          fi
+          echo "::notice::background output correctly visible after wait"
+
+      - name: Probe - summary
+        if: always()
+        shell: bash
+        run: echo "::notice::Probe complete on runner=${{ inputs.runner }}"
