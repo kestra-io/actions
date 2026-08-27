@@ -238,6 +238,27 @@ jobs:
             ./.github/setup-unit.sh
           fi
 
+      # UI unit tests (Vitest, jsdom — no browser download) for plugins that ship a Vue
+      # micro-frontend under ui/. Guarded on ui/package-lock.json so it is a no-op for the
+      # plugins that have no UI; Node itself is set up conditionally in "Setup - Build".
+      # --if-present keeps repos that lack a lint/test:unit script from failing.
+      #
+      # Backgrounded rather than put in a `parallel:` block with Gradle Check: Setup/Check/
+      # Cleanup below is a strict sequential chain (Cleanup must run even when Check fails, to
+      # tear down leaked cloud resources), which a flat parallel: list can't express. Running
+      # this in the background alongside that whole chain and waiting on it after Cleanup gets
+      # the same overlap without disturbing that chain.
+      - name: Test - UI unit tests
+        id: ui-unit-tests
+        background: true
+        if: ${{ inputs.skip-test == false && hashFiles('ui/package-lock.json') != '' }}
+        working-directory: ui
+        shell: bash
+        run: |
+          npm ci
+          npm run --if-present lint
+          npm run --if-present test:unit
+
       # Gradle check
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
@@ -262,18 +283,9 @@ jobs:
             ./.github/cleanup-unit.sh
           fi
 
-      # UI unit tests (Vitest, jsdom — no browser download) for plugins that ship a Vue
-      # micro-frontend under ui/. Guarded on ui/package-lock.json so it is a no-op for the
-      # plugins that have no UI; Node itself is set up conditionally in "Setup - Build".
-      # --if-present keeps repos that lack a lint/test:unit script from failing.
-      - name: Test - UI unit tests
+      - name: Test - Wait for UI unit tests
         if: ${{ inputs.skip-test == false && hashFiles('ui/package-lock.json') != '' }}
-        working-directory: ui
-        shell: bash
-        run: |
-          npm ci
-          npm run --if-present lint
-          npm run --if-present test:unit
+        wait: [ui-unit-tests]
 
       # Avoid duplicate publishing on release commits:
       # when a main/master push points to a release tag, only the tag workflow should publish.

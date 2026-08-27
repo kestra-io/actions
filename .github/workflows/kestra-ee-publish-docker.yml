@@ -160,16 +160,27 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Docker init
-        uses: kestra-io/actions/composite/setup-docker@main
+      # Three independent setup steps — Docker init and kestractl install don't touch GCP
+      # credentials at all; the Vars step right after needs GCP - Auth's output, so it stays
+      # outside this block rather than joining it.
+      - parallel:
+          - name: Docker init
+            uses: kestra-io/actions/composite/setup-docker@main
 
-      # Google Auth
-      - name: GCP - Auth with github service account
-        id: glogin
-        uses: 'google-github-actions/auth@v3'
-        with:
-          token_format: 'access_token'
-          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+          # Google Auth
+          - name: GCP - Auth with github service account
+            id: glogin
+            uses: 'google-github-actions/auth@v3'
+            with:
+              token_format: 'access_token'
+              credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+
+          # Plugins — new path (use-kestra-base-images: true)
+          - name: Install kestractl
+            if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
+            run: |
+              curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+              echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       # Vars
       - name: Plugins - Set List
@@ -199,13 +210,8 @@ jobs:
             echo "plugins=$PRIVATE_REPO ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           fi
 
-      # Plugins — new path (use-kestra-base-images: true)
-      - name: Install kestractl
-        if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
+      # Plugins — new path (use-kestra-base-images: true). kestractl was installed in the
+      # parallel: block above.
       - name: Download EE plugins
         if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
         run: |
@@ -244,26 +250,28 @@ jobs:
         run: |
           cp build/executable/* kestra-ee/docker/app/kestra && chmod +x kestra-ee/docker/app/kestra
 
-      - name: Docker - Login to GitHub registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # Three independent registry logins — different registries, different credentials.
+      - parallel:
+          - name: Docker - Login to GitHub registry
+            uses: docker/login-action@v3
+            with:
+              registry: ghcr.io
+              username: ${{ github.repository_owner }}
+              password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker - Login to Google Cloud registry
-        uses: docker/login-action@v3
-        with:
-          registry: europe-west1-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.glogin.outputs.access_token }}
+          - name: Docker - Login to Google Cloud registry
+            uses: docker/login-action@v3
+            with:
+              registry: europe-west1-docker.pkg.dev
+              username: oauth2accesstoken
+              password: ${{ steps.glogin.outputs.access_token }}
 
-      - name: Docker - Login to Dockerhub
-        # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          - name: Docker - Login to Dockerhub
+            # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
+            uses: docker/login-action@v3
+            with:
+              username: ${{ secrets.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker - Build and push
         id: docker-build-push

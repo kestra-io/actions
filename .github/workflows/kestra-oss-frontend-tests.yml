@@ -64,23 +64,37 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         working-directory: ui
         run: npm ci
-    
-      - name: Npm - check types
+
+      # Runs concurrently with the checks/build/unit-tests below and is only waited on right
+      # before it's needed — it's a pure download (browser binaries + apt deps), independent of
+      # everything else in this job.
+      - name: Storybook - Install Playwright
+        id: playwright-install
+        background: true
         working-directory: ui
-        run: npm run check:types
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
 
-      - name: Npm - lint (oxlint)
-        uses: oxc-project/oxlint-action@v3.0.0
-        with:
+      # oxlint/eslint are `uses:` steps inside a `parallel:` block, which is undocumented as of
+      # writing (every public example uses bare `run:` steps) — verify this combination on a
+      # scratch dispatch before relying on it; fall back to sequential if it misbehaves.
+      - parallel:
+          - name: Npm - check types
             working-directory: ui
-            all-files: true
+            run: npm run check:types
 
-      - name: Npm - lint (eslint)
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          reporter: github-pr-review
-          workdir: ui
+          - name: Npm - lint (oxlint)
+            uses: oxc-project/oxlint-action@v3.0.0
+            with:
+              working-directory: ui
+              all-files: true
+
+          - name: Npm - lint (eslint)
+            uses: reviewdog/action-eslint@v1
+            with:
+              github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
+              reporter: github-pr-review
+              workdir: ui
 
       - name: Npm - Run build
         working-directory: ui
@@ -92,10 +106,8 @@ jobs:
         working-directory: ui
         run: npm run test:unit
 
-      - name: Storybook - Install Playwright
-        working-directory: ui
-        if: steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps
+      - name: Storybook - Wait for Playwright install
+        wait: [playwright-install]
 
       - name: Run storybook component tests
         working-directory: ui

@@ -42,6 +42,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Has no dependency on anything else in this job (a bare curl|bash installer, not even on
+      # the checkout above) — start it now so it overlaps with Setup - Build / npm / Gradle below
+      # instead of blocking right before it's needed. Waited on further down, just before the
+      # first actual kestractl invocation.
+      - name: Schema bundle - Install kestractl
+        id: kestractl
+        background: true
+        if: ${{ inputs.embed-plugins-schema-bundle }}
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       # Setup build
       - uses: kestra-io/actions/composite/setup-build@main
         name: Setup - Build
@@ -87,25 +100,24 @@ jobs:
       # repackaged with it. The second pass re-runs processResources/jar/shadowJar only, since
       # compilation is already up to date.
       # ------------------------------------------------------------------------------------------
-      - name: Schema bundle - Get plugins list
-        id: schema-bundle-plugins
-        if: ${{ inputs.embed-plugins-schema-bundle }}
-        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
-        with:
-          kestraVersion: ${{ github.ref_name }}
+      # Independent of each other — different services, no shared state.
+      - parallel:
+          - name: Schema bundle - Get plugins list
+            id: schema-bundle-plugins
+            if: ${{ inputs.embed-plugins-schema-bundle }}
+            uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
+            with:
+              kestraVersion: ${{ github.ref_name }}
 
-      - name: Schema bundle - Authenticate to Google Cloud
-        if: ${{ inputs.embed-plugins-schema-bundle }}
-        uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          - name: Schema bundle - Authenticate to Google Cloud
+            if: ${{ inputs.embed-plugins-schema-bundle }}
+            uses: google-github-actions/auth@v3
+            with:
+              credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Schema bundle - Install kestractl
+      - name: Schema bundle - Wait for kestractl install
         if: ${{ inputs.embed-plugins-schema-bundle }}
-        shell: bash
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        wait: [kestractl]
 
       - name: Schema bundle - Download the plugin catalog
         shell: bash
@@ -137,15 +149,16 @@ jobs:
         run: |
           cp build/executable/* docker/app/kestra && chmod +x docker/app/kestra
 
-      # Upload artifacts
-      - name: Artifacts - Upload JAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: jar
-          path: build/libs/
+      # Upload artifacts — independent, different artifact names and source paths.
+      - parallel:
+          - name: Artifacts - Upload JAR
+            uses: actions/upload-artifact@v4
+            with:
+              name: jar
+              path: build/libs/
 
-      - name: Artifacts - Upload Executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: exe
-          path: build/executable/
+          - name: Artifacts - Upload Executable
+            uses: actions/upload-artifact@v4
+            with:
+              name: exe
+              path: build/executable/
