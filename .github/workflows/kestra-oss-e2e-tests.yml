@@ -29,11 +29,6 @@ on:
         type: string
         default: ''
         required: false
-      runner:
-        description: "The runner label to execute this job on."
-        type: string
-        default: 'ubuntu-latest'
-        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -41,7 +36,7 @@ env:
 jobs:
   check:
     timeout-minutes: 30
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     steps:
       - name: Login to DockerHub
         uses: docker/login-action@v3

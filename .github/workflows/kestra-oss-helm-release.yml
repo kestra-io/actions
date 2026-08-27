@@ -8,11 +8,6 @@ on:
         required: false
         type: boolean
         default: false
-      runner:
-        description: "The runner label to execute this job on."
-        type: string
-        default: 'ubuntu-latest'
-        required: false
 
 permissions:
   contents: read
@@ -24,7 +19,7 @@ env:
 jobs:
   helm-release:
     name: Package and publish Helm charts
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     env:
       BUCKET: helm-charts-kestra-host
       REPO_URL: https://helm.kestra.io/

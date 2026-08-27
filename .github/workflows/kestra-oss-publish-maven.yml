@@ -30,11 +30,6 @@ on:
         type: string
         default: '21'
         required: false
-      runner:
-        description: "The runner label to execute this job on."
-        type: string
-        default: 'ubuntu-latest'
-        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -42,7 +37,7 @@ env:
 jobs:
   publish:
     name: Publish - Maven
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout - Current ref
         uses: actions/checkout@v5

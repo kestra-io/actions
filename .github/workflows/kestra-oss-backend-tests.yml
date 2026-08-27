@@ -29,11 +29,6 @@ on:
         type: string
         default: '21'
         required: false
-      runner:
-        description: "The runner label to execute this job on."
-        type: string
-        default: 'ubuntu-latest'
-        required: false
 
 permissions:
   contents: write
@@ -47,7 +42,7 @@ env:
 jobs:
   test:
     name: Backend - Tests
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}

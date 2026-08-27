@@ -2,12 +2,6 @@ name: Github - Release
 
 on:
   workflow_call:
-    inputs:
-      runner:
-        description: "The runner label to execute this job on."
-        type: string
-        default: 'ubuntu-latest'
-        required: false
     secrets:
       GH_BOT_APP_ID:
         description: "GitHub App Client ID."
@@ -25,7 +19,7 @@ env:
 jobs:
   publish:
     name: Github - Release
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     # skip RCs
     if: ${{ !contains(github.ref, '-rc') }}
     steps:
