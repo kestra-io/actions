@@ -283,8 +283,10 @@ jobs:
             ./.github/cleanup-unit.sh
           fi
 
+      # Unconditional: `wait:` doesn't accept `if:` (GitHub rejects the combination as an
+      # unrecognized step shape). The background step above already carries the condition —
+      # waiting on it when it was skipped is a no-op.
       - name: Test - Wait for UI unit tests
-        if: ${{ inputs.skip-test == false && hashFiles('ui/package-lock.json') != '' }}
         wait: [ui-unit-tests]
 
       # Avoid duplicate publishing on release commits:
