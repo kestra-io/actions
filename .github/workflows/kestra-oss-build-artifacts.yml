@@ -9,11 +9,19 @@ on:
       OTLP_HEADERS:
         description: 'OTLP headers for OpenTelemetry export'
         required: false
+      GCP_SERVICE_ACCOUNT:
+        description: 'GCP service account key JSON, for the Maven mirror the plugin catalog is downloaded from. Required when embed-plugins-schema-bundle is true.'
+        required: false
     inputs:
       java-version:
         description: "Java version"
         type: string
         default: '21'
+        required: false
+      embed-plugins-schema-bundle:
+        description: 'Generate the KIP-45 plugin schema bundle from the full plugin catalog and embed it in the jar. Off by default: it downloads the whole catalog, so it is worth the minutes on release and develop builds only, never on pull-request builds.'
+        type: boolean
+        default: false
         required: false
 
 env:
@@ -67,6 +75,62 @@ jobs:
         shell: bash
         run: |
           ./gradlew executableJar
+
+      # ------------------------------------------------------------------------------------------
+      # Plugin schema bundle (KIP-45): embedded in the jar as the /plugins-schema.json classpath
+      # resource, so the flow editor can autocomplete plugin types that are NOT installed, with no
+      # network access at runtime.
+      #
+      # It has to be generated from the full plugin catalog, which is not a build dependency of
+      # Kestra — only a plugin-loaded Kestra can produce it. Hence two passes: the build above
+      # yields a runnable executable, that executable generates the bundle, then the jar is
+      # repackaged with it. The second pass re-runs processResources/jar/shadowJar only, since
+      # compilation is already up to date.
+      # ------------------------------------------------------------------------------------------
+      - name: Schema bundle - Get plugins list
+        id: schema-bundle-plugins
+        if: ${{ inputs.embed-plugins-schema-bundle }}
+        uses: kestra-io/actions/composite/kestra/kestra-plugins-list@main
+        with:
+          kestraVersion: ${{ github.ref_name }}
+
+      - name: Schema bundle - Authenticate to Google Cloud
+        if: ${{ inputs.embed-plugins-schema-bundle }}
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Schema bundle - Install kestractl
+        if: ${{ inputs.embed-plugins-schema-bundle }}
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Schema bundle - Download the plugin catalog
+        shell: bash
+        if: ${{ inputs.embed-plugins-schema-bundle }}
+        env:
+          PLUGINS: ${{ steps.schema-bundle-plugins.outputs.plugins }}
+        run: |
+          set -euo pipefail
+          kestractl plugins download "${{ github.ref_name }}" \
+            --maven-repository "https://europe-maven.pkg.dev/kestra-host/maven-remote" \
+            --maven-username oauth2accesstoken \
+            --maven-password "$(gcloud auth print-access-token)" \
+            --plugins-dir ./plugins-catalog \
+            --plugins "$PLUGINS" \
+            --concurrency 50
+
+      - name: Schema bundle - Generate and embed it in the jar
+        shell: bash
+        if: ${{ inputs.embed-plugins-schema-bundle }}
+        run: |
+          set -euo pipefail
+          EXECUTABLE=$(ls build/executable/*)
+          chmod +x "$EXECUTABLE"
+          "$EXECUTABLE" plugins-schema --plugins ./plugins-catalog -o build/plugins-schema.json
+          ./gradlew executableJar -PpluginsSchemaBundle=build/plugins-schema.json
 
       - name: Artifacts - Copy exe to image
         shell: bash
