@@ -19,7 +19,7 @@ env:
 jobs:
   release:
     name: Github - Release
-    runs-on: kestra-private-standard
+    runs-on: kestra-private-4cpu-4gb
     # skip RCs
     if: ${{ !contains(github.ref, '-rc') }}
     steps:
