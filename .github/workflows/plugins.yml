@@ -242,7 +242,7 @@ jobs:
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel --console=plain -q
+        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel --console=plain
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
@@ -490,7 +490,7 @@ jobs:
       - name: Compat - Compile main
         id: compile-main
         shell: bash
-        run: ./gradlew assemble --parallel --console=plain -q
+        run: ./gradlew assemble --parallel --console=plain
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}

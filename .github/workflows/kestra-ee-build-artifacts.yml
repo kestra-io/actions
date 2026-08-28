@@ -105,9 +105,9 @@ jobs:
         run: |
           cd kestra-ee
           if [ "${{ steps.cloud-ee.outputs.exists }}" == "true" ]; then
-            ./gradlew executableJar :cloud-ee:shadowJar --parallel --console=plain -q
+            ./gradlew executableJar :cloud-ee:shadowJar --parallel --console=plain
           else
-            ./gradlew executableJar --parallel --console=plain -q
+            ./gradlew executableJar --parallel --console=plain
           fi
 
       - name: Artifacts - Upload Executable
