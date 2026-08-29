@@ -111,23 +111,30 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('kestra-ee/ui-ee/package-lock.json') }}
 
-      - name: OSS npm ci
-        if: steps.cache-oss-node-modules.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: kestra/ui
-        run: npm ci
+      # Three independent I/O steps run concurrently: two npm installs (separate trees, separate
+      # node_modules) and the artifact download (network, no shared state with either). Neither
+      # apt-consuming step (Install make / Install Playwright below) is in here — apt-get races
+      # on /var/lib/dpkg/lock if two apt users run at once, so those stay sequential relative to
+      # each other, after this block.
+      - parallel:
+          - name: OSS npm ci
+            if: steps.cache-oss-node-modules.outputs.cache-hit != 'true'
+            shell: bash
+            working-directory: kestra/ui
+            run: npm ci
 
-      - name: EE npm ci
-        if: steps.cache-ee-node-modules.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npm ci
+          - name: EE npm ci
+            if: steps.cache-ee-node-modules.outputs.cache-hit != 'true'
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm ci
 
-      - name: Install Playwright
-        if: steps.cache-playwright.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npx playwright install --with-deps chromium
+          - name: Artifacts - Download executable
+            if: ${{ inputs.exe-artifact != '' }}
+            uses: actions/download-artifact@v5
+            with:
+              name: ${{ inputs.exe-artifact }}
+              path: kestra-ee/build/executable
 
       - name: Install make
         shell: bash
@@ -135,12 +142,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y make
 
-      - name: Artifacts - Download executable
-        if: ${{ inputs.exe-artifact != '' }}
-        uses: actions/download-artifact@v5
-        with:
-          name: ${{ inputs.exe-artifact }}
-          path: kestra-ee/build/executable
+      - name: Install Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npx playwright install --with-deps chromium
 
       - name: Run EE E2E Tests
         working-directory: kestra-ee

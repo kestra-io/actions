@@ -31,20 +31,22 @@ jobs:
           repository: kestra-io/kestra
           ref: ${{ github.ref }}
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v5
-        with:
-          version: v3.12.3
+      # Independent tool installs — different tools, different sources.
+      - parallel:
+          - name: Setup Helm
+            uses: azure/setup-helm@v5
+            with:
+              version: v3.12.3
 
-      - name: Install kubeconform and helm-docs
-        run: |
-          set -euo pipefail
-          curl -fsSL -o /tmp/kc.tar.gz \
-            https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
-          tar -xzf /tmp/kc.tar.gz -C /usr/local/bin kubeconform
-          curl -fsSL -o /tmp/hd.tar.gz \
-            https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz
-          tar -xzf /tmp/hd.tar.gz -C /usr/local/bin helm-docs
+          - name: Install kubeconform and helm-docs
+            run: |
+              set -euo pipefail
+              curl -fsSL -o /tmp/kc.tar.gz \
+                https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
+              tar -xzf /tmp/kc.tar.gz -C /usr/local/bin kubeconform
+              curl -fsSL -o /tmp/hd.tar.gz \
+                https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz
+              tar -xzf /tmp/hd.tar.gz -C /usr/local/bin helm-docs
 
       - name: Verify helm-docs are up to date
         run: helm-docs
@@ -62,6 +64,25 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "dry_run=${DRY_RUN}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION} | Tag: ${TAG} | Dry run: ${DRY_RUN}"
+
+      # A pure network check with no dependency on packaging — only needs the tag resolved above.
+      # Runs in the background alongside the chart lint/package/bundle work below and is waited
+      # on right before the publish step it actually gates, so a missing image is still caught
+      # before anything is uploaded, just without blocking the packaging work while it checks.
+      - name: Verify Docker Hub has appVersion image
+        id: dockerhub-check
+        background: true
+        env:
+          TAG: ${{ steps.config.outputs.tag }}
+        run: |
+          set -euo pipefail
+          STATUS=$(curl -fsS -o /dev/null -w "%{http_code}" \
+            "https://hub.docker.com/v2/repositories/kestra/kestra/tags/${TAG}/" || true)
+          if [[ "${STATUS}" != "200" ]]; then
+            echo "::error::Docker Hub tag kestra/kestra:${TAG} not found (HTTP ${STATUS}). Refusing to publish chart for an image that doesn't exist."
+            exit 1
+          fi
+          echo "Docker Hub tag kestra/kestra:${TAG} exists — safe to publish chart."
 
       - name: Update Chart.yaml versions
         env:
@@ -126,21 +147,13 @@ jobs:
             | kubeconform -strict -summary
           echo "kestra-starter-${VERSION}.tgz validates OK"
 
-      - name: Verify Docker Hub has appVersion image
-        env:
-          TAG: ${{ steps.config.outputs.tag }}
-        run: |
-          set -euo pipefail
-          STATUS=$(curl -fsS -o /dev/null -w "%{http_code}" \
-            "https://hub.docker.com/v2/repositories/kestra/kestra/tags/${TAG}/" || true)
-          if [[ "${STATUS}" != "200" ]]; then
-            echo "::error::Docker Hub tag kestra/kestra:${TAG} not found (HTTP ${STATUS}). Refusing to publish chart for an image that doesn't exist."
-            exit 1
-          fi
-          echo "Docker Hub tag kestra/kestra:${TAG} exists — safe to publish chart."
-
       - name: Show packaged charts
         run: ls -lh release/*.tgz
+
+      # Placed here (matching the original step's position, before the GCP/GCS work below) so a
+      # missing image fails fast instead of after auth/download/merge run for nothing.
+      - name: Wait for Docker Hub image check
+        wait: [dockerhub-check]
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3

@@ -86,9 +86,19 @@ jobs:
         run: |
           mv kestra ../kestra
 
-      # Services - start async
+      # Services - start async. Previously two separate `docker compose up -d` steps (an unwaited
+      # kick-off here, then a second `up -d --wait` below right before Gradle - check) under the
+      # same step name, which made the log unreadable. `background:` + `wait:` collapses that into
+      # one step: --wait blocks until every service with a healthcheck reports healthy (and the
+      # rest are running), so Gradle - check below no longer races container startup. This removes
+      # environmental failures like 'Connection refused' / MySQL 'Communications link failure' from
+      # tests that connect before the shared services are ready. Requires the healthchecks added in
+      # kestra-ee's docker-compose-ci.yml. It's waited on just before Gradle - check, not before
+      # javadoc, since javadoc needs no services.
       - name: Setup - Start docker compose
-        run: docker compose -f docker-compose-ci.yml up -d
+        id: compose
+        background: true
+        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       # Gradle: javadoc and check run as two separate steps.
       #
@@ -112,14 +122,9 @@ jobs:
           fi
           ./gradlew javadoc testClasses --parallel --console=plain 
 
-      # Services - start async
-      - name: Setup - Start docker compose
-        # --wait blocks until every service with a healthcheck reports healthy (and the rest
-        # are running), so the Gradle check below no longer races container startup. This
-        # removes environmental failures like 'Connection refused' / MySQL 'Communications
-        # link failure' from tests that connect before the shared services are ready.
-        # Requires the healthchecks added in kestra-ee's docker-compose-ci.yml.
-        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
+      # Services - wait to be ready
+      - name: Setup - Wait docker compose
+        wait: [compose]
 
       - name: Gradle - check
         run: |

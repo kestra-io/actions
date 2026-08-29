@@ -68,14 +68,23 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
 
-      - name: Build frontend
+      # OSS npm ci and EE npm install target separate directories/lockfiles — independent. The EE
+      # build itself stays sequential-after: it needs the local install in kestra-ee/ui-ee done.
+      - parallel:
+          - name: Build frontend - OSS npm ci
+            shell: bash
+            working-directory: kestra/ui
+            run: npm ci
+
+          - name: Build frontend - EE npm install
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm install
+
+      - name: Build frontend - EE build
         shell: bash
-        run: |
-          cd kestra/ui
-          npm ci
-          cd ../../kestra-ee/ui-ee
-          npm install
-          npm run build
+        working-directory: kestra-ee/ui-ee
+        run: npm run build
 
       # Publish
       - name: Publish - Release package with Gradle

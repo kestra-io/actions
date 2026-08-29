@@ -79,19 +79,24 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('kestra/ui/package-lock.json') }}
 
-      - name: Install Npm dependencies
-        run: cd kestra/ui && npm ci
+      # `npm ci` and the artifact download are independent (different paths, no shared state).
+      # Playwright install stays out of this block and out of `background:` — it runs `npx
+      # playwright` in the same directory as the npm ci above, which resolves the pinned
+      # Playwright version from node_modules, so it must not start before npm ci finishes.
+      - parallel:
+          - name: Install Npm dependencies
+            run: cd kestra/ui && npm ci
+
+          - name: Artifacts - Download executable
+            if: ${{ inputs.exe-artifact != '' }}
+            uses: actions/download-artifact@v5
+            with:
+              name: ${{ inputs.exe-artifact }}
+              path: kestra/build/executable
 
       - name: Install Playwright
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: cd kestra/ui && npx playwright install --with-deps chromium
-
-      - name: Artifacts - Download executable
-        if: ${{ inputs.exe-artifact != '' }}
-        uses: actions/download-artifact@v5
-        with:
-          name: ${{ inputs.exe-artifact }}
-          path: kestra/build/executable
 
       - name: Run E2E Tests
         env:

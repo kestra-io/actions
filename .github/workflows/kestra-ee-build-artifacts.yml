@@ -76,14 +76,23 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      - name: Build frontend
+      # OSS npm ci and EE npm install target separate directories/lockfiles — independent. The EE
+      # build itself stays sequential-after: it needs the local install in kestra-ee/ui-ee done.
+      - parallel:
+          - name: Build frontend - OSS npm ci
+            shell: bash
+            working-directory: kestra/ui
+            run: npm ci
+
+          - name: Build frontend - EE npm install
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm install
+
+      - name: Build frontend - EE build
         shell: bash
-        run: |
-          cd kestra/ui
-          npm ci
-          cd ../../kestra-ee/ui-ee
-          npm install
-          npm run build
+        working-directory: kestra-ee/ui-ee
+        run: npm run build
 
       # Detect whether this version ships the cloud-ee module (2.0+ / develop).
       # Older versions (1.3 and earlier) don't have it, so the cloud steps are skipped.
@@ -110,18 +119,20 @@ jobs:
             ./gradlew executableJar --parallel --console=plain
           fi
 
-      - name: Artifacts - Upload Executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: exe
-          path: kestra-ee/build/executable/
+      # Independent uploads — different artifact names, different source paths.
+      - parallel:
+          - name: Artifacts - Upload Executable
+            uses: actions/upload-artifact@v4
+            with:
+              name: exe
+              path: kestra-ee/build/executable/
 
-      - name: Artifacts - Upload cloud-ee libs
-        if: ${{ steps.cloud-ee.outputs.exists == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-libs
-          path: kestra-ee/cloud-ee/build/libs/cloud-ee-*-all.jar
+          - name: Artifacts - Upload cloud-ee libs
+            if: ${{ steps.cloud-ee.outputs.exists == 'true' }}
+            uses: actions/upload-artifact@v4
+            with:
+              name: cloud-libs
+              path: kestra-ee/cloud-ee/build/libs/cloud-ee-*-all.jar
 
       - name: Artifacts - Transform swagger for website
         run: |

@@ -68,47 +68,59 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('kestra-ee/ui-ee/package-lock.json') }}
 
-      # Hack npm install install from oss
-      - name: Npm - Hack install from oss
-        if: steps.cache-oss-node-modules.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          cd kestra/ui
-          npm ci
+      # OSS and EE npm ci target separate directories/lockfiles — independent.
+      - parallel:
+          # Hack npm install install from oss
+          - name: Npm - Hack install from oss
+            if: steps.cache-oss-node-modules.outputs.cache-hit != 'true'
+            shell: bash
+            run: |
+              cd kestra/ui
+              npm ci
 
-      - name: Npm - Install
-        if: steps.cache-ee-node-modules.outputs.cache-hit != 'true'
+          - name: Npm - Install
+            if: steps.cache-ee-node-modules.outputs.cache-hit != 'true'
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm ci
+
+      # Runs concurrently with the checks below and is only waited on right before Storybook
+      # needs it — it's a pure download (browser binaries + apt deps). Must start after the EE
+      # npm ci above (npx resolves the pinned Playwright version from node_modules), which is
+      # already guaranteed since parallel: blocks wait for all their steps before continuing.
+      - name: Storybook - Install Playwright
+        id: playwright-install
+        background: true
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: npm ci
+        run: npx playwright install --with-deps
 
-      - name: Npm - Check types
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npm run check:types
+      - parallel:
+          - name: Npm - Check types
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm run check:types
 
-      - name: Npm - Lint (oxlint)
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npx oxlint@latest
+          - name: Npm - Lint (oxlint)
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npx oxlint@latest
 
-      - name: Npm - Lint (eslint)
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          workdir: "kestra-ee/ui-ee"
+          - name: Npm - Lint (eslint)
+            uses: reviewdog/action-eslint@v1
+            with:
+              github_token: ${{ secrets.GITHUB_TOKEN }}
+              reporter: github-pr-review
+              workdir: "kestra-ee/ui-ee"
 
       - name: Run front-end unit tests
         shell: bash
         working-directory: kestra-ee/ui-ee
         run: npm run test:unit
 
-      - name: Storybook - Install Playwright
-        if: steps.cache-playwright.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npx playwright install --with-deps
+      - name: Storybook - Wait for Playwright install
+        wait: [playwright-install]
 
       - name: Run Storybook component tests
         shell: bash
