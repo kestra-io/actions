@@ -87,7 +87,7 @@ function buildConfig(
       network:
       paging:
   otlp:
-    # Receives container.cpu.*/container.memory.* pushed by cgroup.ts's poller
+    # Receives container.cpu.*/container.memory.*/container.io.* pushed by cgroup.ts's poller
     # process — hostmetrics above can't see the pod's cgroup, only the node's.
     protocols:
       http:
