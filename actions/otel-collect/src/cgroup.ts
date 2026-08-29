@@ -9,7 +9,17 @@ import * as core from '@actions/core'
  * a 4-CPU-limited pod shows up with the node's full CPU count. This module reads
  * the pod's own cgroup instead, so CPU usage can be expressed against the limit
  * actually enforced on this job, and throttling (nr_throttled) — which no
- * node-wide reading can show at all — becomes visible.
+ * node-wide reading can show at all — becomes visible. The same file also carries
+ * disk I/O (io.stat): bytes/ops read and written by this cgroup specifically,
+ * summed across whatever block devices it touched.
+ *
+ * Network is deliberately not captured here: cgroup v2 has no controller that
+ * accounts network bytes per cgroup (the v1 net_cls/net_prio controllers only
+ * classified/prioritized packets, never counted bytes, and v2 dropped them
+ * entirely). hostmetrics' `network` scraper (collector.ts) already reports
+ * node-wide network — on GitHub-hosted runners, where each job gets its own VM,
+ * that's already equivalent to the job's own network usage; it only over-counts
+ * on a self-hosted runner shared by concurrent jobs.
  *
  * otelcol-contrib has no cgroup receiver and `hostmetrics` has no cgroup scraper
  * (its `root_path` option does the opposite: it makes a containerized collector
@@ -51,6 +61,14 @@ export interface CgroupSnapshot {
   memoryUsageBytes: number | null
   /** Memory limit in bytes, or null when unlimited/unknown. */
   memoryLimitBytes: number | null
+  /** Cumulative bytes read from block devices, summed across devices, or null when the io controller isn't enabled. */
+  ioReadBytes: number | null
+  /** Cumulative bytes written to block devices, summed across devices, or null when the io controller isn't enabled. */
+  ioWriteBytes: number | null
+  /** Cumulative read operations, summed across devices, or null when the io controller isn't enabled. */
+  ioReadOps: number | null
+  /** Cumulative write operations, summed across devices, or null when the io controller isn't enabled. */
+  ioWriteOps: number | null
 }
 
 /** Parse `cpu.max` ("<quota> <period>" in microseconds, or "max <period>" when unlimited) into a core-count limit. */
@@ -73,6 +91,35 @@ export function parseKeyValueStat(content: string): Record<string, number> {
     if (Number.isFinite(n)) out[key] = n
   }
   return out
+}
+
+/** Parse one `io.stat` device line's "key=value" tokens, skipping the leading "maj:min" device id. */
+function parseIoStatLine(line: string): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const token of line.trim().split(/\s+/).slice(1)) {
+    const [key, value] = token.split('=')
+    if (key === undefined || value === undefined) continue
+    const n = Number(value)
+    if (Number.isFinite(n)) out[key] = n
+  }
+  return out
+}
+
+/** Parse cgroup v2 `io.stat` (one line per block device) into byte/op totals summed across all devices. */
+export function parseIoStat(content: string): { rbytes: number; wbytes: number; rios: number; wios: number } {
+  let rbytes = 0
+  let wbytes = 0
+  let rios = 0
+  let wios = 0
+  for (const line of content.trim().split('\n')) {
+    if (!line.trim()) continue
+    const stat = parseIoStatLine(line)
+    rbytes += stat.rbytes ?? 0
+    wbytes += stat.wbytes ?? 0
+    rios += stat.rios ?? 0
+    wios += stat.wios ?? 0
+  }
+  return { rbytes, wbytes, rios, wios }
 }
 
 /** Parse a byte-count file (`memory.current`/`memory.max`, "max" = unlimited). */
@@ -104,6 +151,8 @@ export function readCgroupSnapshot(nowNanos: bigint = nowUnixNanos()): CgroupSna
   const cpuMax = tryRead(`${CGROUP_ROOT}/cpu.max`)
   const memCurrent = tryRead(`${CGROUP_ROOT}/memory.current`)
   const memMax = tryRead(`${CGROUP_ROOT}/memory.max`)
+  const ioStat = tryRead(`${CGROUP_ROOT}/io.stat`)
+  const io = ioStat !== null ? parseIoStat(ioStat) : null
 
   return {
     timeNanos: nowNanos,
@@ -113,7 +162,11 @@ export function readCgroupSnapshot(nowNanos: bigint = nowUnixNanos()): CgroupSna
     nrThrottled: stat.nr_throttled ?? null,
     throttledUsec: stat.throttled_usec ?? null,
     memoryUsageBytes: memCurrent !== null ? parseMemoryValue(memCurrent) : null,
-    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null
+    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null,
+    ioReadBytes: io?.rbytes ?? null,
+    ioWriteBytes: io?.wbytes ?? null,
+    ioReadOps: io?.rios ?? null,
+    ioWriteOps: io?.wios ?? null
   }
 }
 
@@ -177,6 +230,14 @@ export function buildMetricsPayload(curr: CgroupSnapshot, startTimeNanos: bigint
   if (curr.cpuLimitCores !== null) metrics.push(gauge('container.cpu.limit', '{cpu}', curr.cpuLimitCores, timeUnixNano))
   if (curr.memoryUsageBytes !== null) metrics.push(gauge('container.memory.usage', 'By', curr.memoryUsageBytes, timeUnixNano))
   if (curr.memoryLimitBytes !== null) metrics.push(gauge('container.memory.limit', 'By', curr.memoryLimitBytes, timeUnixNano))
+  if (curr.ioReadBytes !== null) metrics.push(cumulativeSum('container.io.read.bytes', 'By', curr.ioReadBytes, startTimeUnixNano, timeUnixNano))
+  if (curr.ioWriteBytes !== null) metrics.push(cumulativeSum('container.io.write.bytes', 'By', curr.ioWriteBytes, startTimeUnixNano, timeUnixNano))
+  if (curr.ioReadOps !== null) {
+    metrics.push(cumulativeSum('container.io.read.operations', '{operation}', curr.ioReadOps, startTimeUnixNano, timeUnixNano))
+  }
+  if (curr.ioWriteOps !== null) {
+    metrics.push(cumulativeSum('container.io.write.operations', '{operation}', curr.ioWriteOps, startTimeUnixNano, timeUnixNano))
+  }
 
   return { resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [{ scope: SCOPE, metrics }] }] }
 }

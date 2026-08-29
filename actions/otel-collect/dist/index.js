@@ -39010,6 +39010,31 @@ function parseKeyValueStat(content) {
   }
   return out;
 }
+function parseIoStatLine(line) {
+  const out = {};
+  for (const token of line.trim().split(/\s+/).slice(1)) {
+    const [key, value] = token.split("=");
+    if (key === void 0 || value === void 0) continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return out;
+}
+function parseIoStat(content) {
+  let rbytes = 0;
+  let wbytes = 0;
+  let rios = 0;
+  let wios = 0;
+  for (const line of content.trim().split("\n")) {
+    if (!line.trim()) continue;
+    const stat = parseIoStatLine(line);
+    rbytes += stat.rbytes ?? 0;
+    wbytes += stat.wbytes ?? 0;
+    rios += stat.rios ?? 0;
+    wios += stat.wios ?? 0;
+  }
+  return { rbytes, wbytes, rios, wios };
+}
 function parseMemoryValue(content) {
   const trimmed = content.trim();
   if (trimmed === "max") return null;
@@ -39030,6 +39055,8 @@ function readCgroupSnapshot(nowNanos = nowUnixNanos()) {
   const cpuMax = tryRead(`${CGROUP_ROOT}/cpu.max`);
   const memCurrent = tryRead(`${CGROUP_ROOT}/memory.current`);
   const memMax = tryRead(`${CGROUP_ROOT}/memory.max`);
+  const ioStat = tryRead(`${CGROUP_ROOT}/io.stat`);
+  const io = ioStat !== null ? parseIoStat(ioStat) : null;
   return {
     timeNanos: nowNanos,
     cpuUsageUsec: stat.usage_usec ?? 0,
@@ -39038,7 +39065,11 @@ function readCgroupSnapshot(nowNanos = nowUnixNanos()) {
     nrThrottled: stat.nr_throttled ?? null,
     throttledUsec: stat.throttled_usec ?? null,
     memoryUsageBytes: memCurrent !== null ? parseMemoryValue(memCurrent) : null,
-    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null
+    memoryLimitBytes: memMax !== null ? parseMemoryValue(memMax) : null,
+    ioReadBytes: io?.rbytes ?? null,
+    ioWriteBytes: io?.wbytes ?? null,
+    ioReadOps: io?.rios ?? null,
+    ioWriteOps: io?.wios ?? null
   };
 }
 const SCOPE = { name: "kestra-io/actions/otel-collect/cgroup", version: "1.0.0" };
@@ -39067,6 +39098,14 @@ function buildMetricsPayload(curr, startTimeNanos) {
   if (curr.cpuLimitCores !== null) metrics.push(gauge("container.cpu.limit", "{cpu}", curr.cpuLimitCores, timeUnixNano));
   if (curr.memoryUsageBytes !== null) metrics.push(gauge("container.memory.usage", "By", curr.memoryUsageBytes, timeUnixNano));
   if (curr.memoryLimitBytes !== null) metrics.push(gauge("container.memory.limit", "By", curr.memoryLimitBytes, timeUnixNano));
+  if (curr.ioReadBytes !== null) metrics.push(cumulativeSum("container.io.read.bytes", "By", curr.ioReadBytes, startTimeUnixNano, timeUnixNano));
+  if (curr.ioWriteBytes !== null) metrics.push(cumulativeSum("container.io.write.bytes", "By", curr.ioWriteBytes, startTimeUnixNano, timeUnixNano));
+  if (curr.ioReadOps !== null) {
+    metrics.push(cumulativeSum("container.io.read.operations", "{operation}", curr.ioReadOps, startTimeUnixNano, timeUnixNano));
+  }
+  if (curr.ioWriteOps !== null) {
+    metrics.push(cumulativeSum("container.io.write.operations", "{operation}", curr.ioWriteOps, startTimeUnixNano, timeUnixNano));
+  }
   return { resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [{ scope: SCOPE, metrics }] }] };
 }
 async function postMetrics(endpoint, payload) {
@@ -80559,7 +80598,7 @@ function buildConfig(endpoint, headers, serviceName, jobId, workflowName, jobFul
       network:
       paging:
   otlp:
-    # Receives container.cpu.*/container.memory.* pushed by cgroup.ts's poller
+    # Receives container.cpu.*/container.memory.*/container.io.* pushed by cgroup.ts's poller
     # process \u2014 hostmetrics above can't see the pod's cgroup, only the node's.
     protocols:
       http:

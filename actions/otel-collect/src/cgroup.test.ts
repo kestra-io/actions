@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildMetricsPayload, parseCpuMax, parseKeyValueStat, parseMemoryValue, type CgroupSnapshot } from './cgroup.js'
+import { buildMetricsPayload, parseCpuMax, parseIoStat, parseKeyValueStat, parseMemoryValue, type CgroupSnapshot } from './cgroup.js'
 
 test('parseCpuMax reads "<quota> <period>" microseconds into a core-count limit', () => {
   assert.equal(parseCpuMax('800000 100000'), 8)
@@ -33,6 +33,15 @@ test('parseMemoryValue treats "max" as unlimited', () => {
   assert.equal(parseMemoryValue('134217728\n'), 134217728)
 })
 
+test('parseIoStat sums key=value tokens across device lines, skipping the "maj:min" id', () => {
+  const content = '254:0 rbytes=1216512 wbytes=4096 rios=54 wios=1 dbytes=0 dios=0\n259:0 rbytes=100 wbytes=0 rios=2 wios=0 dbytes=0 dios=0\n'
+  assert.deepEqual(parseIoStat(content), { rbytes: 1216612, wbytes: 4096, rios: 56, wios: 1 })
+})
+
+test('parseIoStat treats an empty file (no devices touched) as all zero', () => {
+  assert.deepEqual(parseIoStat(''), { rbytes: 0, wbytes: 0, rios: 0, wios: 0 })
+})
+
 function snapshot(overrides: Partial<CgroupSnapshot> = {}): CgroupSnapshot {
   return {
     timeNanos: 0n,
@@ -43,6 +52,10 @@ function snapshot(overrides: Partial<CgroupSnapshot> = {}): CgroupSnapshot {
     throttledUsec: null,
     memoryUsageBytes: null,
     memoryLimitBytes: null,
+    ioReadBytes: null,
+    ioWriteBytes: null,
+    ioReadOps: null,
+    ioWriteOps: null,
     ...overrides
   }
 }
@@ -105,4 +118,17 @@ test('buildMetricsPayload emits throttling and memory metrics when present', () 
       'container.memory.limit'
     ])
   )
+})
+
+test('buildMetricsPayload emits disk io as monotonic cumulative counters when the io controller is enabled', () => {
+  const payload = buildMetricsPayload(
+    snapshot({ ioReadBytes: 1216512, ioWriteBytes: 4096, ioReadOps: 54, ioWriteOps: 1 }),
+    0n
+  )
+  const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics
+  assert.equal(metrics.find((m) => m.name === 'container.io.read.bytes')?.sum?.dataPoints[0].asDouble, 1216512)
+  assert.equal(metrics.find((m) => m.name === 'container.io.write.bytes')?.sum?.dataPoints[0].asDouble, 4096)
+  assert.equal(metrics.find((m) => m.name === 'container.io.read.operations')?.sum?.dataPoints[0].asDouble, 54)
+  assert.equal(metrics.find((m) => m.name === 'container.io.write.operations')?.sum?.dataPoints[0].asDouble, 1)
+  assert.equal(metrics.find((m) => m.name === 'container.io.read.bytes')?.sum?.isMonotonic, true)
 })
