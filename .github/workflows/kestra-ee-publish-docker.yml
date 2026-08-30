@@ -250,28 +250,31 @@ jobs:
         run: |
           cp build/executable/* kestra-ee/docker/app/kestra && chmod +x kestra-ee/docker/app/kestra
 
-      # Three independent registry logins — different registries, different credentials.
-      - parallel:
-          - name: Docker - Login to GitHub registry
-            uses: docker/login-action@v3
-            with:
-              registry: ghcr.io
-              username: ${{ github.repository_owner }}
-              password: ${{ secrets.GITHUB_TOKEN }}
+      # Sequential, not parallel: docker/login-action writes to the shared
+      # ~/.docker/config.json via read-modify-write. Running these concurrently
+      # races on that file and can silently drop one registry's credentials
+      # (root cause of a ghcr.io "anonymous token" 403 push failure in
+      # kestra-ee run 33312683568).
+      - name: Docker - Login to GitHub registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-          - name: Docker - Login to Google Cloud registry
-            uses: docker/login-action@v3
-            with:
-              registry: europe-west1-docker.pkg.dev
-              username: oauth2accesstoken
-              password: ${{ steps.glogin.outputs.access_token }}
+      - name: Docker - Login to Google Cloud registry
+        uses: docker/login-action@v3
+        with:
+          registry: europe-west1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.glogin.outputs.access_token }}
 
-          - name: Docker - Login to Dockerhub
-            # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
-            uses: docker/login-action@v3
-            with:
-              username: ${{ secrets.DOCKERHUB_USERNAME }}
-              password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Docker - Login to Dockerhub
+        # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker - Build and push
         id: docker-build-push
