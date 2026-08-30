@@ -2,6 +2,13 @@ name: Pull Request - Publish Docker
 
 on:
   workflow_call:
+    secrets:
+      OTLP_ENDPOINT:
+        description: 'OTLP endpoint for OpenTelemetry export'
+        required: false
+      OTLP_HEADERS:
+        description: 'OTLP headers for OpenTelemetry export'
+        required: false
     inputs:
       java-version:
         description: "Java version"
@@ -25,6 +32,9 @@ jobs:
     name: Build Artifacts
     if: ${{ !inputs.skip-build && github.event.pull_request.head.repo.full_name == github.repository }} # prevent running on forks
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
+    secrets:
+      OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+      OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
     with:
       java-version: ${{ inputs.java-version }}
 
@@ -43,6 +53,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-collect@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Docker init
         uses: kestra-io/actions/composite/setup-docker@main
