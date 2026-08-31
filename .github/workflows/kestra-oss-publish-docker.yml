@@ -75,8 +75,7 @@ jobs:
     outputs:
       plugins: ${{ steps.plugins-outputs-step.outputs.plugins }}
     steps:
-      # Checkout
-      - uses: actions/checkout@v5
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -86,6 +85,8 @@ jobs:
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+      # Checkout
+      - uses: actions/checkout@v5
       - name: Log params
         run: |
           echo "parameters:"
@@ -152,15 +153,7 @@ jobs:
             python-libs: kestra
             deprecated-alias: ""
     steps:
-      - name: echo inputs.dry-run ON
-        if: ${{ inputs.dry-run == true }}
-        run: echo 'inputs.dry-run ON'
-      - name: inputs.dry-run OFF
-        if: ${{ inputs.dry-run == false }}
-        run: echo 'inputs.dry-run OFF'
-
-      - uses: actions/checkout@v5
-
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -170,6 +163,15 @@ jobs:
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      - name: echo inputs.dry-run ON
+        if: ${{ inputs.dry-run == true }}
+        run: echo 'inputs.dry-run ON'
+      - name: inputs.dry-run OFF
+        if: ${{ inputs.dry-run == false }}
+        run: echo 'inputs.dry-run OFF'
+
+      - uses: actions/checkout@v5
 
       # Vars
       - name: Set image name

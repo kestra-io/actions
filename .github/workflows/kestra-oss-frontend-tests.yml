@@ -26,14 +26,7 @@ jobs:
     name: Frontend - Tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.x'
-
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -43,6 +36,14 @@ jobs:
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
 
       - name: Cache Node Modules
         id: cache-node-modules

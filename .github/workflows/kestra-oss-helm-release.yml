@@ -32,12 +32,7 @@ jobs:
       REPO_URL: https://helm.kestra.io/
 
     steps:
-      - name: Checkout kestra
-        uses: actions/checkout@v6
-        with:
-          repository: kestra-io/kestra
-          ref: ${{ github.ref }}
-
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -47,6 +42,12 @@ jobs:
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      - name: Checkout kestra
+        uses: actions/checkout@v6
+        with:
+          repository: kestra-io/kestra
+          ref: ${{ github.ref }}
 
       # Independent tool installs — different tools, different sources.
       - parallel:

@@ -48,6 +48,18 @@ jobs:
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
     steps:
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
       - name: Login to DockerHub
         # TODO not sure if it is needed
         uses: docker/login-action@v3
@@ -78,17 +90,6 @@ jobs:
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-instrument@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          host-metrics-enabled: 'true'
-          gradle-tracing-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Cache - OSS Node Modules
         id: cache-oss-node-modules

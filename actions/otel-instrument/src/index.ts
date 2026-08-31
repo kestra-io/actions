@@ -9,7 +9,14 @@ import {
   startCgroupPoller,
   stopCgroupPoller
 } from './cgroup.js'
-import { CGROUP_METRICS_ENDPOINT, startCollector, stopCollector } from './collector.js'
+import {
+  CGROUP_METRICS_ENDPOINT,
+  COLLECTOR_LAUNCHER_CONFIG_ENV,
+  COLLECTOR_LAUNCHER_ENV,
+  runCollectorLauncherProcess,
+  startCollector,
+  stopCollector
+} from './collector.js'
 import { installGradleInitScript } from './gradle.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
 import { baseEndpoint, NAMESPACE } from '../../../shared/otel-core/src/otlp.js'
@@ -111,21 +118,15 @@ async function main(inputs: Inputs): Promise<void> {
   )
   core.setOutput('trace-id', tId)
 
-  if (inputs.javaEnabled) {
-    const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent)
-    core.setOutput('java-agent-path', jar)
-  }
-  if (inputs.nodeEnabled) {
-    const register = await setupNodeAgent(inputs.injectNodeAgent)
-    core.setOutput('node-agent-path', register)
-  }
-
-  if (inputs.gradleTracingEnabled) {
-    installGradleInitScript(serviceName(inputs), jobId, workflowName)
-  }
-
+  // The collector's binary download is the single biggest cold-start cost (tens of MB,
+  // never cache-hit on ephemeral runners) and this action now runs before checkout, so
+  // it's kicked off as a detached background launcher (collector.ts) instead of being
+  // awaited here — the step returns without waiting for it. The Java/Node agent
+  // downloads below are smaller and still exposed as outputs later steps may consume
+  // immediately, so they stay synchronous, just run concurrently with each other rather
+  // than one after the other.
   if (inputs.hostMetricsEnabled) {
-    await startCollector(
+    startCollector(
       inputs.collectorVersion,
       inputs.otlpEndpoint,
       inputs.otlpHeaders,
@@ -134,13 +135,27 @@ async function main(inputs: Inputs): Promise<void> {
       workflowName,
       job?.name
     )
+  }
 
-    // Needs the collector above running: it pushes into its local OTLP receiver
-    // rather than exporting directly (see cgroup.ts), so its container.cpu.*/
-    // container.memory.* metrics pick up the same resource attributes.
-    if (inputs.cgroupMetricsEnabled) {
-      await startCgroupPoller(CGROUP_METRICS_ENDPOINT)
-    }
+  const agentSetup: Array<Promise<void>> = []
+  if (inputs.javaEnabled) {
+    agentSetup.push(setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent).then((jar) => core.setOutput('java-agent-path', jar)))
+  }
+  if (inputs.nodeEnabled) {
+    agentSetup.push(setupNodeAgent(inputs.injectNodeAgent).then((register) => core.setOutput('node-agent-path', register)))
+  }
+  if (inputs.gradleTracingEnabled) {
+    installGradleInitScript(serviceName(inputs), jobId, workflowName)
+  }
+  if (agentSetup.length) await Promise.all(agentSetup)
+
+  // Needs the collector above running: it pushes into its local OTLP receiver rather
+  // than exporting directly (see cgroup.ts), so its container.cpu.*/container.memory.*
+  // metrics pick up the same resource attributes. The collector may still be
+  // downloading/starting in the background at this point — tolerated, see cgroup.ts's
+  // postMetrics (drops/warns on a few failed pushes until it comes up).
+  if (inputs.hostMetricsEnabled && inputs.cgroupMetricsEnabled) {
+    await startCgroupPoller(CGROUP_METRICS_ENDPOINT)
   }
 }
 
@@ -169,6 +184,15 @@ async function run(): Promise<void> {
     // which expect the normal main/post action environment.
     if (process.env[CGROUP_POLLER_ENV] === '1') {
       runCgroupPollerProcess(process.env[CGROUP_POLLER_ENDPOINT_ENV] ?? CGROUP_METRICS_ENDPOINT)
+      return
+    }
+
+    // Same re-invocation trick as the cgroup poller above: startCollector() (collector.ts)
+    // spawns this same entrypoint detached with this flag set, so it downloads/starts the
+    // collector out-of-band instead of running the normal action logic.
+    if (process.env[COLLECTOR_LAUNCHER_ENV] === '1') {
+      const raw = process.env[COLLECTOR_LAUNCHER_CONFIG_ENV]
+      if (raw) await runCollectorLauncherProcess(JSON.parse(raw))
       return
     }
 

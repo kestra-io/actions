@@ -36,6 +36,18 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       COREPACK_INTEGRITY_KEYS: 0
     steps:
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
+      - name: OpenTelemetry - Setup
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
       # Google Auth
       - name: GCP - Auth with unit test account
         id: auth
@@ -64,17 +76,6 @@ jobs:
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: OpenTelemetry - Setup
-        uses: kestra-io/actions/actions/otel-instrument@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          host-metrics-enabled: 'true'
-          gradle-tracing-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # OSS npm ci and EE npm install target separate directories/lockfiles — independent. The EE
       # build itself stays sequential-after: it needs the local install in kestra-ee/ui-ee done.

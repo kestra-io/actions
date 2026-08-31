@@ -67,11 +67,7 @@ jobs:
     env:
       GITHUB_IMAGE_PATH: ghcr.io/kestra-io/kestra-ee-pr
     steps:
-      - name: Code Checkout
-        uses: actions/checkout@v5
-        with:
-          path: kestra-ee
-
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
         uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
@@ -81,6 +77,11 @@ jobs:
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      - name: Code Checkout
+        uses: actions/checkout@v5
+        with:
+          path: kestra-ee
 
       - name: Docker init
         uses: kestra-io/actions/composite/setup-docker@main

@@ -49,6 +49,18 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
     steps:
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
       - uses: actions/checkout@v5
         name: Checkout - Current ref
         with:
@@ -73,17 +85,6 @@ jobs:
           node-enabled: true
           python-enabled: true
           java-version: ${{ inputs.java-version }}
-
-      - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-instrument@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          host-metrics-enabled: 'true'
-          gradle-tracing-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Services - wait to be ready
       - name: Setup - Wait docker compose

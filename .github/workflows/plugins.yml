@@ -53,6 +53,22 @@ jobs:
   main:
     runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     steps:
+      # Setup OpenTelemetry: root span context, background host-metrics collector, and a
+      # Gradle init script that emits a span per task and per JUnit test (nested under the
+      # build step). This all runs in the Gradle daemon, not the test workers, so there is
+      # no conflict with Kestra's own OpenTelemetry — no agent injection needed. Run first,
+      # before checkout, so checkout time is captured by the trace/host metrics too.
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
       # Check out
       - name: Checkout - Repository
         uses: actions/checkout@v4
@@ -91,21 +107,6 @@ jobs:
           # Set up Node only for plugins that ship a UI micro-frontend (ui/package-lock.json),
           # so setup-node's npm cache doesn't fail on the majority of plugins without one.
           node-enabled: ${{ hashFiles('ui/package-lock.json') != '' }}
-  
-      # Setup OpenTelemetry: root span context, background host-metrics collector, and a
-      # Gradle init script that emits a span per task and per JUnit test (nested under the
-      # build step). This all runs in the Gradle daemon, not the test workers, so there is
-      # no conflict with Kestra's own OpenTelemetry — no agent injection needed.
-      - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-instrument@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          host-metrics-enabled: 'true'
-          gradle-tracing-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env
