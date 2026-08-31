@@ -1,7 +1,7 @@
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
-import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from './otlp.js'
-import { runnerEnvironmentOf, type WorkflowJob } from './resolve-job.js'
+import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
+import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from '../../../shared/otel-core/src/otlp.js'
+import { runnerEnvironmentOf, type WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
 const parseTime = (iso: string | null | undefined, fallback: number): number => {
   if (!iso) return fallback

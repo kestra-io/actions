@@ -1,0 +1,37 @@
+name: OTel Export Trace
+description: Reconstruct and export the whole workflow -> job -> step trace, once, for a complete GitHub Actions run
+
+runs:
+  using: node24
+  main: dist/index.js
+
+inputs:
+  github-token:
+    description: The github token used to query the workflow's jobs and steps
+    required: true
+
+  otlp-endpoint:
+    description: The OTLP endpoint to export telemetry to (e.g. https://otlp.kestra.io)
+    required: true
+
+  otlp-headers:
+    description: Comma separated OTLP headers (e.g. "authorization=Bearer xyz,x-tenant=foo")
+    required: false
+    default: ''
+
+  logs-enabled:
+    description: >
+      Download each job's GitHub Actions logs and export them as OTLP log records, correlated to the
+      job/step spans (same trace id) so logs sit next to the trace. Only available once jobs have
+      finished, which is exactly when this action runs.
+    required: false
+    default: 'false'
+
+  service-name:
+    description: The service.name resource attribute for emitted telemetry
+    required: false
+    default: ''
+
+outputs:
+  trace-id:
+    description: The deterministic trace id for this workflow run

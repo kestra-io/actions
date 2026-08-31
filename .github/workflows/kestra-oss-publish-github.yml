@@ -12,6 +12,12 @@ on:
       SLACK_RELEASES_WEBHOOK_URL:
         description: "The Slack webhook URL."
         required: true
+      OTLP_ENDPOINT:
+        description: 'OTLP endpoint for OpenTelemetry export'
+        required: false
+      OTLP_HEADERS:
+        description: 'OTLP headers for OpenTelemetry export'
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -29,6 +35,16 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Generate GitHub App token
         id: app-token

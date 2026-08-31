@@ -22,6 +22,12 @@ on:
       GCP_SERVICE_ACCOUNT:
         description: "GCP service account key JSON for Maven mirror authentication."
         required: false
+      OTLP_ENDPOINT:
+        description: 'OTLP endpoint for OpenTelemetry export'
+        required: false
+      OTLP_HEADERS:
+        description: 'OTLP headers for OpenTelemetry export'
+        required: false
     inputs:
       retag-latest:
         description: 'Retag latest Docker images'
@@ -71,6 +77,15 @@ jobs:
     steps:
       # Checkout
       - uses: actions/checkout@v5
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
       - name: Log params
         run: |
           echo "parameters:"
@@ -110,6 +125,8 @@ jobs:
       embed-plugins-schema-bundle: true
     secrets:
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+      OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
 
   docker:
     name: Publish Docker
@@ -143,6 +160,16 @@ jobs:
         run: echo 'inputs.dry-run OFF'
 
       - uses: actions/checkout@v5
+
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       # Vars
       - name: Set image name

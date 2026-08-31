@@ -167,7 +167,7 @@ export function buildSpan(input: SpanInput, resource: Resource): ReadableSpan {
     duration: msToHr(Math.max(0, endMs - input.startMs)),
     ended: true,
     resource,
-    instrumentationScope: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
+    instrumentationScope: { name: 'kestra-io/actions/otel-core', version: '1.0.0' },
     droppedAttributesCount: 0,
     droppedEventsCount: 0,
     droppedLinksCount: 0
@@ -256,7 +256,7 @@ export function buildLogRecord(input: LogInput, resource: Resource): ReadableLog
     attributes: input.attributes ?? {},
     droppedAttributesCount: 0,
     resource,
-    instrumentationScope: { name: 'kestra-io/actions/otel-collect', version: '1.0.0' },
+    instrumentationScope: { name: 'kestra-io/actions/otel-core', version: '1.0.0' },
     spanContext: {
       traceId: input.traceId,
       spanId: input.spanId,

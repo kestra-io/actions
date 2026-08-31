@@ -188,7 +188,7 @@ export interface OtlpMetricsPayload {
   }>
 }
 
-const SCOPE = { name: 'kestra-io/actions/otel-collect/cgroup', version: '1.0.0' }
+const SCOPE = { name: 'kestra-io/actions/otel-instrument/cgroup', version: '1.0.0' }
 // OTLP proto AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE.
 const CUMULATIVE = 2
 

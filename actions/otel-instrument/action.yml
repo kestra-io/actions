@@ -1,5 +1,5 @@
-name: OTel Collect
-description: Capture OpenTelemetry metrics, traces and logs for a complete GitHub Actions workflow run
+name: OTel Instrument
+description: Per-job OpenTelemetry setup — trace context, agents, host/cgroup metrics, Gradle/JUnit tracing
 
 runs:
   using: node24
@@ -8,7 +8,7 @@ runs:
 
 inputs:
   github-token:
-    description: The github token used to query the workflow jobs and steps
+    description: The github token used to query the current job id
     required: true
 
   otlp-endpoint:
@@ -19,17 +19,6 @@ inputs:
     description: Comma separated OTLP headers (e.g. "authorization=Bearer xyz,x-tenant=foo")
     required: false
     default: ''
-
-  mode:
-    description: >
-      "instrument" (default) sets up the root span, agents and host metrics inside a job, and
-      flushes those metrics on post. It exports no spans: job/step span ids are deterministic,
-      so a job exporting its own tree would double-index the very spans "export-all" emits —
-      and from inside the job its own conclusion and duration are not known yet. "export-all"
-      reconstructs and exports the whole workflow tree and is therefore *required* for any
-      job/step spans at all: run it in a final job with needs:[...] and if: always().
-    required: false
-    default: 'instrument'
 
   java-enabled:
     description: Download & cache the OpenTelemetry Java agent (exposed via the java-agent-path output)
@@ -64,34 +53,17 @@ inputs:
 
   cgroup-metrics-enabled:
     description: >
-      Start a background poller capturing this job's own cgroup v2 CPU/memory/disk-io metrics
-      (container.cpu.*/container.memory.*/container.io.*), pushed into the host-metrics
-      collector above. Unlike the host-metrics cpu/memory/disk scrapers, which read /proc and
-      therefore report the whole node (not the job's actual CPU/memory limit on Kubernetes
-      runners, nor its own disk usage split out from other pods), these reflect the cgroup
-      enforced on this job — including CPU throttling, which node-wide metrics can't show at
-      all. CPU and disk io are exported as cumulative counters (container.cpu.time,
-      container.io.read.bytes/write.bytes/read.operations/write.operations), so cores-used is
-      rate(container.cpu.time) and utilization is that over container.cpu.limit; disk io.stat
-      is only present when the cgroup's io controller is enabled, so those metrics are simply
-      omitted otherwise. There is no container-level network metric: cgroup v2 has no
-      controller that accounts network bytes per cgroup at all (unlike v1's net_cls/net_prio,
-      which only classified/prioritized traffic, never counted it) — host-metrics' network
-      scraper above is the closest available, and on GitHub-hosted runners (one VM per job)
-      it already reports this job's own network usage; it only over-counts on a self-hosted
-      runner shared by concurrent jobs.
+      Start a background poller capturing this job's own cgroup v2 CPU/memory metrics
+      (container.cpu.*/container.memory.*), pushed into the host-metrics collector above.
+      Unlike the host-metrics cpu/memory scrapers, which read /proc and therefore report the
+      whole node (not the job's actual CPU/memory limit on Kubernetes runners), these reflect
+      the cgroup enforced on this job — including CPU throttling, which node-wide metrics
+      can't show at all. CPU is exported as the cumulative container.cpu.time counter, so
+      cores-used is rate(container.cpu.time) and utilization is that over container.cpu.limit.
       Logs and skips on hosts with no cgroup v2 (macOS/Windows runners).
       Only takes effect when host-metrics-enabled is also true.
     required: false
     default: 'true'
-
-  logs-enabled:
-    description: >
-      In "export-all" mode, download each job's GitHub Actions logs and export them as OTLP log records,
-      correlated to the job/step spans (same trace id) so logs sit next to the trace. Only works in
-      "export-all" (the logs are only available from the API after jobs finish).
-    required: false
-    default: 'false'
 
   gradle-tracing-enabled:
     description: >

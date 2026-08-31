@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as core from '@actions/core'
 import * as tc from '@actions/tool-cache'
-import { grpcTarget, parseHeaders, serviceInstanceId, NAMESPACE } from './otlp.js'
+import { grpcTarget, parseHeaders, serviceInstanceId, NAMESPACE } from '../../../shared/otel-core/src/otlp.js'
 
 const RELEASES = 'https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download'
 
