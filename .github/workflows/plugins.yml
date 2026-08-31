@@ -432,7 +432,15 @@ jobs:
   # Non-blocking early-warning: does the plugin still compile against Kestra develop (2.x)?
   compat-kestra-develop:
     name: Compat Kestra develop
-    if: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    # Runs on schedule and on main/master pushes, plus PRs opened by a maintainer
+    # (write access: OWNER/MEMBER/COLLABORATOR). author_association is set by GitHub, not the
+    # submitter, so external and fork PRs are excluded (they also carry no secrets).
+    if: >-
+      github.event_name == 'schedule'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/master'
+      || (github.event_name == 'pull_request'
+          && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))
     runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     continue-on-error: true
     # Exposed as env because the `secrets` context is not available in a step-level `if`.
@@ -511,9 +519,10 @@ jobs:
 
       # The job is continue-on-error, so a break leaves no red mark on the run. Post it to the same
       # channel the main job uses. Gated on the compile step alone: a failure in checkout, version
-      # resolution or setup is infrastructure noise, not a compatibility break.
+      # resolution or setup is infrastructure noise, not a compatibility break. Skipped on PRs: the
+      # failing compat check is visible on the PR itself, so the release channel stays quiet.
       - name: Slack - Notify on compat failure
-        if: always() && steps.compile-main.outcome == 'failure' && env.SLACK_WEBHOOK_URL != ''
+        if: always() && steps.compile-main.outcome == 'failure' && env.SLACK_WEBHOOK_URL != '' && github.event_name != 'pull_request'
         uses: kestra-io/actions/composite/slack-status@main
         with:
           channel: "C09FE0QCN2E"
