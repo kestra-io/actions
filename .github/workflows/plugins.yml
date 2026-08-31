@@ -455,15 +455,36 @@ jobs:
           fetch-tags: true
           submodules: true
 
-      # Resolve the current Kestra develop version (e.g. 2.0.0-SNAPSHOT) from core's gradle.properties.
-      - name: Setup - Resolve Kestra develop version
+      # Resolve the version to compile against. Prefer the latest release candidate on the same
+      # major.minor line as Kestra develop: an RC is a pinned, published artifact, so it is a steadier
+      # target than a moving SNAPSHOT. Fall back to the develop SNAPSHOT when no RC is tagged for that
+      # line yet. An RC from an older line is ignored (e.g. develop is 2.0.0-SNAPSHOT but only v1.3.x
+      # RCs exist, or develop already moved to 3.0.0-SNAPSHOT while the newest RC is still v2.0.0-rcN).
+      - name: Setup - Resolve Kestra target version
         id: kestra-2x
         shell: bash
         run: |
-          VERSION=$(curl -sfL https://raw.githubusercontent.com/kestra-io/kestra/develop/gradle.properties | grep '^version=' | cut -d= -f2 | tr -d '[:space:]')
-          if [ -z "$VERSION" ]; then echo "Could not resolve Kestra develop version" >&2; exit 1; fi
+          DEV_VERSION=$(curl -sfL https://raw.githubusercontent.com/kestra-io/kestra/develop/gradle.properties | grep '^version=' | cut -d= -f2 | tr -d '[:space:]')
+          if [ -z "$DEV_VERSION" ]; then echo "Could not resolve Kestra develop version" >&2; exit 1; fi
+
+          # major.minor line of develop, e.g. 2.0.0-SNAPSHOT -> 2.0
+          LINE=$(printf '%s' "${DEV_VERSION%-SNAPSHOT}" | cut -d. -f1,2)
+
+          # Highest release candidate tagged on that same line (Kestra tags look like v2.0.0-rc12).
+          # grep may match nothing; guard against pipefail so an empty result is not a step failure.
+          RC=$(git ls-remote --tags --refs https://github.com/kestra-io/kestra.git \
+                | sed 's|.*refs/tags/||' \
+                | grep -E "^v?${LINE//./\\.}\\.[0-9]+-rc[0-9]+$" \
+                | sort -V | tail -n1 || true)
+
+          if [ -n "$RC" ]; then
+            VERSION=${RC#v}
+            echo "Compiling against Kestra RC on the ${LINE} line: ${VERSION}"
+          else
+            VERSION="$DEV_VERSION"
+            echo "No RC on the ${LINE} line; compiling against Kestra develop: ${VERSION}"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Compiling against Kestra develop: ${VERSION}"
 
       - name: Setup - Patch Gradle JVM args
         shell: bash
