@@ -86,16 +86,28 @@ jobs:
           python-enabled: true
           java-version: ${{ inputs.java-version }}
 
+      # Gradle: javadoc and check run as two separate steps, mirroring kestra-ee-backend-tests.yml.
+      # javadoc runs first, before the docker-compose wait below, so it overlaps with container
+      # startup instead of blocking behind it. testClasses is compiled here too, both so `check`
+      # right after reuses already-compiled classes (compileJava/compileTestJava UP-TO-DATE, no
+      # double compilation) and so the test-scheduling plugin has classes to schedule from:
+      # https://github.com/kestra-io/gradle-plugin/#test-scheduling
+      - name: Gradle - javadoc
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        shell: bash
+        run: |
+          ./gradlew javadoc testClasses --parallel --console=plain
+
       # Services - wait to be ready
       - name: Setup - Wait docker compose
         wait: [compose]
 
       # Gradle check
-      - name: Gradle - check and javadoc
+      - name: Gradle - check
         if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
         shell: bash
         run: |
-          ./gradlew check javadoc --parallel
+          ./gradlew check --parallel --console=plain
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
