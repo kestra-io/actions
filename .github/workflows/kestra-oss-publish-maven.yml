@@ -85,7 +85,7 @@ jobs:
           echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
           echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
           echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
-          ./gradlew publishToMavenCentral
+          ./gradlew publishToMavenCentral --console=plain
 
       # Gradle dependency
       - name: Java - Gradle dependency graph

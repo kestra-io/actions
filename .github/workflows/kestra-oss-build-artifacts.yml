@@ -88,7 +88,7 @@ jobs:
       - name: Gradle - Build
         shell: bash
         run: |
-          ./gradlew executableJar
+          ./gradlew executableJar --parallel --console=plain
 
       # ------------------------------------------------------------------------------------------
       # Plugin schema bundle (KIP-45): embedded in the jar as the /plugins-schema.json classpath
@@ -145,7 +145,7 @@ jobs:
           EXECUTABLE=$(ls build/executable/*)
           chmod +x "$EXECUTABLE"
           "$EXECUTABLE" plugins-schema --plugins ./plugins-catalog -o build/plugins-schema.json
-          ./gradlew executableJar -PpluginsSchemaBundle=build/plugins-schema.json
+          ./gradlew executableJar -PpluginsSchemaBundle=build/plugins-schema.json --console=plain
 
       - name: Artifacts - Copy exe to image
         shell: bash
