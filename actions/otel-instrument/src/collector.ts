@@ -208,10 +208,70 @@ service:
 `
 }
 
-const PID_STATE = 'otel-collector-pid'
+// The collector's pid is written to this file rather than via core.saveState: it is
+// discovered by the launcher process below only once its (often cold, tens-of-MB)
+// download finishes, which is after the step that requested it has already exited.
+// core.saveState/getState round-trips through the *current* step's GITHUB_STATE file
+// and would not be visible to that step's post hook if written from a process that
+// outlives it — a plain, well-known file in RUNNER_TEMP has no such lifetime coupling.
+function pidFilePath(): string {
+  const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp'
+  return path.join(tmp, 'otel-collect-collector.pid')
+}
 
-/** Start the collector daemon in the background. Stores its pid in action state. */
-export async function startCollector(
+/** Env var flag telling a re-invocation of this action's entrypoint to run the collector
+ *  launcher below instead of the normal action logic (mirrors cgroup.ts's poller flag). */
+export const COLLECTOR_LAUNCHER_ENV = 'OTEL_COLLECT_LAUNCHER'
+export const COLLECTOR_LAUNCHER_CONFIG_ENV = 'OTEL_COLLECT_LAUNCHER_CONFIG'
+
+export interface LauncherConfig {
+  version: string
+  endpoint: string
+  rawHeaders: string
+  serviceName: string
+  jobId?: number
+  workflowName?: string
+  jobFullName?: string
+}
+
+/**
+ * Entry point for the spawned launcher process (invoked via COLLECTOR_LAUNCHER_ENV):
+ * download the collector binary (if not already cached) and start it, then exit —
+ * the collector itself is a separate detached+unref'd process that outlives this one.
+ * Runs out-of-band from the step that requested it, so a cold download never blocks
+ * that step (or whatever comes after it, e.g. checkout) from proceeding.
+ */
+export async function runCollectorLauncherProcess(cfg: LauncherConfig): Promise<void> {
+  try {
+    const bin = await ensureCollector(cfg.version)
+    const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp'
+    const configPath = path.join(tmp, 'otel-collect-config.yaml')
+    const logPath = path.join(tmp, 'otel-collect-collector.log')
+
+    fs.writeFileSync(
+      configPath,
+      buildConfig(cfg.endpoint, parseHeaders(cfg.rawHeaders), cfg.serviceName, cfg.jobId, cfg.workflowName, cfg.jobFullName)
+    )
+
+    const out = fs.openSync(logPath, 'a')
+    const child = spawn(bin, ['--config', configPath], {
+      detached: true,
+      stdio: ['ignore', out, out]
+    })
+    child.unref()
+
+    if (child.pid) fs.writeFileSync(pidFilePath(), String(child.pid))
+  } catch {
+    // Best-effort: the step that requested this has already finished, nothing left to report to.
+  }
+}
+
+/**
+ * Spawn a detached launcher process that downloads and starts the collector daemon,
+ * without blocking the caller on the download. Returns as soon as the launcher is
+ * spawned, not once the collector is actually up.
+ */
+export function startCollector(
   version: string,
   endpoint: string,
   rawHeaders: string,
@@ -219,36 +279,36 @@ export async function startCollector(
   jobId?: number,
   workflowName?: string,
   jobFullName?: string
-): Promise<void> {
-  const bin = await ensureCollector(version)
+): void {
+  const cfg: LauncherConfig = { version, endpoint, rawHeaders, serviceName, jobId, workflowName, jobFullName }
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? '/tmp'
-  const configPath = path.join(tmp, 'otel-collect-config.yaml')
-  const logPath = path.join(tmp, 'otel-collect-collector.log')
-
-  fs.writeFileSync(
-    configPath,
-    buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName, jobFullName)
-  )
-
+  const logPath = path.join(tmp, 'otel-collect-launcher.log')
   const out = fs.openSync(logPath, 'a')
-  const child = spawn(bin, ['--config', configPath], {
+
+  const child = spawn(process.execPath, [process.argv[1]], {
     detached: true,
-    stdio: ['ignore', out, out]
+    stdio: ['ignore', out, out],
+    env: { ...process.env, [COLLECTOR_LAUNCHER_ENV]: '1', [COLLECTOR_LAUNCHER_CONFIG_ENV]: JSON.stringify(cfg) }
   })
   child.unref()
 
   if (child.pid) {
-    core.saveState(PID_STATE, String(child.pid))
-    core.info(`Started host-metrics collector (pid ${child.pid}), logging to ${logPath}`)
+    core.info(`Downloading/starting host-metrics collector in the background (launcher pid ${child.pid})`)
   } else {
-    core.warning('Failed to start host-metrics collector')
+    core.warning('Failed to start host-metrics collector launcher')
   }
 }
 
 /** Stop the collector daemon, giving it a moment to flush. */
 export async function stopCollector(): Promise<void> {
-  const pidRaw = core.getState(PID_STATE)
-  if (!pidRaw) return
+  const file = pidFilePath()
+  let pidRaw: string
+  try {
+    pidRaw = fs.readFileSync(file, 'utf8').trim()
+  } catch {
+    // No pidfile yet: the launcher's download never finished within the job's lifetime.
+    return
+  }
   const pid = Number(pidRaw)
   if (!Number.isInteger(pid)) return
 
@@ -258,5 +318,11 @@ export async function stopCollector(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 3000))
   } catch (err) {
     core.debug(`Collector already stopped: ${(err as Error).message}`)
+  } finally {
+    try {
+      fs.unlinkSync(file)
+    } catch {
+      // Already gone; nothing to clean up.
+    }
   }
 }

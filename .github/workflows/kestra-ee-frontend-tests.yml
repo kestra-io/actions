@@ -22,6 +22,17 @@ jobs:
     runs-on: kestra-private-4cpu-4gb
     timeout-minutes: 60
     steps:
+      # Run first, before checkout, so setup time is captured by the trace/host metrics.
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
       # Checkout
       - name: Checkout - EE
         uses: actions/checkout@v5
@@ -36,16 +47,6 @@ jobs:
         with:
           node-enabled: true
           node-version: '24.x'
-
-      - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-instrument@main
-        if: ${{ env.OTLP_ENDPOINT != '' }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
-          host-metrics-enabled: 'true'
-          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Cache - OSS Node Modules
         id: cache-oss-node-modules

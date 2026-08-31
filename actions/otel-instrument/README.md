@@ -31,7 +31,10 @@ On **`main`** it:
    `NODE_OPTIONS`.
 4. Optionally starts a background **`otelcol-contrib`** collector capturing
    host metrics (cpu / memory / network / disk io / load / paging), plus a
-   cgroup v2 poller for this job's own container CPU/memory limits.
+   cgroup v2 poller for this job's own container CPU/memory limits. The
+   collector binary (tens of MB, never cache-hit on ephemeral runners) is
+   downloaded and started by a detached launcher process, so this step
+   returns without waiting for it — see "Run this first" below.
 5. Optionally installs a Gradle init script emitting a span per Gradle task
    and per JUnit test, nested under the step span.
 
@@ -45,10 +48,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: kestra-io/actions/composite/setup-build@main
-        with: { java-enabled: 'true', node-enabled: 'true' }
-
       - uses: kestra-io/actions/actions/otel-instrument@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -57,6 +56,10 @@ jobs:
           java-enabled: 'true'
           node-enabled: 'true'
           parent-step-name: 'Gradle - check and javadoc'  # build spans nest here
+
+      - uses: actions/checkout@v4
+      - uses: kestra-io/actions/composite/setup-build@main
+        with: { java-enabled: 'true', node-enabled: 'true' }
 
       - name: Gradle - check and javadoc   # JAVA_TOOL_OPTIONS already carries the agent
         run: ./gradlew check javadoc --parallel
@@ -73,9 +76,19 @@ jobs:
           otlp-headers: ${{ secrets.OTLP_HEADERS }}
 ```
 
-> This step must run **before** the build step so the trace context and agent
-> env vars are exported in time. `parent-step-name` must be a unique step name
-> within the job.
+> **Run this first, before `actions/checkout`.** None of its inputs depend on
+> the checked-out repo, and putting it first means checkout itself (and
+> anything before the build step) is captured under the trace and by the
+> host-metrics collector instead of missed. It must still run **before** the
+> build step so the trace context and agent env vars are exported in time.
+> `parent-step-name` must be a unique step name within the job.
+>
+> The collector download/startup runs in a detached background process — by
+> far the largest one-time download (tens of MB, never cache-hit on ephemeral
+> runners) — so it never blocks this step or anything after it. The Java/Node
+> agent downloads (only when `java-enabled`/`node-enabled`) still complete
+> before the step returns, since their paths are exposed as outputs, but now
+> run concurrently with each other instead of one after the other.
 
 ## Inputs
 

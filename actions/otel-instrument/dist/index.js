@@ -39065,7 +39065,7 @@ async function postMetrics(endpoint, payload) {
 }
 const CGROUP_POLLER_ENV = "OTEL_COLLECT_CGROUP_POLLER";
 const CGROUP_POLLER_ENDPOINT_ENV = "OTEL_COLLECT_CGROUP_ENDPOINT";
-const PID_STATE$1 = "otel-cgroup-poller-pid";
+const PID_STATE = "otel-cgroup-poller-pid";
 const DEFAULT_INTERVAL_MS = 5e3;
 function runCgroupPollerProcess(endpoint, intervalMs = DEFAULT_INTERVAL_MS) {
   const startTimeNanos = nowUnixNanos();
@@ -39098,14 +39098,14 @@ async function startCgroupPoller(otlpHttpEndpoint) {
   });
   child.unref();
   if (child.pid) {
-    saveState(PID_STATE$1, String(child.pid));
+    saveState(PID_STATE, String(child.pid));
     info(`Started cgroup metrics poller (pid ${child.pid}), logging to ${logPath}`);
   } else {
     warning("Failed to start cgroup metrics poller");
   }
 }
 async function stopCgroupPoller() {
-  const pidRaw = getState(PID_STATE$1);
+  const pidRaw = getState(PID_STATE);
   if (!pidRaw) return;
   const pid = Number(pidRaw);
   if (!Number.isInteger(pid)) return;
@@ -72625,32 +72625,57 @@ service:
       exporters: [otlp]
 `;
 }
-const PID_STATE = "otel-collector-pid";
-async function startCollector(version, endpoint, rawHeaders, serviceName, jobId, workflowName, jobFullName) {
-  const bin = await ensureCollector(version);
+function pidFilePath() {
   const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
-  const configPath = path$1.join(tmp, "otel-collect-config.yaml");
-  const logPath = path$1.join(tmp, "otel-collect-collector.log");
-  fs.writeFileSync(
-    configPath,
-    buildConfig(endpoint, parseHeaders(rawHeaders), serviceName, jobId, workflowName, jobFullName)
-  );
+  return path$1.join(tmp, "otel-collect-collector.pid");
+}
+const COLLECTOR_LAUNCHER_ENV = "OTEL_COLLECT_LAUNCHER";
+const COLLECTOR_LAUNCHER_CONFIG_ENV = "OTEL_COLLECT_LAUNCHER_CONFIG";
+async function runCollectorLauncherProcess(cfg) {
+  try {
+    const bin = await ensureCollector(cfg.version);
+    const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
+    const configPath = path$1.join(tmp, "otel-collect-config.yaml");
+    const logPath = path$1.join(tmp, "otel-collect-collector.log");
+    fs.writeFileSync(
+      configPath,
+      buildConfig(cfg.endpoint, parseHeaders(cfg.rawHeaders), cfg.serviceName, cfg.jobId, cfg.workflowName, cfg.jobFullName)
+    );
+    const out = fs.openSync(logPath, "a");
+    const child = spawn(bin, ["--config", configPath], {
+      detached: true,
+      stdio: ["ignore", out, out]
+    });
+    child.unref();
+    if (child.pid) fs.writeFileSync(pidFilePath(), String(child.pid));
+  } catch {
+  }
+}
+function startCollector(version, endpoint, rawHeaders, serviceName, jobId, workflowName, jobFullName) {
+  const cfg = { version, endpoint, rawHeaders, serviceName, jobId, workflowName, jobFullName };
+  const tmp = process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp";
+  const logPath = path$1.join(tmp, "otel-collect-launcher.log");
   const out = fs.openSync(logPath, "a");
-  const child = spawn(bin, ["--config", configPath], {
+  const child = spawn(process.execPath, [process.argv[1]], {
     detached: true,
-    stdio: ["ignore", out, out]
+    stdio: ["ignore", out, out],
+    env: { ...process.env, [COLLECTOR_LAUNCHER_ENV]: "1", [COLLECTOR_LAUNCHER_CONFIG_ENV]: JSON.stringify(cfg) }
   });
   child.unref();
   if (child.pid) {
-    saveState(PID_STATE, String(child.pid));
-    info(`Started host-metrics collector (pid ${child.pid}), logging to ${logPath}`);
+    info(`Downloading/starting host-metrics collector in the background (launcher pid ${child.pid})`);
   } else {
-    warning("Failed to start host-metrics collector");
+    warning("Failed to start host-metrics collector launcher");
   }
 }
 async function stopCollector() {
-  const pidRaw = getState(PID_STATE);
-  if (!pidRaw) return;
+  const file = pidFilePath();
+  let pidRaw;
+  try {
+    pidRaw = fs.readFileSync(file, "utf8").trim();
+  } catch {
+    return;
+  }
   const pid = Number(pidRaw);
   if (!Number.isInteger(pid)) return;
   try {
@@ -72659,6 +72684,11 @@ async function stopCollector() {
     await new Promise((resolve) => setTimeout(resolve, 3e3));
   } catch (err) {
     debug$1(`Collector already stopped: ${err.message}`);
+  } finally {
+    try {
+      fs.unlinkSync(file);
+    } catch {
+    }
   }
 }
 
@@ -101231,19 +101261,8 @@ async function main(inputs) {
     `service.namespace=${NAMESPACE},data_stream.namespace=${NAMESPACE},host.name=${process.env.RUNNER_NAME ?? os.hostname()}`
   );
   setOutput("trace-id", tId);
-  if (inputs.javaEnabled) {
-    const jar = await setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent);
-    setOutput("java-agent-path", jar);
-  }
-  if (inputs.nodeEnabled) {
-    const register = await setupNodeAgent(inputs.injectNodeAgent);
-    setOutput("node-agent-path", register);
-  }
-  if (inputs.gradleTracingEnabled) {
-    installGradleInitScript(serviceName(inputs), jobId, workflowName);
-  }
   if (inputs.hostMetricsEnabled) {
-    await startCollector(
+    startCollector(
       inputs.collectorVersion,
       inputs.otlpEndpoint,
       inputs.otlpHeaders,
@@ -101252,9 +101271,20 @@ async function main(inputs) {
       workflowName,
       job?.name
     );
-    if (inputs.cgroupMetricsEnabled) {
-      await startCgroupPoller(CGROUP_METRICS_ENDPOINT);
-    }
+  }
+  const agentSetup = [];
+  if (inputs.javaEnabled) {
+    agentSetup.push(setupJavaAgent(inputs.javaAgentVersion, inputs.injectJavaAgent).then((jar) => setOutput("java-agent-path", jar)));
+  }
+  if (inputs.nodeEnabled) {
+    agentSetup.push(setupNodeAgent(inputs.injectNodeAgent).then((register) => setOutput("node-agent-path", register)));
+  }
+  if (inputs.gradleTracingEnabled) {
+    installGradleInitScript(serviceName(inputs), jobId, workflowName);
+  }
+  if (agentSetup.length) await Promise.all(agentSetup);
+  if (inputs.hostMetricsEnabled && inputs.cgroupMetricsEnabled) {
+    await startCgroupPoller(CGROUP_METRICS_ENDPOINT);
   }
 }
 async function post() {
@@ -101265,6 +101295,11 @@ async function run() {
   try {
     if (process.env[CGROUP_POLLER_ENV] === "1") {
       runCgroupPollerProcess(process.env[CGROUP_POLLER_ENDPOINT_ENV] ?? CGROUP_METRICS_ENDPOINT);
+      return;
+    }
+    if (process.env[COLLECTOR_LAUNCHER_ENV] === "1") {
+      const raw = process.env[COLLECTOR_LAUNCHER_CONFIG_ENV];
+      if (raw) await runCollectorLauncherProcess(JSON.parse(raw));
       return;
     }
     const inputs = readInputs();
