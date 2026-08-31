@@ -31,7 +31,7 @@ env:
 jobs:
   build-artifacts:
     name: Build Jar
-    runs-on: kestra-private-16cpu-16gb
+    runs-on: kestra-private-16cpu-8gb
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       COREPACK_INTEGRITY_KEYS: 0
@@ -110,7 +110,6 @@ jobs:
       - name: Gradle - Build jars
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           cd kestra-ee
           if [ "${{ steps.cloud-ee.outputs.exists }}" == "true" ]; then

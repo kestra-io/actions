@@ -20,12 +20,11 @@ on:
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
-  NODE_OPTIONS: "--max-old-space-size=4096"
 
 jobs:
   maven:
     name: Publish - Maven
-    runs-on: kestra-private-4cpu-4gb
+    runs-on: kestra-private-4cpu-8gb
     env:
       COREPACK_INTEGRITY_KEYS: 0
     steps:
@@ -92,8 +91,6 @@ jobs:
       # Publish
       - name: Publish - Release package with Gradle
         working-directory: kestra-ee
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
         run: ./gradlew publish --console=plain
 
       # Gradle dependency
