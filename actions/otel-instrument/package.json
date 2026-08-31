@@ -1,7 +1,7 @@
 {
   "scripts": {
     "build": "tsc --noEmit && rollup -c rollup.config.mjs",
-    "test": "node --import tsx --test src/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts ../../shared/otel-core/src/*.test.ts"
   },
   "type": "module",
   "dependencies": {

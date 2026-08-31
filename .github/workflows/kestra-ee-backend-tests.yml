@@ -72,7 +72,7 @@ jobs:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: OpenTelemetry - Setup
-        uses: kestra-io/actions/actions/otel-collect@main
+        uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

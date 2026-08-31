@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { SeverityNumber } from '@opentelemetry/api-logs'
 import { buildWorkflowLogs, parseJobLog } from './github-logs.js'
-import { jobSpanId, stepSpanId, traceId } from './ids.js'
-import type { WorkflowJob } from './resolve-job.js'
+import { jobSpanId, stepSpanId, traceId } from '../../../shared/otel-core/src/ids.js'
+import type { WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
 const job: WorkflowJob = {
   id: 456,

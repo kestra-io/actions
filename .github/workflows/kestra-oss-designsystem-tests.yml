@@ -32,7 +32,7 @@ jobs:
           node-version: '24.x'
 
       - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-collect@main
+        uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

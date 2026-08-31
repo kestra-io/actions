@@ -137,8 +137,8 @@ def makeTracerProvider = { name ->
 // every span here nests under one trace.
 def gradleTracerProvider = makeTracerProvider("${gradleServiceName}")
 def junitTracerProvider = makeTracerProvider("${junitServiceName}")
-def gradleTracer = gradleTracerProvider.get("kestra-otel-collect-gradle")
-def junitTracer = junitTracerProvider.get("kestra-otel-collect-junit")
+def gradleTracer = gradleTracerProvider.get("kestra-otel-instrument-gradle")
+def junitTracer = junitTracerProvider.get("kestra-otel-instrument-junit")
 
 // Nest the build under the GitHub step span carried in TRACEPARENT.
 def parentContext = Context.root()

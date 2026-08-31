@@ -71,7 +71,7 @@ jobs:
       # Checkout
       - uses: actions/checkout@v5
       - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-collect@main
+        uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -166,7 +166,7 @@ jobs:
           path: kestra-ee
 
       - name: Setup - OpenTelemetry
-        uses: kestra-io/actions/actions/otel-collect@main
+        uses: kestra-io/actions/actions/otel-instrument@main
         if: ${{ env.OTLP_ENDPOINT != '' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

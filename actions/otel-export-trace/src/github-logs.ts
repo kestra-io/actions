@@ -2,9 +2,9 @@ import * as core from '@actions/core'
 import type { GitHub } from '@actions/github/lib/utils'
 import { SeverityNumber } from '@opentelemetry/api-logs'
 import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'
-import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { buildLogRecord, buildResource, type LogInput } from './otlp.js'
-import { runnerEnvironmentOf, type WorkflowJob } from './resolve-job.js'
+import { jobSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
+import { buildLogRecord, buildResource, type LogInput } from '../../../shared/otel-core/src/otlp.js'
+import { runnerEnvironmentOf, type WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
 type Octokit = InstanceType<typeof GitHub>
 

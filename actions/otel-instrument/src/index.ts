@@ -10,20 +10,17 @@ import {
   stopCgroupPoller
 } from './cgroup.js'
 import { CGROUP_METRICS_ENDPOINT, startCollector, stopCollector } from './collector.js'
-import { buildWorkflowLogs } from './github-logs.js'
-import { buildWorkflowTrace } from './github-trace.js'
 import { installGradleInitScript } from './gradle.js'
-import { jobSpanId, stepSpanId, traceId as makeTraceId } from './ids.js'
-import { baseEndpoint, exportLogs, exportSpans, NAMESPACE, parseHeaders } from './otlp.js'
-import { listJobs, resolveJob, type WorkflowJob } from './resolve-job.js'
+import { jobSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
+import { baseEndpoint, NAMESPACE } from '../../../shared/otel-core/src/otlp.js'
+import { resolveJob } from '../../../shared/otel-core/src/resolve-job.js'
 
-const STARTED_STATE = 'otel-collect-started'
+const STARTED_STATE = 'otel-instrument-started'
 
 interface Inputs {
   githubToken: string
   otlpEndpoint: string
   otlpHeaders: string
-  mode: string
   javaEnabled: boolean
   nodeEnabled: boolean
   injectJavaAgent: boolean
@@ -31,7 +28,6 @@ interface Inputs {
   hostMetricsEnabled: boolean
   cgroupMetricsEnabled: boolean
   gradleTracingEnabled: boolean
-  logsEnabled: boolean
   parentStepName: string
   collectorVersion: string
   javaAgentVersion: string
@@ -43,7 +39,6 @@ function readInputs(): Inputs {
     githubToken: core.getInput('github-token', { required: true }),
     otlpEndpoint: core.getInput('otlp-endpoint', { required: true }),
     otlpHeaders: core.getInput('otlp-headers'),
-    mode: core.getInput('mode') || 'instrument',
     javaEnabled: core.getBooleanInput('java-enabled'),
     nodeEnabled: core.getBooleanInput('node-enabled'),
     injectJavaAgent: core.getBooleanInput('inject-java-agent'),
@@ -51,7 +46,6 @@ function readInputs(): Inputs {
     hostMetricsEnabled: core.getBooleanInput('host-metrics-enabled'),
     cgroupMetricsEnabled: core.getBooleanInput('cgroup-metrics-enabled'),
     gradleTracingEnabled: core.getBooleanInput('gradle-tracing-enabled'),
-    logsEnabled: core.getBooleanInput('logs-enabled'),
     parentStepName: core.getInput('parent-step-name'),
     collectorVersion: core.getInput('collector-version'),
     javaAgentVersion: core.getInput('java-agent-version'),
@@ -155,46 +149,16 @@ async function main(inputs: Inputs): Promise<void> {
  *
  * It deliberately exports no spans. Job and step span ids are deterministic
  * (jobSpanId/stepSpanId), so a job exporting its own tree here and the final
- * `export-all` job re-exporting it would emit the *same* span twice — and a
+ * `otel-export-trace` job re-exporting it would emit the *same* span twice — and a
  * traces data stream appends rather than upserts on trace_id+span_id. The copy
  * written from inside the job is also the wrong one: the Jobs API still reports
  * that job as `in_progress` with no conclusion, so it lands with a faked
- * "success" and a Date.now() end time. `export-all` is the single source of
+ * "success" and a Date.now() end time. `otel-export-trace` is the single source of
  * truth for the GitHub Actions span layer.
  */
 async function post(): Promise<void> {
   await stopCgroupPoller()
   await stopCollector()
-}
-
-/** Final aggregation job: export the whole workflow tree. */
-async function exportAll(inputs: Inputs): Promise<void> {
-  const octokit = github.getOctokit(inputs.githubToken)
-  const { owner, repo } = github.context.repo
-  const jobs: WorkflowJob[] = await listJobs(octokit, owner, repo, runId(), runAttempt())
-
-  const spans = buildWorkflowTrace(
-    jobs,
-    runId(),
-    runAttempt(),
-    process.env.GITHUB_WORKFLOW ?? '',
-    serviceName(inputs),
-    Date.now()
-  )
-  await exportSpans(spans, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders))
-  core.info(`Exported ${spans.length} span(s) for ${jobs.length} job(s)`)
-
-  if (inputs.logsEnabled) {
-    try {
-      const logs = await buildWorkflowLogs(octokit, owner, repo, jobs, runId(), runAttempt(), serviceName(inputs))
-      await exportLogs(logs, inputs.otlpEndpoint, parseHeaders(inputs.otlpHeaders), 30000)
-      core.info(`Exported ${logs.length} log record(s) for ${jobs.length} job(s)`)
-    } catch (err) {
-      core.warning(`Failed to export logs: ${(err as Error).message}`)
-    }
-  }
-
-  core.setOutput('trace-id', makeTraceId(runId(), runAttempt()))
 }
 
 async function run(): Promise<void> {
@@ -214,17 +178,14 @@ async function run(): Promise<void> {
     const isPost = core.getState(STARTED_STATE) === 'true'
     core.saveState(STARTED_STATE, 'true')
 
-    if (inputs.mode === 'export-all') {
-      // Export once, on the main invocation only — not again in post (would duplicate).
-      if (!isPost) await exportAll(inputs)
-    } else if (isPost) {
+    if (isPost) {
       await post()
     } else {
       await main(inputs)
     }
   } catch (err) {
     // Never fail the job from telemetry; surface as a warning instead.
-    core.warning(`otel-collect error: ${(err as Error).message}`)
+    core.warning(`otel-instrument error: ${(err as Error).message}`)
   }
 }
 
