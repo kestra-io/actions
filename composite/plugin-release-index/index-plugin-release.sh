@@ -43,15 +43,14 @@ index() {
         return 0
     fi
 
-    semver_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
-    plugin_semver_regex="^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$"
-    if [[ ! $VERSION =~ $plugin_semver_regex ]]; then
+    semver_regex="^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$"
+    if [[ ! $VERSION =~ $semver_regex ]]; then
         echo "Error: Invalid pluginVersion '$VERSION'. Expected format MAJOR.MINOR.PATCH[-rcN]"
         exit 1
     fi
 
     if [[ ! $MIN_CORE =~ $semver_regex ]]; then
-        echo "Error: Invalid kestraVersion '$MIN_CORE'. Expected format MAJOR.MINOR.PATCH"
+        echo "Error: Invalid kestraVersion '$MIN_CORE'. Expected format MAJOR.MINOR.PATCH[-rcN]"
         exit 1
     fi
     
