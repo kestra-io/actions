@@ -431,8 +431,8 @@ jobs:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
 
   # Non-blocking early-warning: does the plugin still compile against the latest Kestra release (2.x)?
-  compat-kestra-develop:
-    name: Compat Kestra develop
+  compat-kestra-latest:
+    name: Compat Kestra latest
     # Runs on schedule and on main/master pushes, plus PRs opened by a maintainer
     # (write access: OWNER/MEMBER/COLLABORATOR). author_association is set by GitHub, not the
     # submitter, so external and fork PRs are excluded (they also carry no secrets).
