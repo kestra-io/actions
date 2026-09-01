@@ -455,11 +455,15 @@ jobs:
           fetch-tags: true
           submodules: true
 
-      # Resolve the version to compile against. Prefer the latest release candidate on the same
+      # Resolve the version to compile against. Prefer the newest release candidate on the same
       # major.minor line as Kestra develop: an RC is a pinned, published artifact, so it is a steadier
-      # target than a moving SNAPSHOT. Fall back to the develop SNAPSHOT when no RC is tagged for that
-      # line yet. An RC from an older line is ignored (e.g. develop is 2.0.0-SNAPSHOT but only v1.3.x
-      # RCs exist, or develop already moved to 3.0.0-SNAPSHOT while the newest RC is still v2.0.0-rcN).
+      # target than a moving SNAPSHOT. An RC from an older line is ignored (e.g. develop already moved
+      # to 3.0.0-SNAPSHOT while the newest RC is still v2.0.0-rcN).
+      #
+      # A tag can be pushed before its jars reach Maven Central, so a tag alone is not proof the
+      # version is buildable. Each candidate is checked against Central newest -> oldest and the first
+      # published one wins; otherwise this job would fail on dependency resolution and report it as a
+      # compatibility break. Falls back to the develop SNAPSHOT when no RC on the line is published.
       - name: Setup - Resolve Kestra target version
         id: kestra-2x
         shell: bash
@@ -470,19 +474,27 @@ jobs:
           # major.minor line of develop, e.g. 2.0.0-SNAPSHOT -> 2.0
           LINE=$(printf '%s' "${DEV_VERSION%-SNAPSHOT}" | cut -d. -f1,2)
 
-          # Highest release candidate tagged on that same line (Kestra tags look like v2.0.0-rc12).
+          # RC tags on that line, newest first (Kestra tags look like v2.0.0-rc12).
           # grep may match nothing; guard against pipefail so an empty result is not a step failure.
-          RC=$(git ls-remote --tags --refs https://github.com/kestra-io/kestra.git \
+          RC_TAGS=$(git ls-remote --tags --refs https://github.com/kestra-io/kestra.git \
                 | sed 's|.*refs/tags/||' \
                 | grep -E "^v?${LINE//./\\.}\\.[0-9]+-rc[0-9]+$" \
-                | sort -V | tail -n1 || true)
+                | sort -Vr || true)
 
-          if [ -n "$RC" ]; then
-            VERSION=${RC#v}
-            echo "Compiling against Kestra RC on the ${LINE} line: ${VERSION}"
-          else
+          VERSION=""
+          for TAG in $(printf '%s\n' "$RC_TAGS" | head -5); do
+            CANDIDATE=${TAG#v}
+            if curl -sfI --max-time 15 -o /dev/null "https://repo1.maven.org/maven2/io/kestra/core/${CANDIDATE}/core-${CANDIDATE}.pom"; then
+              VERSION="$CANDIDATE"
+              echo "Compiling against Kestra RC on the ${LINE} line: ${VERSION}"
+              break
+            fi
+            echo "Tag ${TAG} is present but io.kestra:core:${CANDIDATE} is not published yet, skipping it."
+          done
+
+          if [ -z "$VERSION" ]; then
             VERSION="$DEV_VERSION"
-            echo "No RC on the ${LINE} line; compiling against Kestra develop: ${VERSION}"
+            echo "No published RC on the ${LINE} line; compiling against Kestra develop: ${VERSION}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
