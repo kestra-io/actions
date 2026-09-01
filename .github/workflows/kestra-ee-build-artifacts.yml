@@ -31,7 +31,7 @@ env:
 jobs:
   build-artifacts:
     name: Build Jar
-    runs-on: kestra-private-8cpu-8gb
+    runs-on: kestra-private-4cpu-8gb
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       COREPACK_INTEGRITY_KEYS: 0
