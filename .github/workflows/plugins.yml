@@ -430,9 +430,9 @@ jobs:
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
 
-  # Non-blocking early-warning: does the plugin still compile against Kestra develop (2.x)?
-  compat-kestra-develop:
-    name: Compat Kestra develop
+  # Non-blocking early-warning: does the plugin still compile against the latest Kestra release (2.x)?
+  compat-kestra-latest:
+    name: Compat Kestra latest
     # Runs on schedule and on main/master pushes, plus PRs opened by a maintainer
     # (write access: OWNER/MEMBER/COLLABORATOR). author_association is set by GitHub, not the
     # submitter, so external and fork PRs are excluded (they also carry no secrets).
@@ -471,78 +471,78 @@ jobs:
           token_format: 'access_token'
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # Resolve the version to compile against. Prefer the newest release candidate on the same
-      # major.minor line as Kestra develop: an RC is a pinned, published artifact, so it is a steadier
-      # target than a moving SNAPSHOT. An RC from an older line is ignored (e.g. develop already moved
-      # to 3.0.0-SNAPSHOT while the newest RC is still v2.0.0-rcN).
+      # Resolve the version to compile against: the latest Kestra release overall, taken from the git
+      # tags. A final release wins over its own RCs (2.0.0 beats 2.0.0-rc13); until a final is tagged
+      # the newest RC is used. develop is deliberately NOT consulted: once a release branch is cut,
+      # develop races ahead to the next minor whose SNAPSHOT is not published (e.g. 2.1.0-SNAPSHOT),
+      # which is an unbuildable target.
       #
       # A tag can be pushed before its jars are published, so a tag alone is not proof the version is
-      # buildable. Each candidate is verified newest -> oldest and the first usable one wins, otherwise
-      # this job fails on dependency resolution and reports it as a compatibility break. Plugins that
-      # compile against EE core pin io.kestra.ee:core-ee to the same kestraVersion, so for those the
-      # EE artifact must be published too. Falls back to the develop SNAPSHOT when nothing qualifies.
+      # buildable. Candidates are verified newest -> oldest and the first published one wins. Plugins
+      # that compile against EE core pin io.kestra.ee:core-ee to the same kestraVersion, so for those
+      # the EE artifact must be published too. If nothing qualifies the step fails (no develop fallback).
       - name: Setup - Resolve Kestra target version
         id: kestra-2x
         shell: bash
         env:
           EE_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
         run: |
-          DEV_VERSION=$(curl -sfL https://raw.githubusercontent.com/kestra-io/kestra/develop/gradle.properties | grep '^version=' | cut -d= -f2 | tr -d '[:space:]')
-          if [ -z "$DEV_VERSION" ]; then echo "Could not resolve Kestra develop version" >&2; exit 1; fi
+          # All Kestra release tags, leading v stripped: finals (2.0.0) and RCs (2.0.0-rc13).
+          TAGS=$(git ls-remote --tags --refs https://github.com/kestra-io/kestra.git \
+                  | sed 's|.*refs/tags/||; s|^v||' \
+                  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$' || true)
+          if [ -z "$TAGS" ]; then echo "No Kestra release tag found" >&2; exit 1; fi
 
-          # major.minor line of develop, e.g. 2.0.0-SNAPSHOT -> 2.0
-          LINE=$(printf '%s' "${DEV_VERSION%-SNAPSHOT}" | cut -d. -f1,2)
+          # Newest-first candidate list: for each base version (descending), the final tag first when it
+          # exists, then its RCs descending. sort -V ranks 2.0.0-rc13 above 2.0.0, so the final is
+          # emitted ahead of its RCs explicitly instead of relying on the sort.
+          CANDIDATES=""
+          for BASE in $(printf '%s\n' "$TAGS" | sed 's/-rc[0-9]*$//' | sort -Vr -u); do
+            printf '%s\n' "$TAGS" | grep -qxF "$BASE" && CANDIDATES="${CANDIDATES}${BASE}"$'\n'
+            RCS=$(printf '%s\n' "$TAGS" | grep -E "^${BASE//./\\.}-rc[0-9]+$" | sort -Vr || true)
+            [ -n "$RCS" ] && CANDIDATES="${CANDIDATES}${RCS}"$'\n'
+          done
 
           # Does this plugin compile against EE core? (plugin-ee-git, secret-*, queue-ee-* etc.)
           NEEDS_EE=false
           if grep -rqE "io\.kestra\.ee" --include=build.gradle . 2>/dev/null; then NEEDS_EE=true; fi
           echo "Plugin needs io.kestra.ee:core-ee: ${NEEDS_EE}"
 
-          # RC tags on that line, newest first (Kestra tags look like v2.0.0-rc12).
-          # grep may match nothing; guard against pipefail so an empty result is not a step failure.
-          RC_TAGS=$(git ls-remote --tags --refs https://github.com/kestra-io/kestra.git \
-                | sed 's|.*refs/tags/||' \
-                | grep -E "^v?${LINE//./\\.}\\.[0-9]+-rc[0-9]+$" \
-                | sort -Vr || true)
-
+          # Pick the newest candidate whose artifacts are actually published. A tag can exist before its
+          # publish job finishes, so an unpublished newest tag must not become the target. Only the top
+          # few can be unpublished; older releases always are, so cap the checks.
           VERSION=""
-          for TAG in $(printf '%s\n' "$RC_TAGS" | head -5); do
-            CANDIDATE=${TAG#v}
-
+          for CANDIDATE in $(printf '%s' "$CANDIDATES" | grep -v '^$' | head -8); do
             # OSS core comes from Maven Central (the compat job does not use the maven-remote proxy).
             if ! curl -sfI --max-time 15 -o /dev/null "https://repo1.maven.org/maven2/io/kestra/core/${CANDIDATE}/core-${CANDIDATE}.pom"; then
-              echo "Tag ${TAG}: io.kestra:core:${CANDIDATE} is not published yet, skipping it."
+              echo "Candidate ${CANDIDATE}: io.kestra:core is not published yet, skipping it."
               continue
             fi
 
             # EE core comes from the private Artifact Registry. Only a definitive 404 rejects the
-            # candidate: an auth or network error must not silently pin every EE plugin to develop.
-            if [ "$NEEDS_EE" = "true" ]; then
-              if [ -z "$EE_TOKEN" ]; then
-                echo "Tag ${TAG}: plugin needs core-ee but no GCP token is available, cannot verify."
-                break
-              fi
+            # candidate; an auth or network error (or a missing token) must not silently skip an
+            # otherwise-valid release, so those accept the candidate and let the compile be the judge.
+            if [ "$NEEDS_EE" = "true" ] && [ -n "$EE_TOKEN" ]; then
               EE_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
                 -H "Authorization: Bearer ${EE_TOKEN}" \
                 "https://europe-west1-maven.pkg.dev/kestra-host/maven/io/kestra/ee/core-ee/${CANDIDATE}/core-ee-${CANDIDATE}.pom")
               if [ "$EE_CODE" = "404" ]; then
-                echo "Tag ${TAG}: io.kestra:core is published but io.kestra.ee:core-ee:${CANDIDATE} is not, skipping it."
+                echo "Candidate ${CANDIDATE}: io.kestra:core is published but io.kestra.ee:core-ee is not, skipping it."
                 continue
               fi
               if [ "$EE_CODE" != "200" ]; then
                 echo "::warning::core-ee check for ${CANDIDATE} was inconclusive (HTTP ${EE_CODE}); accepting the candidate."
               fi
+            elif [ "$NEEDS_EE" = "true" ]; then
+              echo "::warning::plugin needs core-ee but no GCP token is available; cannot verify ${CANDIDATE}, accepting it."
             fi
 
             VERSION="$CANDIDATE"
-            echo "Compiling against Kestra RC on the ${LINE} line: ${VERSION}"
+            echo "Compiling against latest published Kestra release: ${VERSION}"
             break
           done
 
-          if [ -z "$VERSION" ]; then
-            VERSION="$DEV_VERSION"
-            echo "No usable RC on the ${LINE} line; compiling against Kestra develop: ${VERSION}"
-          fi
+          if [ -z "$VERSION" ]; then echo "No published Kestra release found to compile against" >&2; exit 1; fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Setup - Patch Gradle JVM args
@@ -597,7 +597,7 @@ jobs:
           channel: "C09FE0QCN2E"
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           suffix: ${{ steps.kestra-2x.outputs.version }}
-          extra-text: "non-blocking compat check: the plugin no longer compiles against Kestra develop"
+          extra-text: "non-blocking compat check: the plugin no longer compiles against the latest Kestra release"
 
   otel-export-trace:
     if: always()
