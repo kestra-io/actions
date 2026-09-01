@@ -455,24 +455,48 @@ jobs:
           fetch-tags: true
           submodules: true
 
+      # GCP auth so EE/secret plugins resolve their private artifactregistry deps (io.kestra.ee:core-ee
+      # etc.). Auth only, not the maven-remote proxy (the proxy would block the 2.x snapshots repo).
+      # Runs before the version resolution below, which needs the access token to check whether an EE
+      # artifact is published.
+      - name: GCP - Check credentials availability
+        id: gcp-check
+        run: echo "available=${{ secrets.GCP_SERVICE_ACCOUNT != '' }}" >> $GITHUB_OUTPUT
+
+      - name: GCP - Auth with github service account
+        id: gcp-auth
+        if: steps.gcp-check.outputs.available == 'true'
+        uses: 'google-github-actions/auth@v3'
+        with:
+          token_format: 'access_token'
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       # Resolve the version to compile against. Prefer the newest release candidate on the same
       # major.minor line as Kestra develop: an RC is a pinned, published artifact, so it is a steadier
       # target than a moving SNAPSHOT. An RC from an older line is ignored (e.g. develop already moved
       # to 3.0.0-SNAPSHOT while the newest RC is still v2.0.0-rcN).
       #
-      # A tag can be pushed before its jars reach Maven Central, so a tag alone is not proof the
-      # version is buildable. Each candidate is checked against Central newest -> oldest and the first
-      # published one wins; otherwise this job would fail on dependency resolution and report it as a
-      # compatibility break. Falls back to the develop SNAPSHOT when no RC on the line is published.
+      # A tag can be pushed before its jars are published, so a tag alone is not proof the version is
+      # buildable. Each candidate is verified newest -> oldest and the first usable one wins, otherwise
+      # this job fails on dependency resolution and reports it as a compatibility break. Plugins that
+      # compile against EE core pin io.kestra.ee:core-ee to the same kestraVersion, so for those the
+      # EE artifact must be published too. Falls back to the develop SNAPSHOT when nothing qualifies.
       - name: Setup - Resolve Kestra target version
         id: kestra-2x
         shell: bash
+        env:
+          EE_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
         run: |
           DEV_VERSION=$(curl -sfL https://raw.githubusercontent.com/kestra-io/kestra/develop/gradle.properties | grep '^version=' | cut -d= -f2 | tr -d '[:space:]')
           if [ -z "$DEV_VERSION" ]; then echo "Could not resolve Kestra develop version" >&2; exit 1; fi
 
           # major.minor line of develop, e.g. 2.0.0-SNAPSHOT -> 2.0
           LINE=$(printf '%s' "${DEV_VERSION%-SNAPSHOT}" | cut -d. -f1,2)
+
+          # Does this plugin compile against EE core? (plugin-ee-git, secret-*, queue-ee-* etc.)
+          NEEDS_EE=false
+          if grep -rqE "io\.kestra\.ee" --include=build.gradle . 2>/dev/null; then NEEDS_EE=true; fi
+          echo "Plugin needs io.kestra.ee:core-ee: ${NEEDS_EE}"
 
           # RC tags on that line, newest first (Kestra tags look like v2.0.0-rc12).
           # grep may match nothing; guard against pipefail so an empty result is not a step failure.
@@ -484,17 +508,40 @@ jobs:
           VERSION=""
           for TAG in $(printf '%s\n' "$RC_TAGS" | head -5); do
             CANDIDATE=${TAG#v}
-            if curl -sfI --max-time 15 -o /dev/null "https://repo1.maven.org/maven2/io/kestra/core/${CANDIDATE}/core-${CANDIDATE}.pom"; then
-              VERSION="$CANDIDATE"
-              echo "Compiling against Kestra RC on the ${LINE} line: ${VERSION}"
-              break
+
+            # OSS core comes from Maven Central (the compat job does not use the maven-remote proxy).
+            if ! curl -sfI --max-time 15 -o /dev/null "https://repo1.maven.org/maven2/io/kestra/core/${CANDIDATE}/core-${CANDIDATE}.pom"; then
+              echo "Tag ${TAG}: io.kestra:core:${CANDIDATE} is not published yet, skipping it."
+              continue
             fi
-            echo "Tag ${TAG} is present but io.kestra:core:${CANDIDATE} is not published yet, skipping it."
+
+            # EE core comes from the private Artifact Registry. Only a definitive 404 rejects the
+            # candidate: an auth or network error must not silently pin every EE plugin to develop.
+            if [ "$NEEDS_EE" = "true" ]; then
+              if [ -z "$EE_TOKEN" ]; then
+                echo "Tag ${TAG}: plugin needs core-ee but no GCP token is available, cannot verify."
+                break
+              fi
+              EE_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+                -H "Authorization: Bearer ${EE_TOKEN}" \
+                "https://europe-west1-maven.pkg.dev/kestra-host/maven/io/kestra/ee/core-ee/${CANDIDATE}/core-ee-${CANDIDATE}.pom")
+              if [ "$EE_CODE" = "404" ]; then
+                echo "Tag ${TAG}: io.kestra:core is published but io.kestra.ee:core-ee:${CANDIDATE} is not, skipping it."
+                continue
+              fi
+              if [ "$EE_CODE" != "200" ]; then
+                echo "::warning::core-ee check for ${CANDIDATE} was inconclusive (HTTP ${EE_CODE}); accepting the candidate."
+              fi
+            fi
+
+            VERSION="$CANDIDATE"
+            echo "Compiling against Kestra RC on the ${LINE} line: ${VERSION}"
+            break
           done
 
           if [ -z "$VERSION" ]; then
             VERSION="$DEV_VERSION"
-            echo "No published RC on the ${LINE} line; compiling against Kestra develop: ${VERSION}"
+            echo "No usable RC on the ${LINE} line; compiling against Kestra develop: ${VERSION}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -528,18 +575,6 @@ jobs:
           # Node is required for plugins whose Gradle build compiles a ui/ micro-frontend
           # (assemble -> processResources -> buildUI npm task). Same condition as the main job.
           node-enabled: ${{ hashFiles('ui/package-lock.json') != '' }}
-
-      # GCP auth so EE/secret plugins resolve their private artifactregistry deps (io.kestra.ee:core-ee
-      # etc.). Auth only, not the maven-remote proxy (the proxy would block the 2.x snapshots repo).
-      - name: GCP - Check credentials availability
-        id: gcp-check
-        run: echo "available=${{ secrets.GCP_SERVICE_ACCOUNT != '' }}" >> $GITHUB_OUTPUT
-
-      - name: GCP - Auth with github service account
-        if: steps.gcp-check.outputs.available == 'true'
-        uses: 'google-github-actions/auth@v3'
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       # Compile main sources (and the ui micro-frontend via assemble) against 2.x. Tests are neither
       # compiled nor run: test code churns against 2.x for reasons unrelated to plugin compatibility.
