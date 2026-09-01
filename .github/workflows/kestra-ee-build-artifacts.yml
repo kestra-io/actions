@@ -110,6 +110,7 @@ jobs:
       # Shadow Jar
       - name: Gradle - Build jars
         env:
+          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         run: |
           cd kestra-ee

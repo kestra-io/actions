@@ -93,6 +93,8 @@ jobs:
       - name: Publish - Release package with Gradle
         working-directory: kestra-ee
         run: ./gradlew publish --console=plain
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
 
       # Gradle dependency
       - name: Java - Gradle dependency graph

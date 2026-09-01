@@ -115,6 +115,8 @@ jobs:
       # https://github.com/kestra-io/gradle-plugin/#test-scheduling
       - name: Gradle - javadoc
         timeout-minutes: 15
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
