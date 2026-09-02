@@ -88,6 +88,19 @@ jobs:
         run: |
           mv kestra ../kestra
 
+      # --max-workers=4 crashes the Gradle daemon ("Could not receive a message from the
+      # daemon") on kestra-ee 1.x release branches, so Gradle - check drops it when targeting one.
+      - name: Setup - kestra-ee 1.x release branch
+        id: target-branch
+        run: |
+          TARGET_BRANCH="${{ github.base_ref || github.ref_name }}"
+          if [[ "$TARGET_BRANCH" =~ ^releases/v1\.[0-9]+\.x$ ]]; then
+            echo "Targeting kestra-ee 1.x release branch ($TARGET_BRANCH)"
+            echo "is-1x-release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-1x-release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Services - start async. Previously two separate `docker compose up -d` steps (an unwaited
       # kick-off here, then a second `up -d --wait` below right before Gradle - check) under the
       # same step name, which made the log unreadable. `background:` + `wait:` collapses that into
@@ -122,7 +135,7 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew javadoc testClasses --parallel --console=plain 
+          ./gradlew javadoc testClasses --parallel --console=plain
 
       # Services - wait to be ready
       - name: Setup - Wait docker compose
@@ -135,7 +148,11 @@ jobs:
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
-          ./gradlew check --parallel --max-workers=4 --console=plain
+          MAX_WORKERS_FLAG="--max-workers=4"
+          if [[ "${{ steps.target-branch.outputs.is-1x-release }}" == "true" ]]; then
+            MAX_WORKERS_FLAG=""
+          fi
+          ./gradlew check --parallel $MAX_WORKERS_FLAG --console=plain
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
