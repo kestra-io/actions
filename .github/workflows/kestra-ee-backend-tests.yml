@@ -52,6 +52,7 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       # to save corepack from itself
       COREPACK_INTEGRITY_KEYS: 0
+      NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: OpenTelemetry - Setup
@@ -115,8 +116,6 @@ jobs:
       # https://github.com/kestra-io/gradle-plugin/#test-scheduling
       - name: Gradle - javadoc
         timeout-minutes: 15
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
         run: |
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json

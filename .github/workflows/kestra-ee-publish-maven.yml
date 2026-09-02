@@ -27,6 +27,7 @@ jobs:
     runs-on: kestra-private-4cpu-8gb
     env:
       COREPACK_INTEGRITY_KEYS: 0
+      NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
@@ -87,16 +88,12 @@ jobs:
       - name: Build frontend - EE build
         shell: bash
         working-directory: kestra-ee/ui-ee
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
         run: npm run build
 
       # Publish
       - name: Publish - Release package with Gradle
         working-directory: kestra-ee
         run: ./gradlew publish --console=plain
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
 
       # Gradle dependency
       - name: Java - Gradle dependency graph
