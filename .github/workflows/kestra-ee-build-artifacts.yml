@@ -24,6 +24,11 @@ on:
         type: string
         default: '21'
         required: false
+      legacy-runner:
+        description: "Does this ci target a legacy runner"
+        type: boolean
+        default: false
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -31,7 +36,7 @@ env:
 jobs:
   build-artifacts:
     name: Build Jar
-    runs-on: kestra-private-4cpu-8gb
+    runs-on: ${{ inputs.legacy-runner && 'kestra-private-standard' || 'kestra-private-4cpu-8gb' }}
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       COREPACK_INTEGRITY_KEYS: 0

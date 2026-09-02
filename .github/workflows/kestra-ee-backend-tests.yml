@@ -32,6 +32,11 @@ on:
         type: string
         default: ''
         required: false
+      legacy-runner:
+        description: "Does this ci target a legacy runner"
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: write
@@ -45,7 +50,7 @@ env:
 jobs:
   check:
     name: Check
-    runs-on: kestra-private-16cpu-16gb
+    runs-on: ${{ inputs.legacy-runner && 'kestra-private-large' || 'kestra-private-16cpu-16gb' }}
     timeout-minutes: 90
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
