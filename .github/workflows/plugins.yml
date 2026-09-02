@@ -243,15 +243,7 @@ jobs:
       # micro-frontend under ui/. Guarded on ui/package-lock.json so it is a no-op for the
       # plugins that have no UI; Node itself is set up conditionally in "Setup - Build".
       # --if-present keeps repos that lack a lint/test:unit script from failing.
-      #
-      # Backgrounded rather than put in a `parallel:` block with Gradle Check: Setup/Check/
-      # Cleanup below is a strict sequential chain (Cleanup must run even when Check fails, to
-      # tear down leaked cloud resources), which a flat parallel: list can't express. Running
-      # this in the background alongside that whole chain and waiting on it after Cleanup gets
-      # the same overlap without disturbing that chain.
       - name: Test - UI unit tests
-        id: ui-unit-tests
-        background: true
         if: ${{ inputs.skip-test == false && hashFiles('ui/package-lock.json') != '' }}
         working-directory: ui
         shell: bash
@@ -283,12 +275,6 @@ jobs:
           if [ -f .github/cleanup-unit.sh ]; then
             ./.github/cleanup-unit.sh
           fi
-
-      # Unconditional: `wait:` doesn't accept `if:` (GitHub rejects the combination as an
-      # unrecognized step shape). The background step above already carries the condition —
-      # waiting on it when it was skipped is a no-op.
-      - name: Test - Wait for UI unit tests
-        wait: [ui-unit-tests]
 
       # Avoid duplicate publishing on release commits:
       # when a main/master push points to a release tag, only the tag workflow should publish.
