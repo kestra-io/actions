@@ -93,6 +93,8 @@ jobs:
       - name: Build frontend - EE build
         shell: bash
         working-directory: kestra-ee/ui-ee
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
         run: npm run build
 
       # Detect whether this version ships the cloud-ee module (2.0+ / develop).
