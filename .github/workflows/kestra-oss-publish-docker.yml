@@ -49,6 +49,11 @@ on:
         required: false
         type: boolean
         default: false
+      embed-plugins-schema-bundle:
+        description: 'Generate the KIP-45 plugin schema bundle and embed it in the jar. Set to false on release branches whose CLI predates the plugins-schema command (pre-2.0).'
+        required: false
+        type: boolean
+        default: true
       java-version:
         description: "Java version"
         type: string
@@ -123,7 +128,7 @@ jobs:
     uses: ./.github/workflows/kestra-oss-build-artifacts.yml
     with:
       java-version: ${{ inputs.java-version }}
-      embed-plugins-schema-bundle: true
+      embed-plugins-schema-bundle: ${{ inputs.embed-plugins-schema-bundle }}
     secrets:
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
