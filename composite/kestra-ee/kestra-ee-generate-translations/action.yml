@@ -69,14 +69,22 @@ runs:
     # Falls back to the pre-migration path so this action can merge before the kestra-ee PR that
     # moves the tooling. It is referenced `@main`, so it takes effect on every open EE PR the moment
     # it lands, including branches cut before that move.
+    #
+    # Release branches (e.g. releases/v1.3.x) predate the `.mjs` migration entirely: their checker
+    # is `ui-ee/src/translations/check.ts`, which is itself Node-builtins-only (it does not go through
+    # OSS `compareTranslations.ts`), so it runs cleanly here. It is informational on those branches
+    # (it prints missing/extra keys but does not exit non-zero); on develop the `.mjs` checker above
+    # is the enforcing one.
     - name: Check keys matching
       shell: bash
       working-directory: kestra-ee
       run: |
         if [ -f ui-ee/scripts/translations/check-translations.mjs ]; then
           node ui-ee/scripts/translations/check-translations.mjs --scope ee --oss-root ../kestra
-        else
+        elif [ -f ui-ee/scripts/check-translations.mjs ]; then
           node ui-ee/scripts/check-translations.mjs --scope ee --oss-root ../kestra
+        else
+          npx --yes tsx ui-ee/src/translations/check.ts
         fi
 
     - name: Set up Git
