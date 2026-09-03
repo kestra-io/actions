@@ -176,4 +176,8 @@ jobs:
         uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          # GITHUB_AUTH_TOKEN and SONAR_TOKEN are not declared in this workflow's `secrets:` block,
+          # so they were never in the context this passed on either — Sonar stays inert here.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
+          google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}

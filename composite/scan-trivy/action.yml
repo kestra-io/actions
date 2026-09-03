@@ -12,9 +12,18 @@ inputs:
     required: false
     default: "*/build/libs/*.jar"
 
+  # Prefer github-token. Passing the whole `secrets` context to an action in another repository is
+  # a secret-exfiltration shape GitHub's heuristics flag, and a flagged workflow does not run until
+  # someone with write access approves it.
   secrets:
-    description: 'Secrets passed as toJSON'
-    required: true
+    description: 'Every secret passed as toJSON. Legacy fallback, only read for keys github-token does not supply.'
+    required: false
+    default: '{}'
+
+  github-token:
+    description: 'Token used to comment the scan result. Takes precedence over secrets.GITHUB_TOKEN.'
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -47,7 +56,7 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
-        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token || fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🛡 Trivy"
         files: |
           ${{ github.workspace }}/trivy-result.json
