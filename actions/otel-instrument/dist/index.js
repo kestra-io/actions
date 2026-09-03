@@ -39066,7 +39066,7 @@ async function postMetrics(endpoint, payload) {
 const CGROUP_POLLER_ENV = "OTEL_COLLECT_CGROUP_POLLER";
 const CGROUP_POLLER_ENDPOINT_ENV = "OTEL_COLLECT_CGROUP_ENDPOINT";
 const PID_STATE = "otel-cgroup-poller-pid";
-const DEFAULT_INTERVAL_MS = 5e3;
+const DEFAULT_INTERVAL_MS = 3e4;
 function runCgroupPollerProcess(endpoint, intervalMs = DEFAULT_INTERVAL_MS) {
   const startTimeNanos = nowUnixNanos();
   const tick = async () => {
@@ -72477,15 +72477,14 @@ function buildConfig(endpoint, headers, serviceName, jobId, workflowName, jobFul
   const { target, secure } = grpcTarget(endpoint);
   return `receivers:
   hostmetrics:
-    # 1s was chosen so short-lived jobs (a few seconds) couldn't finish and get
-    # SIGTERM'd before a scrape ever fired. That is already handled by
-    # initial_delay (default 1s), which is independent of collection_interval \u2014
-    # the first scrape lands ~1s in whatever this is set to \u2014 so the interval
-    # only trades document volume against resolution. 1s cost ~843k documents
-    # for a single 32-minute 16-core job (128 cpu data points *per second*,
-    # before the other scrapers); 2s halves that and is still finer than any
-    # CI dashboard needs.
-    collection_interval: 2s
+    # Short-lived jobs (a few seconds) still get a scrape before being SIGTERM'd
+    # thanks to initial_delay (default 1s), which is independent of
+    # collection_interval \u2014 the first scrape lands ~1s in whatever this is set
+    # to \u2014 so this value only trades document volume against resolution. 1s
+    # cost ~843k documents for a single 32-minute 16-core job (128 cpu data
+    # points *per second*, before the other scrapers); 30s is still enough
+    # resolution for any CI dashboard while cutting that volume by ~30x.
+    collection_interval: 30s
     scrapers:
       cpu:
         metrics:

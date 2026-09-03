@@ -261,7 +261,7 @@ export const CGROUP_POLLER_ENV = 'OTEL_COLLECT_CGROUP_POLLER'
 export const CGROUP_POLLER_ENDPOINT_ENV = 'OTEL_COLLECT_CGROUP_ENDPOINT'
 
 const PID_STATE = 'otel-cgroup-poller-pid'
-const DEFAULT_INTERVAL_MS = 5000
+const DEFAULT_INTERVAL_MS = 30000
 
 /**
  * Entry point for the spawned poller process (invoked via CGROUP_POLLER_ENV):
