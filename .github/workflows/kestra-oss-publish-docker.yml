@@ -50,10 +50,10 @@ on:
         type: boolean
         default: false
       embed-plugins-schema-bundle:
-        description: 'Generate the KIP-45 plugin schema bundle and embed it in the jar. Set to false on release branches whose CLI predates the plugins-schema command (pre-2.0).'
+        description: 'Generate the KIP-45 plugin schema bundle and embed it in the jar. Off by default: the CLI on pre-2.0 release branches has no plugins-schema command. Set to true explicitly on branches that support it.'
         required: false
         type: boolean
-        default: true
+        default: false
       java-version:
         description: "Java version"
         type: string
