@@ -21,8 +21,10 @@ runs:
         ref: ${{ github.head_ref }}
 
     # The translation tooling is shared: EE's `scripts/translations/{generate,check}.ts` import the
-    # implementation from OSS, resolved as a sibling checkout. Both the tooling and the OSS language
-    # files are needed — the latter so the "no EE key redefines an OSS key" check can run.
+    # implementation from OSS, resolved as a sibling checkout. Three things are needed: the tooling,
+    # the OSS language files (so the "no EE key redefines an OSS key" check can run), and the
+    # design-system locale files — the usage check globs those too, and without them every key they
+    # define is reported as used but defined nowhere.
     - name: Checkout - OSS
       uses: actions/checkout@v4
       with:
@@ -32,6 +34,7 @@ runs:
         sparse-checkout: |
           ui/scripts/translations/
           ui/src/translations/
+          ui/packages/design-system/
         sparse-checkout-cone-mode: false
 
     - name: Set up Node
