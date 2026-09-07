@@ -97,6 +97,14 @@ jobs:
               reporter: github-pr-review
               workdir: ui
 
+      # oxlint and eslint above report through reviewdog, which comments on the PR but does not fail
+      # it. This runs the same linters plus stylelint and does fail, so an error-level rule blocks a
+      # merge — `ks/no-undeclared-custom-property`, which catches a `var(--ks-…)` the browser will
+      # throw away, is the one that prompted this (kestra-io/kestra#18777).
+      - name: Npm - lint (blocking)
+        working-directory: ui
+        run: npm run test:lint
+
       - name: Npm - Run build
         working-directory: ui
         env:
