@@ -207,6 +207,11 @@ jobs:
           # Plugins — new path (use-kestra-base-images: true)
           - name: Install kestractl
             if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
+            # GITHUB_TOKEN: the install script resolves the release through the GitHub REST API,
+            # which is rate-limited per IP for anonymous callers. Runners share egress IPs, so
+            # without a token this step fails with HTTP 403.
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             run: |
               curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
               echo "$HOME/.local/bin" >> $GITHUB_PATH
