@@ -132,6 +132,13 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
+          # The oxlint and eslint steps in this group only report: neither fails the build. This one
+          # does, so an error-level rule blocks a merge (kestra-io/kestra-ee#10820).
+          - name: Npm - Lint (blocking)
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm run test:lint
+
           - name: Npm - Lint (oxlint)
             shell: bash
             working-directory: kestra-ee/ui-ee
