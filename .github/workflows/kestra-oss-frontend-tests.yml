@@ -84,6 +84,11 @@ jobs:
             working-directory: ui
             run: npm run check:types
 
+          - name: Npm - explicit any baseline
+            working-directory: ui
+            # --if-present: release branches pin this workflow at @main and predate the script.
+            run: npm run check:ts-any --if-present
+
           - name: Npm - lint (oxlint)
             uses: oxc-project/oxlint-action@v3.0.0
             with:
