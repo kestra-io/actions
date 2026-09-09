@@ -65,11 +65,11 @@ jobs:
     
       - name: Npm - check types
         working-directory: ui/packages/design-system
-        run: npm run types:test
+        run: npm run check:types
 
       - name: Run front-end unit tests
         working-directory: ui/packages/design-system
-        run: npm run unit:test
+        run: npm run test:unit
 
       - name: Storybook - Install Playwright
         working-directory: ui/packages/design-system
@@ -78,4 +78,4 @@ jobs:
 
       - name: Run storybook component tests
         working-directory: ui/packages/design-system
-        run: npm run storybook:test
+        run: npm run test:storybook
