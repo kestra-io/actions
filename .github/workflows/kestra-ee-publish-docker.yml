@@ -124,6 +124,11 @@ jobs:
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
     with:
       java-version: ${{ inputs.java-version }}
+      # Same runner the EE pre-release path uses for this job. The default
+      # (kestra-private-4cpu-8gb) cannot fit the older lines: 1.0.x builds the frontend with
+      # NODE_OPTIONS=--max-old-space-size=4096 alongside Gradle's -Xmx4096m, and the runner is
+      # killed mid "Gradle - Build jars" with no logs uploaded.
+      legacy-runner: true
 
   # ********************************************************************************************************************
   # Docker
