@@ -84,7 +84,7 @@ jobs:
             working-directory: ui
             run: npm run check:types
 
-          - name: Npm - explicit any baseline
+          - name: Npm - check ts-any
             working-directory: ui
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present

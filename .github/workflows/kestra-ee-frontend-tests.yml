@@ -103,7 +103,7 @@ jobs:
             working-directory: kestra-ee/ui-ee
             run: npm run check:types
 
-          - name: Npm - explicit any baseline
+          - name: Npm - check ts-any
             shell: bash
             working-directory: kestra-ee/ui-ee
             # --if-present: release branches pin this workflow at @main and predate the script.
