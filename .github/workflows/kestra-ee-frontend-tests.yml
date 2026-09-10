@@ -103,6 +103,12 @@ jobs:
             working-directory: kestra-ee/ui-ee
             run: npm run check:types
 
+          - name: Npm - check ts-any
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            # --if-present: release branches pin this workflow at @main and predate the script.
+            run: npm run check:ts-any --if-present
+
           - name: Npm - Lint (oxlint)
             shell: bash
             working-directory: kestra-ee/ui-ee
