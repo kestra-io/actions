@@ -1,0 +1,2 @@
+# Bundled deps ship CRLF; keep the committed action bundles LF so rebuilds do not churn.
+actions/*/dist/* text eol=lf
