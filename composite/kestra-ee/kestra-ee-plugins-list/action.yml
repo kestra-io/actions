@@ -28,7 +28,7 @@ runs:
   using: composite
   steps:
     - name: Checkout - OSS
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       if: hashFiles('kestra/') == ''
       with:
         repository: kestra-io/kestra
@@ -39,7 +39,7 @@ runs:
           .plugins
 
     - name: Checkout - EE
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       if: hashFiles('kestra-ee/') == ''
       with:
         repository: kestra-io/kestra-ee

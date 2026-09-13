@@ -64,7 +64,7 @@ jobs:
 
       # Checkout
       - name: Checkout - EE
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: kestra-ee
 
@@ -128,14 +128,14 @@ jobs:
       # Independent uploads — different artifact names, different source paths.
       - parallel:
           - name: Artifacts - Upload Executable
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v7
             with:
               name: exe
               path: kestra-ee/build/executable/
 
           - name: Artifacts - Upload cloud-ee libs
             if: ${{ steps.cloud-ee.outputs.exists == 'true' }}
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v7
             with:
               name: cloud-libs
               path: kestra-ee/cloud-ee/build/libs/cloud-ee-*-all.jar
@@ -147,7 +147,7 @@ jobs:
           cp kestra-ee/webserver-ee/build/classes/java/main/META-INF/swagger/kestra-ee.yml swagger/kestra-ee.yml
 
       - name: Artifacts - Upload Swagger
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: swagger
           path: swagger

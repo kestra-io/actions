@@ -57,7 +57,7 @@ runs:
       echo "mention=${mention}" >> "${GITHUB_OUTPUT}"
 
   - name: Slack - Post
-    uses: slackapi/slack-github-action@v2.1.1
+    uses: slackapi/slack-github-action@v4.0.0
     with:
       errors: true
       webhook: ${{ inputs.webhook-url }}

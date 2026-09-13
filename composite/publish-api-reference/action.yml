@@ -21,7 +21,7 @@ runs:
         repositories: docs
 
     - name: Checkout - Docs
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         repository: kestra-io/docs
         path: docs
@@ -29,13 +29,13 @@ runs:
         token: ${{ steps.app-token.outputs.token }}
 
     - name: Artifacts - Download swagger
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v8
       with:
         name: swagger
         path: docs/public/
 
     - name: GitHub - Push change to docs
-      uses: stefanzweifel/git-auto-commit-action@v6
+      uses: stefanzweifel/git-auto-commit-action@v7
       with:
         commit_message: "feat(docs): update api swagger"
         branch: main

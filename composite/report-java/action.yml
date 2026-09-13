@@ -14,7 +14,7 @@ runs:
   using: composite
   steps:
     - name: Test - Publish Test Results
-      uses: mikepenz/action-junit-report@v5
+      uses: mikepenz/action-junit-report@v6
       id: test-report
       continue-on-error: true
       env:
@@ -114,7 +114,7 @@ runs:
 
     # Codecov
     - name: Codecov - Upload coverage reports
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
@@ -130,7 +130,7 @@ runs:
     # Gradle dependency
     - name: Java - Gradle dependency graph
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
-      uses: gradle/actions/dependency-submission@v4
+      uses: gradle/actions/dependency-submission@v6
       continue-on-error: true
       env:
         JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"

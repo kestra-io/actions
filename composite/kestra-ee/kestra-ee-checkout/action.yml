@@ -67,7 +67,7 @@ runs:
         echo "ossBranch=develop" >> "$GITHUB_OUTPUT"
 
     - name: Checkout - OSS
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: kestra-io/kestra
         path: kestra

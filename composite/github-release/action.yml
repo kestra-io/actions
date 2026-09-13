@@ -15,7 +15,7 @@ runs:
   steps:
 
     - name: Setup - Checkout Jreleaser file
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: kestra-io/actions
         ref: main
@@ -74,7 +74,7 @@ runs:
         fi
         
     - name: Setup - Set Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v6
       with:
         distribution: 'temurin'
         java-version: ${{ inputs.java-version }}
@@ -91,7 +91,7 @@ runs:
 
     - name: JReleaser - Output properties & logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: jreleaser-release
         path: |
