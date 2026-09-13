@@ -1,0 +1,58 @@
+name: Dependabot - Rebuild TypeScript actions
+
+# The TypeScript actions ship a committed dist/index.js bundle, but Dependabot only
+# updates package.json / package-lock.json. Without this, a merged npm PR leaves the
+# shipped bundle built against the previous dependency tree.
+
+on:
+  pull_request:
+    paths:
+      - 'actions/*/package.json'
+      - 'actions/*/package-lock.json'
+      - 'shared/*/package.json'
+      - 'shared/*/package-lock.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo - Checkout the Dependabot branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Node - Setup
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      # The otel actions import shared/otel-core by relative path, so its bare imports
+      # (@grpc/grpc-js, @opentelemetry/*) resolve from shared/otel-core/node_modules.
+      # Without this install the bundler and tsc cannot resolve them.
+      - name: Node - Install shared library
+        working-directory: shared/otel-core
+        run: npm ci
+
+      - name: Node - Rebuild and test every action
+        run: |
+          set -euo pipefail
+          for dir in actions/*/; do
+            [ -f "${dir}package.json" ] || continue
+            echo "::group::${dir}"
+            (cd "$dir" && npm ci && npm run build && npm test --if-present)
+            echo "::endgroup::"
+          done
+
+      - name: GitHub - Push the rebuilt bundles
+        uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: "build(deps): rebuild action bundles"
+          file_pattern: 'actions/*/dist/*'
