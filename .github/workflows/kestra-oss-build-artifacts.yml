@@ -50,7 +50,7 @@ jobs:
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Checkout - Current ref
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -160,13 +160,13 @@ jobs:
       # Upload artifacts — independent, different artifact names and source paths.
       - parallel:
           - name: Artifacts - Upload JAR
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v7
             with:
               name: jar
               path: build/libs/
 
           - name: Artifacts - Upload Executable
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v7
             with:
               name: exe
               path: build/executable/

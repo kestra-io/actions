@@ -61,7 +61,7 @@ jobs:
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         name: Checkout - Current ref
         with:
           fetch-depth: 0

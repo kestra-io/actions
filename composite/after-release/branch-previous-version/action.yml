@@ -39,7 +39,7 @@ runs:
         echo "Kestra version format valid: ${{inputs.new_version}}"
 
     - name: Checkout branch
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         ref: main
         token: ${{ steps.app-token.outputs.token }}

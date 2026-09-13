@@ -28,13 +28,13 @@ runs:
         ${{ github.action_path }}/download-cloud-plugins.sh
 
     - name: Download cloud-ee libs
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v8
       with:
         name: cloud-libs
         path: ${{ inputs.context }}/docker/app/libs
 
     - name: Build and push
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: ${{ inputs.context }}/.
         file: ${{ inputs.context }}/Dockerfile.cloud
