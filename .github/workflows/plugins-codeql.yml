@@ -35,7 +35,9 @@ on:
         description: "Command that compiles main sources for CodeQL to trace"
         required: false
         type: string
-        default: './gradlew classes --no-daemon --console=plain'
+        # --no-build-cache for the same reason Develocity injection is off below: a cache hit
+        # would skip javac and leave CodeQL with an empty database.
+        default: './gradlew classes --no-daemon --no-build-cache --console=plain'
       queries:
         description: "CodeQL query suite. Use 'security-and-quality' to add the maintainability queries"
         required: false
@@ -85,16 +87,17 @@ jobs:
           config-file: ${{ inputs.codeql-config }}
 
       # Java only: build so CodeQL traces compilation and records the resolved classpath.
-      - name: Set up JDK
+      # Same JDK and Gradle setup the plugin build itself uses, so CodeQL compiles the code the
+      # way CI does. Develocity injection stays off here on purpose: CodeQL builds a database by
+      # tracing javac, so a remote build cache serving compileJava FROM-CACHE would mean javac
+      # never runs and the database comes out empty, with the analysis passing but seeing nothing.
+      - name: Setup - Build
         if: matrix.build-mode == 'manual'
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: kestra-io/actions/composite/setup-build@main
         with:
-          distribution: temurin
+          java-enabled: true
           java-version: ${{ inputs.java-version }}
-
-      - name: Setup Gradle
-        if: matrix.build-mode == 'manual'
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+          java-enable-develocity-injection: false
 
       # classes, not testClasses: with build-mode 'manual' the traced build IS the path filter,
       # so compiling main sources only is what keeps src/test/java out of the database.
