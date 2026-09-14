@@ -1,13 +1,13 @@
 # CodeQL advanced setup, shared by every Kestra plugin repository.
 #
+# Two jobs rather than one matrix, because the two analyses have almost nothing in common:
+# Java is extracted from a real Gradle build, 'actions' is extracted buildless.
+#
 # Default setup analysed Java with build-mode 'none' (buildless extraction), which could not
 # resolve the Gradle classpath: on plugin-compress only 77% of calls had a call target and 87% of
 # expressions had a known type, both under CodeQL's 85% quality threshold. An unresolved classpath
 # means taint flow through Kestra core and third-party types is invisible, so the code most worth
 # scanning is the least reliably scanned.
-#
-# Here Java is extracted from a real Gradle build (build-mode 'manual'), so the database has the
-# full dependency classpath. 'actions' stays buildless — it has no classpath to resolve.
 #
 # Plugin repositories call this from a thin .github/workflows/codeql.yml that owns the triggers:
 #
@@ -35,8 +35,8 @@ on:
         description: "Command that compiles main sources for CodeQL to trace"
         required: false
         type: string
-        # --no-build-cache for the same reason Develocity injection is off below: a cache hit
-        # would skip javac and leave CodeQL with an empty database.
+        # --no-build-cache for the same reason Develocity injection is off in the Java job: a
+        # cache hit would skip javac and leave CodeQL with an empty database.
         default: './gradlew classes --no-daemon --no-build-cache --console=plain'
       queries:
         description: "CodeQL query suite. Use 'security-and-quality' to add the maintainability queries"
@@ -55,22 +55,14 @@ permissions:
   actions: read
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
+  # Java is built so CodeQL traces compilation and records the resolved dependency classpath.
+  java:
+    name: Analyze (java-kotlin)
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       contents: read
       actions: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: java-kotlin
-            build-mode: manual
-          - language: actions
-            build-mode: none
 
     steps:
       - name: Checkout repository
@@ -79,20 +71,19 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          languages: java-kotlin
+          build-mode: manual
           # Wider than the 'default' suite default setup used.
           queries: ${{ inputs.queries }}
-          # paths-ignore for the buildless 'actions' job; a no-op for built Java.
+          # Only carries paths-ignore, which is a no-op for a built language. Passed anyway so
+          # both jobs report against the same configuration.
           config-file: ${{ inputs.codeql-config }}
 
-      # Java only: build so CodeQL traces compilation and records the resolved classpath.
       # Same JDK and Gradle setup the plugin build itself uses, so CodeQL compiles the code the
-      # way CI does. Develocity injection stays off here on purpose: CodeQL builds a database by
+      # way CI does. Develocity injection stays off on purpose: CodeQL builds a database by
       # tracing javac, so a remote build cache serving compileJava FROM-CACHE would mean javac
       # never runs and the database comes out empty, with the analysis passing but seeing nothing.
       - name: Setup - Build
-        if: matrix.build-mode == 'manual'
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
@@ -103,7 +94,6 @@ jobs:
       # so compiling main sources only is what keeps src/test/java out of the database.
       # paths-ignore cannot do this for a built language.
       - name: Build with Gradle
-        if: matrix.build-mode == 'manual'
         run: ${{ inputs.build-command }}
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
@@ -111,4 +101,31 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:java-kotlin"
+
+  # Workflow files have no classpath to resolve, so they are extracted without a build.
+  actions:
+    name: Analyze (actions)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: actions
+          build-mode: none
+          queries: ${{ inputs.queries }}
+          # paths-ignore takes effect here: buildless extraction is where it applies.
+          config-file: ${{ inputs.codeql-config }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          category: "/language:actions"
