@@ -57,8 +57,8 @@ permissions:
 jobs:
   # Java is built so CodeQL traces compilation and records the resolved dependency classpath.
   java:
-    name: Analyze (java-kotlin)
-    runs-on: ubuntu-latest
+    name: CodeQL - Java
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     permissions:
       security-events: write
       contents: read
@@ -105,8 +105,8 @@ jobs:
 
   # Workflow files have no classpath to resolve, so they are extracted without a build.
   actions:
-    name: Analyze (actions)
-    runs-on: ubuntu-latest
+    name: CodeQL - Github Actions
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     permissions:
       security-events: write
       contents: read
