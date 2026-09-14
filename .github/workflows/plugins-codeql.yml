@@ -76,6 +76,36 @@ jobs:
         with:
           fetch-depth: 0
 
+      # actions/unpinned-tag flags every `uses: kestra-io/actions/...@main`, but pinning those to a
+      # commit would defeat the point of a shared actions repository that plugins track. Rather
+      # than exclude the query, which would also stop it catching genuinely unpinned third-party
+      # actions, add kestra-io to the trusted-publisher allow list it already consults.
+      #
+      # Written here rather than committed to each plugin: model packs under
+      # .github/codeql/extensions are auto-detected, so this needs no config file, no registry and
+      # no second ref to keep in sync.
+      - name: CodeQL - Trust kestra-io as an Actions publisher
+        run: |
+          PACK=.github/codeql/extensions/kestra-trusted-owners
+          mkdir -p "$PACK/models"
+          cat > "$PACK/codeql-pack.yml" <<'YAML'
+          name: kestra-io/actions-extensions
+          version: 0.0.0
+          library: true
+          extensionTargets:
+            codeql/actions-all: '*'
+          dataExtensions:
+            - models/**/*.yml
+          YAML
+          cat > "$PACK/models/trusted-owner.model.yml" <<'YAML'
+          extensions:
+            - addsTo:
+                pack: codeql/actions-all
+                extensible: trustedActionsOwnerDataModel
+              data:
+                - ["kestra-io"]
+          YAML
+
       - name: CodeQL - Initialize
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
