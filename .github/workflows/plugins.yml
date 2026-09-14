@@ -99,7 +99,7 @@ jobs:
 
       # Setup build
       - name: Setup - Build
-        uses: kestra-io/actions/composite/setup-build@main
+        uses: kestra-io/actions/composite/setup-build@test/github-coverage-e2e
         with:
           java-enabled: true
           # Use Java 25 only for Kestra 2.x (including SNAPSHOT)
@@ -371,7 +371,7 @@ jobs:
 
       # Report Java
       - name: Report - Java
-        uses: kestra-io/actions/composite/report-java@main
+        uses: kestra-io/actions/composite/report-java@test/github-coverage-e2e
         if: ${{ !cancelled() && inputs.skip-test == false }}
         with:
           secrets: ${{ toJSON(secrets) }}

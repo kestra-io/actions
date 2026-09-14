@@ -42,7 +42,7 @@ jobs:
       # tracing javac, so a remote build cache serving compileJava FROM-CACHE would mean javac
       # never runs and the database comes out empty, with the analysis passing but seeing nothing.
       - name: Setup - Build
-        uses: kestra-io/actions/composite/setup-build@main
+        uses: kestra-io/actions/composite/setup-build@test/github-coverage-e2e
         with:
           java-enabled: true
           java-version: ${{ inputs.java-version }}
