@@ -1,0 +1,18 @@
+# Shared CodeQL configuration for Kestra plugin repositories.
+#
+# Consumed by .github/workflows/plugins-codeql.yml through the `config-file` input, using the
+# external-repository form `kestra-io/actions/.github/codeql/codeql-config.yml@main`. This
+# repository is public, so callers do not need `external-repository-token`.
+#
+# Keep test sources out of code scanning results.
+#
+# paths-ignore only takes effect for interpreted languages and for compiled languages analysed
+# WITHOUT building — CodeQL's 'build-mode: none'. That covers the 'actions' job in
+# plugins-codeql.yml and the GitHub-managed "CodeQL - Code Quality" run, which extracts Java
+# buildless.
+#
+# It does NOT apply to the java-kotlin job in plugins-codeql.yml, which uses 'build-mode: manual'.
+# There the build is the filter: that job compiles './gradlew classes' (main sources only), so
+# src/test/java never reaches the database in the first place.
+paths-ignore:
+  - src/test/java
