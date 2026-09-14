@@ -45,12 +45,10 @@ runs:
           "API",
           "BRANCH_DOCS",
           "BRANCH_BLUEPRINTS",
-          "HELM_CHARTS",
           "LIBS"
         ]'
         DEFAULT_TO_RELEASE_FOR_PATCH='[
-          "API",
-          "HELM_CHARTS"
+          "API"
         ]'
 
         if [ "${PATCH}" -eq 0 ]; then
