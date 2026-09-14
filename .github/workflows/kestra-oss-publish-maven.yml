@@ -52,7 +52,7 @@ jobs:
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Checkout - Current ref
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Setup build
       - name: Setup - Build
@@ -89,4 +89,4 @@ jobs:
 
       # Gradle dependency
       - name: Java - Gradle dependency graph
-        uses: gradle/actions/dependency-submission@v6
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0

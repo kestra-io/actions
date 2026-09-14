@@ -14,7 +14,7 @@ runs:
   using: composite
   steps:
     - name: Test - Publish Test Results
-      uses: mikepenz/action-junit-report@v6
+      uses: mikepenz/action-junit-report@a9170d5795813c01ab4901ffb045b52bab4ab09d # v6.5.0
       id: test-report
       continue-on-error: true
       env:
@@ -56,13 +56,13 @@ runs:
     # GCP
     - name: GCP - Auth with unit test account
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != '' }}
-      uses: 'google-github-actions/auth@v3'
+      uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
       with:
         credentials_json: '${{ fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT }}'
 
     - name: GCP - Setup Cloud SDK
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && fromJSON(inputs.secrets).GOOGLE_SERVICE_ACCOUNT != ''}}
-      uses: 'google-github-actions/setup-gcloud@v3'
+      uses: 'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db' # v3.0.1
 
     - name: GCP - Configure project and location
       shell: bash
@@ -114,14 +114,14 @@ runs:
 
     # Codecov
     - name: Codecov - Upload coverage reports
-      uses: codecov/codecov-action@v7
+      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
         token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
 
     - name: Codecov - Upload test results
-      uses: codecov/test-results-action@v1
+      uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
       if: ${{ job.status == 'success' }}
       continue-on-error: true
       with:
@@ -130,7 +130,7 @@ runs:
     # Gradle dependency
     - name: Java - Gradle dependency graph
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
-      uses: gradle/actions/dependency-submission@v6
+      uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       continue-on-error: true
       env:
         JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
