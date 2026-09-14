@@ -26,7 +26,10 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 
 # Directories that never hold sources we want to resolve against, but do hold
-# enough files to make walking the tree noticeably slower.
+# enough files to make walking the tree noticeably slower. Pruning `build` also
+# excludes generated sources (the protobuf classes under worker-controller, for
+# instance): jacoco measures them, but they are not committed, so GitHub has
+# nothing to annotate and they would only drag the reported percentage down.
 PRUNED_DIRS = {".git", ".gradle", "node_modules", "build", "out", "target", ".idea", "venv", ".venv"}
 
 SOURCE_EXTENSIONS = (".java", ".kt", ".kts", ".groovy", ".scala")
