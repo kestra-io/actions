@@ -110,14 +110,19 @@ jobs:
         id: base
         shell: bash
         run: |
-          if [[ "${{ github.base_ref }}" == "develop" ]]; then
-            echo "tag=develop" >> "$GITHUB_OUTPUT"
-          else
-            ref="${{ github.base_ref }}"
-            ref="${ref#releases/}"
-            ref="${ref%.x}"
-            echo "tag=${ref}" >> "$GITHUB_OUTPUT"
-          fi
+          # Only develop and the release branches have a published base image, so a PR
+          # stacked on a feature branch builds on develop.
+          case "${{ github.base_ref }}" in
+            releases/*)
+              ref="${{ github.base_ref }}"
+              ref="${ref#releases/}"
+              tag="${ref%.x}"
+              ;;
+            *)
+              tag="develop"
+              ;;
+          esac
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Docker - Build and push
         id: docker-build-push
