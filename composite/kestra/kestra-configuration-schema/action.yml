@@ -33,14 +33,14 @@ runs:
   using: composite
   steps:
     - name: Set up Java
-      uses: actions/setup-java@v6
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
       with:
         distribution: temurin
         java-version: ${{ inputs.java-version }}
 
     - name: GCP - Auth
       id: gcp-auth
-      uses: google-github-actions/auth@v3
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
       with:
         token_format: ${{ inputs.edition == 'ee' && 'access_token' || '' }}
         credentials_json: ${{ inputs.gcp-credentials-json }}
@@ -112,7 +112,7 @@ runs:
         echo "Schema generated at $OUTPUT_PATH"
 
     - name: Upload schema to GCS
-      uses: google-github-actions/upload-cloud-storage@v3
+      uses: google-github-actions/upload-cloud-storage@6397bd7208e18d13ba2619ee21b9873edc94427a # v3.0.0
       with:
         path: ${{ inputs.output-path }}
         destination: ${{ inputs.gcs-destination }}

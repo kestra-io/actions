@@ -43,7 +43,7 @@ jobs:
 
       # Checkout
       - name: Checkout - EE
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: kestra-ee
 
@@ -65,7 +65,7 @@ jobs:
       # Google Auth
       - name: GCP - Auth with github service account
         id: auth
-        uses: 'google-github-actions/auth@v3'
+        uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
         with:
           credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
 
@@ -98,6 +98,6 @@ jobs:
       # Gradle dependency
       - name: Java - Gradle dependency graph
         if: ${{ github.ref == 'refs/heads/develop' }}
-        uses: gradle/actions/dependency-submission@v6
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           build-root-directory: kestra-ee

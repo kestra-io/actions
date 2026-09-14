@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/suzuki-shunsuke/pinact/refs/heads/main/json-schema/pinact.json
+version: 3
+
+ignore_actions:
+  # First-party, consumed from main on purpose.
+  - name: kestra-io/actions/.*
+    ref: main
+  # Only tagged v0.1.0 (January 2026), far behind the main this repo tracks.
+  - name: regclient/actions/.*
+    ref: main

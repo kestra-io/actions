@@ -57,7 +57,7 @@ runs:
 
     - id: app-token-org
       if: ${{ steps.repo-meta.outputs.org_wide == 'true' }}
-      uses: actions/create-github-app-token@v3
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
         client-id: ${{ inputs.gh-app-id }}
         private-key: ${{ inputs.gh-app-private-key }}
@@ -65,7 +65,7 @@ runs:
 
     - id: app-token-repo
       if: ${{ steps.repo-meta.outputs.org_wide != 'true' }}
-      uses: actions/create-github-app-token@v3
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
         client-id: ${{ inputs.gh-app-id }}
         private-key: ${{ inputs.gh-app-private-key }}

@@ -71,7 +71,7 @@ jobs:
 
       # Check out
       - name: Checkout - Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -110,7 +110,7 @@ jobs:
 
       # Setup for setup-unit.sh, injecting secrets as env variables
       - name: Setup - Secret to Env
-        uses: oNaiPs/secrets-to-env-action@v1
+        uses: oNaiPs/secrets-to-env-action@75f319b3c8c926ac2eabcca34daa6cf531daf32f # v1.8
         with:
           secrets: ${{ toJSON(secrets) }}
 
@@ -122,7 +122,7 @@ jobs:
 
       - name: GCP - Auth with github service account
         id: gcp-auth
-        uses: 'google-github-actions/auth@v3'
+        uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
         if: steps.gcp-check.outputs.available == 'true'
         with:
           token_format: 'access_token'
@@ -303,7 +303,7 @@ jobs:
 
       # Refresh auth to avoid expired tokens during long test/build phases before private publish
       - name: GCP - Refresh auth with github service account
-        uses: 'google-github-actions/auth@v3'
+        uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
         if: ${{ inputs.sonatype-publish == false && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
