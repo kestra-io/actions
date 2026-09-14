@@ -43,6 +43,7 @@ permissions:
   checks: write
   actions: read
   pull-requests: write
+  code-quality: write
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}

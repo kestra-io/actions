@@ -1,0 +1,119 @@
+name: CodeQL
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java version"
+        required: false
+        type: string
+        default: '21'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  # CodeQL analysis for Java projects
+  java:
+    name: CodeQL - Java
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout - Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: CodeQL - Initialize
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          queries: security-and-quality
+
+      # Same JDK and Gradle setup the plugin build itself uses, so CodeQL compiles the code the
+      # way CI does. Develocity injection stays off on purpose: CodeQL builds a database by
+      # tracing javac, so a remote build cache serving compileJava FROM-CACHE would mean javac
+      # never runs and the database comes out empty, with the analysis passing but seeing nothing.
+      - name: Setup - Build
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: true
+          java-version: ${{ inputs.java-version }}
+          java-enable-develocity-injection: false
+
+      # classes, not testClasses: with build-mode 'manual' the traced build IS the path filter,
+      # so compiling main sources only is what keeps src/test/java out of the database.
+      # paths-ignore cannot do this for a built language.
+      # --no-build-cache for the same reason Develocity injection is off in the Java job: a
+      # cache hit would skip javac and leave CodeQL with an empty database.
+      - name: Build with Gradle
+        run: "./gradlew classes --no-daemon --no-build-cache --console=plain"
+
+      - name: CodeQL - Perform Analysis
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          category: "/language:java-kotlin"
+
+  # CodeQL analysis for GitHub Actions
+  actions:
+    name: CodeQL - Github Actions
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout - Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # actions/unpinned-tag flags every `uses: kestra-io/actions/...@main`, but pinning those to a
+      # commit would defeat the point of a shared actions repository that plugins track. Rather
+      # than exclude the query, which would also stop it catching genuinely unpinned third-party
+      # actions, add kestra-io to the trusted-publisher allow list it already consults.
+      #
+      # Written here rather than committed to each plugin: model packs under
+      # .github/codeql/extensions are auto-detected, so this needs no config file, no registry and
+      # no second ref to keep in sync.
+      - name: CodeQL - Trust kestra-io as an Actions publisher
+        run: |
+          PACK=.github/codeql/extensions/kestra-trusted-owners
+          mkdir -p "$PACK/models"
+          cat > "$PACK/codeql-pack.yml" <<'YAML'
+          name: kestra-io/actions-extensions
+          version: 0.0.0
+          library: true
+          extensionTargets:
+            codeql/actions-all: '*'
+          dataExtensions:
+            - models/**/*.yml
+          YAML
+          cat > "$PACK/models/trusted-owner.model.yml" <<'YAML'
+          extensions:
+            - addsTo:
+                pack: codeql/actions-all
+                extensible: trustedActionsOwnerDataModel
+              data:
+                - ["kestra-io"]
+          YAML
+
+      - name: CodeQL - Initialize
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: actions
+          build-mode: none
+          queries: security-and-quality
+
+      - name: CodeQL - Perform Analysis
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          category: "/language:actions"

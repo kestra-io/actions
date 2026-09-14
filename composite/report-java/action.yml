@@ -1,5 +1,5 @@
 name: 'Report Java'
-description: 'Send Allure, Jacoco, Sonar and Codecov reports'
+description: 'Send Allure, Jacoco, GitHub code coverage, Sonar and Codecov reports'
 
 inputs:
   run-sonar:
@@ -107,10 +107,28 @@ runs:
           cp -R build/reports/jacoco/testCodeCoverageReport build/reports/jacoco/test/
           cp build/reports/jacoco/test/testCodeCoverageReport.xml build/reports/jacoco/test/jacocoTestReport.xml
         fi
-        
+
         if [ -d build/reports/jacoco/test/ ]; then
           gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
         fi
+
+    # GitHub code coverage
+    - name: Github Coverage - Convert Jacoco reports to Cobertura
+      id: cobertura
+      shell: bash
+      if: ${{ job.status == 'success' }}
+      continue-on-error: true
+      run: python3 "${{ github.action_path }}/jacoco-to-cobertura.py" --output "${{ runner.temp }}/cobertura.xml"
+
+    - name: Github Coverage - Upload
+      if: ${{ job.status == 'success' && steps.cobertura.outputs.found == 'true' }}
+      uses: actions/upload-code-coverage@v1
+      continue-on-error: true
+      with:
+        file: ${{ runner.temp }}/cobertura.xml
+        language: Java
+        label: jacoco
+        token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
 
     # Codecov
     - name: Codecov - Upload coverage reports
