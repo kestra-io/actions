@@ -62,14 +62,14 @@ jobs:
 
       - name: Login to DockerHub
         # TODO not sure if it is needed
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
       - name: Checkout - EE
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: kestra-ee
 
@@ -93,21 +93,21 @@ jobs:
 
       - name: Cache - OSS Node Modules
         id: cache-oss-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: kestra/ui/node_modules
           key: modules-oss-${{ hashFiles('kestra/ui/package-lock.json') }}
 
       - name: Cache - EE Node Modules
         id: cache-ee-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: kestra-ee/ui-ee/node_modules
           key: modules-ee-${{ hashFiles('kestra-ee/ui-ee/package-lock.json') }}
 
       - name: Cache - Playwright Binaries
         id: cache-playwright
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('kestra-ee/ui-ee/package-lock.json') }}
@@ -132,7 +132,7 @@ jobs:
 
           - name: Artifacts - Download executable
             if: ${{ inputs.exe-artifact != '' }}
-            uses: actions/download-artifact@v5
+            uses: actions/download-artifact@v8
             with:
               name: ${{ inputs.exe-artifact }}
               path: kestra-ee/build/executable
@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload Playwright Report as Github artifact
         # 'With this report, you can analyze locally the results of the tests. see https://playwright.dev/docs/ci-intro#html-report'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report

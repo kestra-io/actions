@@ -79,7 +79,7 @@ jobs:
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
       # Checkout
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Log params
         run: |
           echo "parameters:"
@@ -124,6 +124,11 @@ jobs:
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
     with:
       java-version: ${{ inputs.java-version }}
+      # Same runner the EE pre-release path uses for this job. The default
+      # (kestra-private-4cpu-8gb) cannot fit the older lines: 1.0.x builds the frontend with
+      # NODE_OPTIONS=--max-old-space-size=4096 alongside Gradle's -Xmx4096m, and the runner is
+      # killed mid "Gradle - Build jars" with no logs uploaded.
+      legacy-runner: true
 
   # ********************************************************************************************************************
   # Docker
@@ -173,7 +178,7 @@ jobs:
         run: echo 'inputs.dry-run OFF'
 
       - name: Code Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: kestra-ee
 
@@ -207,6 +212,11 @@ jobs:
           # Plugins — new path (use-kestra-base-images: true)
           - name: Install kestractl
             if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
+            # GITHUB_TOKEN: the install script resolves the release through the GitHub REST API,
+            # which is rate-limited per IP for anonymous callers. Runners share egress IPs, so
+            # without a token this step fails with HTTP 403.
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             run: |
               curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
               echo "$HOME/.local/bin" >> $GITHUB_PATH
@@ -269,7 +279,7 @@ jobs:
 
       # Download executable from artifact
       - name: Artifacts - Download executable
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: exe
           path: build/executable
@@ -285,14 +295,14 @@ jobs:
       # (root cause of a ghcr.io "anonymous token" 403 push failure in
       # kestra-ee run 33312683568).
       - name: Docker - Login to GitHub registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker - Login to Google Cloud registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: europe-west1-docker.pkg.dev
           username: oauth2accesstoken
@@ -300,14 +310,14 @@ jobs:
 
       - name: Docker - Login to Dockerhub
         # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker - Build and push
         id: docker-build-push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: kestra-ee/.
           push: ${{ inputs.dry-run == false }}

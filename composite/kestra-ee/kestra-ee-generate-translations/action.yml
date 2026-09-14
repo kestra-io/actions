@@ -15,10 +15,56 @@ runs:
 
   steps:
     - name: Checkout - EE
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         path: kestra-ee
         ref: ${{ github.head_ref }}
+
+    # Which OSS to generate and check against: the same lookup `kestra-ee-checkout` does for the
+    # frontend tests. A companion OSS branch of the same name wins (at its PR's simulated-merge ref
+    # when that PR is open and mergeable, else the branch tip), otherwise the PR base branch. Without
+    # this an EE PR that uses a key its companion OSS PR adds is red until the OSS side merges, and
+    # the two have to be merged in a fixed order.
+    - name: Resolve the OSS ref
+      id: oss-ref
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        HEAD_REF: ${{ github.head_ref }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        # Authenticated probes: anonymous git is rate-limited per egress IP and the shared runner pool
+        # trips that limit. Composed here so the URL is never echoed into the job log.
+        OSS_REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/kestra-io/kestra.git"
+
+        BRANCH_SHA=""
+        if [[ -n "$HEAD_REF" ]]; then
+          BRANCH_SHA=$(git ls-remote "$OSS_REMOTE" "refs/heads/$HEAD_REF" | cut -f1)
+        fi
+        if [[ -n "$BRANCH_SHA" ]]; then
+          OSS_PR_REF=$(git ls-remote "$OSS_REMOTE" 'refs/pull/*/head' | grep "^$BRANCH_SHA" | sort -t'/' -k3 -n -r | head -1 | awk '{print $2}')
+          if [[ -n "$OSS_PR_REF" ]]; then
+            OSS_PR_NUMBER=$(echo "$OSS_PR_REF" | sed 's|refs/pull/||;s|/head||')
+            if [[ -n "$(git ls-remote "$OSS_REMOTE" "refs/pull/$OSS_PR_NUMBER/merge")" ]]; then
+              echo "same-name OSS branch $HEAD_REF is the head of OSS PR #$OSS_PR_NUMBER, using its merge ref"
+              echo "ref=refs/pull/$OSS_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "OSS PR #$OSS_PR_NUMBER has no merge ref (conflicts), using the branch tip"
+          fi
+          echo "same-name OSS branch found, using $HEAD_REF"
+          echo "ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [[ -n "$(git ls-remote "$OSS_REMOTE" "refs/heads/$BASE_REF")" ]]; then
+          echo "no same-name OSS branch, using the PR base $BASE_REF"
+          echo "ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "neither $HEAD_REF nor $BASE_REF exists in OSS, falling back to develop"
+        echo "ref=develop" >> "$GITHUB_OUTPUT"
 
     # The translation tooling is shared: EE's `scripts/translations/{generate,check}.ts` import the
     # implementation from OSS, resolved as a sibling checkout. Three things are needed: the tooling,
@@ -26,11 +72,11 @@ runs:
     # design-system locale files — the usage check globs those too, and without them every key they
     # define is reported as used but defined nowhere.
     - name: Checkout - OSS
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: kestra-io/kestra
         path: kestra
-        ref: ${{ github.base_ref }}
+        ref: ${{ steps.oss-ref.outputs.ref }}
         sparse-checkout: |
           ui/scripts/translations/
           ui/src/translations/
@@ -38,7 +84,7 @@ runs:
         sparse-checkout-cone-mode: false
 
     - name: Set up Node
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: "24.x"
 
@@ -60,7 +106,7 @@ runs:
       shell: bash
 
     - name: Set up Node
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: "24.x"
 

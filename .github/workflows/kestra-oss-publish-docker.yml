@@ -91,7 +91,7 @@ jobs:
           host-metrics-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
       # Checkout
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Log params
         run: |
           echo "parameters:"
@@ -176,7 +176,7 @@ jobs:
         if: ${{ inputs.dry-run == false }}
         run: echo 'inputs.dry-run OFF'
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Vars
       - name: Set image name
@@ -210,7 +210,7 @@ jobs:
 
       # Download executable from artifact
       - name: Artifacts - Download executable
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: exe
           path: build/executable
@@ -232,6 +232,11 @@ jobs:
 
           - name: Install kestractl
             if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
+            # GITHUB_TOKEN: the install script resolves the release through the GitHub REST API,
+            # which is rate-limited per IP for anonymous callers. Runners share egress IPs, so
+            # without a token this step fails with HTTP 403.
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             run: |
               curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
               echo "$HOME/.local/bin" >> $GITHUB_PATH
@@ -242,7 +247,7 @@ jobs:
 
           # Docker Login
           - name: Login to DockerHub
-            uses: docker/login-action@v3
+            uses: docker/login-action@v4
             with:
               username: ${{ secrets.DOCKERHUB_USERNAME }}
               password: ${{ secrets.DOCKERHUB_PASSWORD }}
@@ -269,7 +274,7 @@ jobs:
 
       # Docker Build and push
       - name: Push to Docker Hub
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ inputs.dry-run == false }}
