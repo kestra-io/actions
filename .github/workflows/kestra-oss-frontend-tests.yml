@@ -95,7 +95,14 @@ jobs:
               working-directory: ui
               all-files: true
 
+          # reporter: github-pr-review only has somewhere to post on a pull_request run. On a
+          # push or dispatch build reviewdog prints "this is not PullRequest build" and drops every
+          # finding, so the only thing the step can still do there is fail the job when its own
+          # installer hiccups ("unable to find 'v0.21.1'" -> "reviewdog: command not found" -> exit
+          # 127), which is exactly what turned the frontend job red on releases/v2.0.x in both repos
+          # on 2026-09-14. Keep it where it reports, skip it where it cannot.
           - name: Npm - lint (eslint)
+            if: ${{ github.event_name == 'pull_request' }}
             uses: reviewdog/action-eslint@5eb89b1e6e94ca33e91c3814c34b25a8370bba46 # v1.35.0
             with:
               github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
