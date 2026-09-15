@@ -128,6 +128,14 @@ jobs:
               reporter: github-pr-review
               workdir: "kestra-ee/ui-ee"
 
+      # Same reason as the OSS workflow: the two steps above report through reviewdog, which comments
+      # without failing, so an error-level rule is advisory. `ks/no-undeclared-custom-property` catches
+      # a `var(--ks-…)` the browser throws away, and EE was carrying two (kestra-io/kestra-ee#10820).
+      - name: Npm - Lint (blocking)
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: npm run test:lint
+
       - name: Run front-end unit tests
         shell: bash
         working-directory: kestra-ee/ui-ee
