@@ -110,7 +110,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('kestra-ee/ui-ee/package-lock.json', 'kestra-ee/e2e/package-lock.json') }}
+          key: playwright-${{ hashFiles('kestra-ee/e2e/package-lock.json') != '' && hashFiles('kestra-ee/e2e/package-lock.json') || hashFiles('kestra-ee/ui-ee/package-lock.json') }}
 
       # Three independent I/O steps run concurrently: two npm installs (separate trees, separate
       # node_modules) and the artifact download (network, no shared state with either). Neither

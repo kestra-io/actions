@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('kestra/ui/package-lock.json', 'kestra/e2e/package-lock.json') }}
+          key: playwright-${{ hashFiles('kestra/e2e/package-lock.json') != '' && hashFiles('kestra/e2e/package-lock.json') || hashFiles('kestra/ui/package-lock.json') }}
 
       # `npm ci` and the artifact download are independent (different paths, no shared state).
       # Playwright install stays out of this block and out of `background:` — it runs `npx
