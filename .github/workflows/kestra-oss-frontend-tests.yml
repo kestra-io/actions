@@ -166,7 +166,6 @@ jobs:
         if: ${{ !cancelled() }}
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
-          secrets: ${{ toJSON(secrets) }}
           github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
           rulesets: p/javascript,p/typescript,p/secrets
           scan-path: ui

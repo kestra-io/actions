@@ -112501,7 +112501,7 @@ async function saveCache(paths, key) {
 
 const SEVERITY_ORDER = { ERROR: 0, WARNING: 1, INFO: 2 };
 function cellText(message, maxLength = 300) {
-  return message.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim().slice(0, maxLength);
+  return message.replace(/\s+/g, " ").trim().slice(0, maxLength).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 }
 function compare(a, b) {
   const bySeverity = (SEVERITY_ORDER[a.extra.severity] ?? 9) - (SEVERITY_ORDER[b.extra.severity] ?? 9);
@@ -112618,17 +112618,23 @@ function resolveMode(mode, eventName) {
   if (mode === "auto") return eventName === "pull_request" ? "diff" : "full";
   return mode;
 }
+function assertNotFlag(value, field) {
+  if (value.startsWith("-")) {
+    throw new Error(`Invalid ${field} '${value}': values starting with '-' would be read as an OpenGrep flag.`);
+  }
+  return value;
+}
 function buildScanArgs(options) {
   const { ruleset, scanPath, severities, jsonOutput, sarifOutput, baseline } = options;
   const args = ["scan"];
-  for (const config of ruleset.configs) args.push("--config", config);
+  for (const config of ruleset.configs) args.push("--config", assertNotFlag(config, "ruleset"));
   args.push(`--json-output=${jsonOutput}`);
   args.push(`--sarif-output=${sarifOutput}`);
   for (const severity of severities) args.push("--severity", severity);
-  for (const rule of options.excludeRules ?? []) args.push("--exclude-rule", rule);
-  for (const pattern of options.excludePaths ?? []) args.push("--exclude", pattern);
+  for (const rule of options.excludeRules ?? []) args.push("--exclude-rule", assertNotFlag(rule, "exclude-rules entry"));
+  for (const pattern of options.excludePaths ?? []) args.push("--exclude", assertNotFlag(pattern, "exclude-paths entry"));
   if (baseline) args.push("--baseline-commit", baseline);
-  args.push("--no-error", "--quiet", scanPath);
+  args.push("--no-error", "--quiet", assertNotFlag(scanPath, "scan-path"));
   return args;
 }
 function parseSeverities(input) {

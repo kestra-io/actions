@@ -25,6 +25,21 @@ export interface ScanArgsOptions {
 }
 
 /**
+ * Values reaching argv come from .opengrep/config.yml, which any repository can edit.
+ *
+ * exec.exec spawns without a shell, so there is no command injection to have here — but a value
+ * beginning with `-` is still read by opengrep as a flag rather than as data, which would let a
+ * config file smuggle in scanner options it was never meant to set. Rejecting the leading dash
+ * closes that without needing to know opengrep's whole flag surface.
+ */
+export function assertNotFlag(value: string, field: string): string {
+  if (value.startsWith('-')) {
+    throw new Error(`Invalid ${field} '${value}': values starting with '-' would be read as an OpenGrep flag.`)
+  }
+  return value
+}
+
+/**
  * Builds the argv for `opengrep scan`.
  *
  * Deliberately `scan` and not `ci`: `ci` derives its baseline from a Semgrep AppSec Platform token
@@ -39,14 +54,14 @@ export function buildScanArgs(options: ScanArgsOptions): string[] {
   const { ruleset, scanPath, severities, jsonOutput, sarifOutput, baseline } = options
 
   const args = ['scan']
-  for (const config of ruleset.configs) args.push('--config', config)
+  for (const config of ruleset.configs) args.push('--config', assertNotFlag(config, 'ruleset'))
   args.push(`--json-output=${jsonOutput}`)
   args.push(`--sarif-output=${sarifOutput}`)
   for (const severity of severities) args.push('--severity', severity)
-  for (const rule of options.excludeRules ?? []) args.push('--exclude-rule', rule)
-  for (const pattern of options.excludePaths ?? []) args.push('--exclude', pattern)
+  for (const rule of options.excludeRules ?? []) args.push('--exclude-rule', assertNotFlag(rule, 'exclude-rules entry'))
+  for (const pattern of options.excludePaths ?? []) args.push('--exclude', assertNotFlag(pattern, 'exclude-paths entry'))
   if (baseline) args.push('--baseline-commit', baseline)
-  args.push('--no-error', '--quiet', scanPath)
+  args.push('--no-error', '--quiet', assertNotFlag(scanPath, 'scan-path'))
 
   return args
 }

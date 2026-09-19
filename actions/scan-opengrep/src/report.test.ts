@@ -23,6 +23,26 @@ test('cellText truncates to the requested length', () => {
   assert.equal(cellText('x'.repeat(50), 10).length, 10)
 })
 
+test('cellText escapes backslashes, so an escaped pipe cannot survive as a real one', () => {
+  // Escaping only the pipe would turn \| into \\| — a literal backslash then an unescaped pipe.
+  assert.equal(cellText('a \\| b'), 'a \\\\\\| b')
+})
+
+test('cellText never leaves an unpaired backslash at the truncation point', () => {
+  // Truncation can end mid-escape; what matters is that any trailing backslashes come in pairs,
+  // so none is left escaping whatever the table puts after the cell.
+  const truncated = cellText('abc\\def', 4)
+  const trailing = (truncated.match(/\\*$/)?.[0] ?? '').length
+  assert.equal(trailing % 2, 0)
+  assert.equal(truncated, 'abc\\\\')
+})
+
+test('a truncated cell cannot swallow the table delimiter that follows it', () => {
+  const row = `| ${cellText('x'.repeat(9) + '\\', 10)} |`
+  assert.equal(row.endsWith(' |'), true)
+  assert.equal(/[^\\]\\\|/.test(row), false)
+})
+
 test('buildCommentModel sorts errors before warnings before info', () => {
   const report: OpengrepReport = {
     results: [result('INFO', 'a', 1), result('ERROR', 'b', 1), result('WARNING', 'c', 1)]

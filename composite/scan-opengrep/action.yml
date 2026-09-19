@@ -6,14 +6,13 @@ description: 'Static analysis with OpenGrep, reported as check annotations, a pu
 # tested. This file exists so the four workflows below do not each repeat the same three steps.
 
 inputs:
-  secrets:
-    description: 'Secrets passed as toJSON'
-    required: true
-
+  # Takes a single token rather than `toJSON(secrets)`. The other composites in this repository
+  # pass the whole secret set because they genuinely need several of them; this one only ever read
+  # GITHUB_TOKEN out of it, and handing a scanner every secret in the repository to use one is the
+  # kind of thing CodeQL's excessive-secrets-exposure rule exists to catch.
   github-token:
-    description: 'Token used to publish annotations and the comment. Defaults to GITHUB_TOKEN out of secrets'
-    required: false
-    default: ""
+    description: 'Token used to publish the check run annotations and the pull request comment'
+    required: true
 
   opengrep-version:
     description: 'OpenGrep release to run. Defaults to latest; pin a version for reproducible scans'
@@ -74,7 +73,7 @@ runs:
       id: scan
       uses: kestra-io/actions/actions/scan-opengrep@main
       with:
-        github-token: ${{ inputs.github-token || fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         opengrep-version: ${{ inputs.opengrep-version }}
         config-dir: ${{ inputs.config-dir }}
         mode: ${{ inputs.mode }}
@@ -90,7 +89,7 @@ runs:
       continue-on-error: true
       uses: kestra-io/actions/actions/comment-update@main
       with:
-        github-token: ${{ inputs.github-token || fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: "🔎 OpenGrep"
         files: |
           ${{ steps.scan.outputs.comment-file }}

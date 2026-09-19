@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildRuleset } from './rules.js'
-import { buildScanArgs, parseMode, parseSeverities, resolveMode } from './scan.js'
+import { assertNotFlag, buildScanArgs, parseMode, parseSeverities, resolveMode } from './scan.js'
 
 const ruleset = buildRuleset(['p/java'], null)
 const base = {
@@ -96,4 +96,29 @@ test('buildScanArgs omits both exclusion flags when there is nothing to exclude'
   const args = buildScanArgs(base)
   assert.equal(args.includes('--exclude-rule'), false)
   assert.equal(args.includes('--exclude'), false)
+})
+
+// exec.exec spawns without a shell, so the risk is not command injection but argument injection: a
+// config-file value starting with '-' would be read by opengrep as a flag instead of as data.
+
+test('assertNotFlag lets ordinary values through', () => {
+  assert.equal(assertNotFlag('p/java', 'ruleset'), 'p/java')
+  assert.equal(assertNotFlag('./rules/x.yaml', 'ruleset'), './rules/x.yaml')
+})
+
+test('assertNotFlag names the offending field so the error is actionable', () => {
+  assert.throws(() => assertNotFlag('--config', 'exclude-paths entry'), /Invalid exclude-paths entry '--config'/)
+})
+
+test('buildScanArgs rejects a ruleset that would be read as a flag', () => {
+  assert.throws(() => buildScanArgs({ ...base, ruleset: buildRuleset(['--dangerous'], null) }), /read as an OpenGrep flag/)
+})
+
+test('buildScanArgs rejects flag-shaped exclude-rules and exclude-paths from a config file', () => {
+  assert.throws(() => buildScanArgs({ ...base, excludeRules: ['--config'] }), /Invalid exclude-rules entry/)
+  assert.throws(() => buildScanArgs({ ...base, excludePaths: ['-x'] }), /Invalid exclude-paths entry/)
+})
+
+test('buildScanArgs rejects a flag-shaped scan path', () => {
+  assert.throws(() => buildScanArgs({ ...base, scanPath: '--version' }), /Invalid scan-path/)
 })

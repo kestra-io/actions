@@ -372,7 +372,7 @@ jobs:
         if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # GitHub Release
       - name: GitHub - Create release

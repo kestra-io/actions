@@ -18,9 +18,20 @@ const SEVERITY_ORDER: Record<string, number> = { ERROR: 0, WARNING: 1, INFO: 2 }
 /**
  * Collapse a finding message to a single table cell. A raw OpenGrep message is multi-line and may
  * contain a pipe, either of which silently breaks the markdown table it lands in.
+ *
+ * Backslashes are escaped before pipes, not after: escaping only the pipe leaves `\|` in a message
+ * turning into `\\|`, which markdown reads as a literal backslash followed by an unescaped pipe —
+ * a new column. Truncation happens before escaping for the same reason, so a cut can never land
+ * between a backslash and the character it escapes and leave the trailing `\` eating the table's
+ * own closing pipe.
  */
 export function cellText(message: string, maxLength = 300): string {
-  return message.replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim().slice(0, maxLength)
+  return message
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
 }
 
 function compare(a: OpengrepResult, b: OpengrepResult): number {
