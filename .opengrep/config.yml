@@ -1,0 +1,40 @@
+# OpenGrep configuration for this repository.
+#
+# Read by actions/scan-opengrep at scan time. Every key here overrides the corresponding action
+# input, so the scan is configured by the repository it runs against rather than by arguments
+# threaded through a workflow shared with 239 others. Copy this file into any repository that
+# needs to differ from the defaults.
+
+# Rulesets are fetched from the Semgrep registry when the scan runs, so they are always current.
+# A bare word is shorthand for a pack: `java` means `p/java`.
+rulesets:
+  - p/default
+
+# Suppress individual findings, matching a substring of the rule id against a regular expression
+# tested on the offending source line. Prefer this over exclude-rules: it silences the case that is
+# wrong for us without losing the cases the rule gets right.
+#
+# These are applied to every repository from DEFAULT_IGNORED_FINDINGS in
+# actions/scan-opengrep/src/version.ts; repeating one here is harmless and additive.
+ignore-findings:
+  # `kestra-io/actions/...@main` is deliberate — this repository publishes those actions and
+  # consumers are meant to track main, exactly as .pinact.yaml already allows for the pinning check.
+  # Scoped to that prefix on purpose: excluding the whole rule would also have hidden the 7
+  # third-party mutable tags it correctly caught on plugin-jdbc (dorny/paths-filter@v4,
+  # docker/login-action@v4 and friends), which are worth fixing.
+  - rule: github-actions-mutable-action-tag
+    match: 'kestra-io/actions/'
+    reason: this repository publishes those actions; consumers track @main by design
+
+# Rule ids to drop entirely. Reach for ignore-findings first.
+exclude-rules: []
+
+# Advisory while the fleet baseline is measured. Set to ERROR to start blocking.
+fail-on-severity: none
+
+# Bundled action output is vendored, not ours to fix.
+exclude-paths:
+  - 'actions/*/dist/**'
+
+# Repository-specific rules can go in .opengrep/rules/*.yml. They are loaded in addition to the
+# registry packs above, not instead of them.
