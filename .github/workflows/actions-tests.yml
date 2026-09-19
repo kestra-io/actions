@@ -1,0 +1,63 @@
+name: TypeScript Actions - Tests
+
+# The TypeScript actions ship a committed dist/index.js bundle, and until now nothing verified it
+# on a human pull request: dependabot-rebuild-actions.yml is gated on github.actor == 'dependabot[bot]'.
+# This runs the unit tests and checks the committed bundle matches the source it was built from.
+
+on:
+  pull_request:
+    paths:
+      - 'actions/**'
+      - 'shared/**'
+      - '.github/workflows/actions-tests.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Node - Setup
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      # The otel actions import shared/otel-core by relative path, so its bare imports resolve
+      # from shared/otel-core/node_modules. Without this install neither tsc nor the bundler can
+      # resolve them. Mirrors dependabot-rebuild-actions.yml.
+      - name: Node - Install shared library
+        working-directory: shared/otel-core
+        run: npm ci
+
+      - name: Node - Build and test every action
+        run: |
+          set -euo pipefail
+          for dir in actions/*/; do
+            [ -f "${dir}package.json" ] || continue
+            echo "::group::${dir}"
+            (cd "$dir" && npm ci && npm run build && npm test --if-present)
+            echo "::endgroup::"
+          done
+
+      # A stale bundle is the failure mode this whole layout invites: the tests pass against src
+      # while the dist/ the runner actually executes is from an older commit.
+      - name: Node - Check the committed bundles are up to date
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- 'actions/*/dist/*'; then
+            echo "::error::A committed dist/ bundle does not match its source. Run 'npm run build' in the action below and commit the result."
+            git diff --stat -- 'actions/*/dist/*'
+            exit 1
+          fi
+          echo "All committed bundles match their source."
