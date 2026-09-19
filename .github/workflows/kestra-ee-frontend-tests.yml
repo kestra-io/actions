@@ -192,6 +192,21 @@ jobs:
               reporter: github-pr-review
               workdir: "kestra-ee/ui-ee"
 
+      # OpenGrep static analysis. Sequential rather than inside the parallel block above: that
+      # block's support for `uses:` steps is still flagged as unverified there, and this is not
+      # on the critical path. node_modules is skipped via the ruleset's default gitignore handling.
+      # No permissions block exists on this workflow, so it posts with the same token the eslint
+      # step above uses rather than relying on an inherited one.
+      - name: OpenGrep - Static analysis
+        id: opengrep
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          rulesets: p/javascript,p/typescript,p/secrets
+          scan-path: kestra-ee/ui-ee
+
       - name: Storybook - Wait for Playwright install
         wait: [playwright-install]
 

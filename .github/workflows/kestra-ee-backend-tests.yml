@@ -159,6 +159,16 @@ jobs:
           fi
           ./gradlew check --parallel $MAX_WORKERS_FLAG --console=plain
 
+      # OpenGrep static analysis: pull requests scan only what the branch introduced, every other
+      # event scans the whole tree. Advisory by default, see composite/scan-opengrep.
+      - name: OpenGrep - Static analysis
+        id: opengrep
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          secrets: ${{ toJSON(secrets) }}
+          rulesets: p/java,p/secrets,p/github-actions,p/dockerfile
+
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
