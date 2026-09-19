@@ -335,7 +335,7 @@ jobs:
 
           echo "🗑️ Deleting large pre-installed tools (Dotnet, Android, Haskell)"
           sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android 
+          sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
 
           echo "⚠️ Deleting tmp folders"
@@ -358,21 +358,13 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # OpenGrep static analysis. Unlike Trivy this is not pull-request-only: on a pull request it
-      # scans only what the branch introduced, everywhere else it scans the whole tree, which is
-      # where pre-existing findings are actually visible.
-      #
-      # Deliberately takes no configuration. Rulesets, excluded rules and the severity gate are
-      # read from .opengrep/config.yml in the repository being scanned, so a plugin that needs to
-      # differ edits a file it owns instead of this workflow adding an input for all 239 callers.
-      #
-      # !cancelled() so the scan still reports when "Test - Gradle Check" failed, for the same
-      # reason documented on "Cleanup - Unit test" above.
+      # OpenGrep static analysis
       - name: OpenGrep - Static analysis
         if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: full
 
       # GitHub Release
       - name: GitHub - Create release
@@ -414,12 +406,12 @@ jobs:
         shell: bash
         run: |
           REPORT_DIR="build/reports/allure"
-          
+
           # Check if the Allure report directory actually exists before attempting chown.
           # This prevents the "No such file or directory" error (EACCES context).
           if [ -d "$REPORT_DIR" ]; then
             echo "🔧 Fixing permissions for Allure report directory: $REPORT_DIR"
-            # Use chown to transfer ownership from 'root' (often the case after Docker build) 
+            # Use chown to transfer ownership from 'root' (often the case after Docker build)
             # to the GitHub Actions runner user, solving the EACCES error during 'unlink'.
             sudo chown -R $(whoami) "$REPORT_DIR"
           else
