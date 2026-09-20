@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { parseConfig, resolveSettings, type Inputs } from './config.js'
-import { DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
+import { DEFAULT_EXCLUDED_PATHS, DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
 
 const MUTABLE_TAG =
   'yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag'
@@ -46,6 +46,22 @@ test('resolveSettings joins a ruleset list into the comma form the resolver expe
 
 test('resolveSettings always applies the org-wide suppressions', () => {
   assert.deepEqual(resolveSettings({}, inputs).ignoreFindings, [...DEFAULT_IGNORED_FINDINGS])
+})
+
+test('the secrets-inherit default is anchored to the uses: line above it', () => {
+  const ignore = resolveSettings({}, inputs).ignoreFindings.find(e => e.rule === 'secrets-inherit')
+  assert.equal(ignore?.match, 'kestra-io/actions/')
+  assert.match(ignore?.matchNearest ?? '', /uses:/)
+})
+
+test('the hyphenated match-nearest key from YAML reaches the resolved rule', () => {
+  const settings = resolveSettings(
+    parseConfig('ignore-findings:\n  - rule: r\n    match: m\n    match-nearest: \'^\\s*uses:\'\n    within: 5\n'),
+    inputs
+  )
+  const rule = settings.ignoreFindings.find(e => e.rule === 'r')
+  assert.equal(rule?.matchNearest, '^\\s*uses:')
+  assert.equal(rule?.within, 5)
 })
 
 test('the mutable-tag rule is suppressed by context, never excluded wholesale', () => {
@@ -114,9 +130,24 @@ test('scan-path is not settable from the config file, since it differs between j
   assert.equal('scanPath' in settings, false)
 })
 
-test('resolveSettings reads exclude-paths, defaulting to none', () => {
-  assert.deepEqual(resolveSettings({ 'exclude-paths': ['**/build/**'] }, inputs).excludePaths, ['**/build/**'])
-  assert.deepEqual(resolveSettings({}, inputs).excludePaths, [])
+test('exclude-paths defaults to the org-wide test-source excludes', () => {
+  assert.deepEqual(resolveSettings({}, inputs).excludePaths, [...DEFAULT_EXCLUDED_PATHS])
+})
+
+test('a repository exclude-path is added to the defaults, never replacing them', () => {
+  const paths = resolveSettings({ 'exclude-paths': ['**/build/**'] }, inputs).excludePaths
+  assert.equal(paths.includes('**/build/**'), true)
+  assert.equal(paths.includes('**/src/test/**'), true)
+})
+
+test('the test excludes cover the multi-module layout, not just src/test at the root', () => {
+  // plugin-jdbc-mysql/src/test/... needs the ** prefix to match.
+  assert.equal(DEFAULT_EXCLUDED_PATHS.every(p => p.startsWith('**/')), true)
+})
+
+test('repeating a default exclude-path does not duplicate the flag', () => {
+  const paths = resolveSettings({ 'exclude-paths': ['**/src/test/**'] }, inputs).excludePaths
+  assert.equal(paths.filter(p => p === '**/src/test/**').length, 1)
 })
 
 test('resolveSettings ignores blank and whitespace-only list entries', () => {

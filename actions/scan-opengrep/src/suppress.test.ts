@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { OpengrepReport, OpengrepResult, Severity } from './findings.js'
-import { applySuppressions, describeSuppression, isSuppressed, type IgnoreRule } from './suppress.js'
+import { applySuppressions, describeSuppression, isSuppressed, subjectFor, type IgnoreRule, type LineReader } from './suppress.js'
 
 const MUTABLE_TAG = 'yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag'
 
@@ -123,4 +123,97 @@ test('describeSuppression reports the count, the pattern and the reason', () => 
 test('describeSuppression omits the dash when no reason was given', () => {
   const text = describeSuppression({ rule: { rule: 'r', match: 'm' }, count: 0 })
   assert.equal(text.includes('—'), false)
+})
+
+// --- context-anchored suppression ---------------------------------------------------------------
+// secrets-inherit flags the `secrets: inherit` line, but what makes it acceptable is the `uses:`
+// above it. These cover matching against that anchor instead of the finding's own line.
+
+const WORKFLOW = [
+  'jobs:',
+  '  check:',
+  '    uses: kestra-io/actions/.github/workflows/plugins.yml@main',
+  '    with:',
+  '      skip-test: false',
+  '    secrets: inherit',
+  '  third-party:',
+  '    uses: evil-org/workflows/build.yml@main',
+  '    secrets: inherit'
+].join('\n')
+
+const readWorkflow: LineReader = () => WORKFLOW.split('\n')
+
+const inheritAt = (line: number): OpengrepResult => ({
+  check_id: 'yaml.github-actions.security.secrets-inherit.secrets-inherit',
+  path: '.github/workflows/main.yml',
+  start: { line },
+  extra: { severity: 'ERROR', message: 'secrets: inherit', lines: '    secrets: inherit' }
+})
+
+const SECRETS_RULE: IgnoreRule = {
+  rule: 'secrets-inherit',
+  match: 'kestra-io/actions/',
+  matchNearest: '^\\s*uses:'
+}
+
+test('subjectFor returns the finding line when no anchor is configured', () => {
+  const result = inheritAt(6)
+  assert.equal(subjectFor(result, { rule: 'x', match: 'y' }), '    secrets: inherit')
+})
+
+test('subjectFor walks back to the nearest preceding uses:', () => {
+  assert.match(subjectFor(inheritAt(6), SECRETS_RULE, readWorkflow) ?? '', /kestra-io\/actions\//)
+})
+
+test('subjectFor picks the nearest anchor, not the first in the file', () => {
+  // Line 9 belongs to the third-party job; its nearest uses: is line 8, not line 3.
+  assert.match(subjectFor(inheritAt(9), SECRETS_RULE, readWorkflow) ?? '', /evil-org/)
+})
+
+test('secrets: inherit into our own workflow is suppressed', () => {
+  const { report, total } = applySuppressions({ results: [inheritAt(6)] }, [SECRETS_RULE], readWorkflow)
+  assert.equal(total, 1)
+  assert.equal(report.results?.length, 0)
+})
+
+test('secrets: inherit into a third-party workflow is kept, which is the whole point', () => {
+  const { report, total } = applySuppressions({ results: [inheritAt(9)] }, [SECRETS_RULE], readWorkflow)
+  assert.equal(total, 0)
+  assert.equal(report.results?.length, 1)
+})
+
+test('both jobs together: ours is dropped, theirs survives', () => {
+  const { report } = applySuppressions({ results: [inheritAt(6), inheritAt(9)] }, [SECRETS_RULE], readWorkflow)
+  assert.equal(report.results?.length, 1)
+  assert.equal(report.results?.[0]?.start.line, 9)
+})
+
+test('an anchor beyond the within window does not suppress', () => {
+  const narrow: IgnoreRule = { ...SECRETS_RULE, within: 2 }
+  assert.equal(subjectFor(inheritAt(6), narrow, readWorkflow), null)
+  assert.equal(applySuppressions({ results: [inheritAt(6)] }, [narrow], readWorkflow).total, 0)
+})
+
+test('a missing anchor means no suppression, rather than falling back to the finding line', () => {
+  const noAnchor: LineReader = () => ['    secrets: inherit']
+  assert.equal(subjectFor(inheritAt(1), SECRETS_RULE, noAnchor), null)
+})
+
+test('an unreadable file is treated as no anchor, not as a match', () => {
+  assert.equal(applySuppressions({ results: [inheritAt(6)] }, [SECRETS_RULE], () => []).total, 0)
+})
+
+test('a context rule without a line reader never suppresses', () => {
+  assert.equal(applySuppressions({ results: [inheritAt(6)] }, [SECRETS_RULE]).total, 0)
+})
+
+test('an invalid match-nearest pattern is reported against its rule', () => {
+  assert.throws(
+    () => applySuppressions({ results: [inheritAt(6)] }, [{ rule: 'r', match: 'x', matchNearest: '([' }], readWorkflow),
+    /Invalid 'match-nearest' regular expression for rule 'r'/
+  )
+})
+
+test('describeSuppression mentions the anchor when one is used', () => {
+  assert.match(describeSuppression({ rule: SECRETS_RULE, count: 3 }), /near \/\^\\s\*uses:\//)
 })

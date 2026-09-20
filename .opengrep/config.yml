@@ -26,14 +26,27 @@ ignore-findings:
     match: 'kestra-io/actions/'
     reason: this repository publishes those actions; consumers track @main by design
 
+  # secrets-inherit flags the `secrets: inherit` line, but what makes it acceptable is the `uses:`
+  # above it naming who receives the secrets. match-nearest walks back to that line, so inheriting
+  # into our own reusable workflows is quiet while inheriting into a third party still reports.
+  - rule: secrets-inherit
+    match: 'kestra-io/actions/'
+    match-nearest: '^\s*uses:'
+    within: 20
+    reason: secrets are inherited into our own reusable workflows, not a third party
+
 # Rule ids to drop entirely. Reach for ignore-findings first.
 exclude-rules: []
 
 # Advisory while the fleet baseline is measured. Set to ERROR to start blocking.
 fail-on-severity: none
 
-# Bundled action output is vendored, not ours to fix.
+# Added to the org-wide defaults, which already drop **/src/test/** and **/src/testFixtures/**.
+# Those are passed as --exclude rather than left to OpenGrep's built-in .semgrepignore, because a
+# repository adding its own .semgrepignore replaces those built-in defaults instead of extending
+# them.
 exclude-paths:
+  # Bundled action output is vendored, not ours to fix.
   - 'actions/*/dist/**'
 
 # Repository-specific rules can go in .opengrep/rules/*.yml. They are loaded in addition to the

@@ -1,6 +1,6 @@
 import { parse as parseYaml } from 'yaml'
 import type { IgnoreRule } from './suppress.js'
-import { DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
+import { DEFAULT_EXCLUDED_PATHS, DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
 
 /**
  * The shape of `.opengrep/config.yml` in the repository being scanned.
@@ -12,7 +12,7 @@ import { DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
 export interface OpengrepConfig {
   rulesets?: string[]
   'exclude-rules'?: string[]
-  'ignore-findings'?: IgnoreRule[]
+  'ignore-findings'?: (IgnoreRule & { 'match-nearest'?: string })[]
   'exclude-paths'?: string[]
   mode?: string
   severity?: string[]
@@ -71,7 +71,15 @@ function normaliseIgnoreRules(value: IgnoreRule[] | undefined): IgnoreRule[] {
     if (!entry?.rule || !entry?.match) {
       throw new Error(`ignore-findings[${index}] needs both a 'rule' and a 'match'.`)
     }
-    return { rule: String(entry.rule), match: String(entry.match), reason: entry.reason }
+    const raw = entry as IgnoreRule & { 'match-nearest'?: string }
+    const matchNearest = raw.matchNearest ?? raw['match-nearest']
+    return {
+      rule: String(entry.rule),
+      match: String(entry.match),
+      ...(matchNearest ? { matchNearest: String(matchNearest) } : {}),
+      ...(entry.within != null ? { within: Number(entry.within) } : {}),
+      reason: entry.reason
+    }
   })
 }
 
@@ -95,7 +103,7 @@ export function resolveSettings(config: OpengrepConfig, inputs: Inputs): Setting
     rulesets: rulesets.length > 0 ? rulesets.join(',') : inputs.rulesets || DEFAULT_RULESETS,
     excludeRules: [...new Set(asList(config['exclude-rules']))],
     ignoreFindings: dedupeIgnoreRules([...DEFAULT_IGNORED_FINDINGS, ...normaliseIgnoreRules(config['ignore-findings'])]),
-    excludePaths: asList(config['exclude-paths']),
+    excludePaths: [...new Set([...DEFAULT_EXCLUDED_PATHS, ...asList(config['exclude-paths'])])],
     mode: config.mode ?? inputs.mode,
     severity: severity.length > 0 ? severity.join(',') : inputs.severity,
     failOnSeverity: config['fail-on-severity'] ?? inputs.failOnSeverity

@@ -32,7 +32,30 @@ export const DEFAULT_IGNORED_FINDINGS = [
     rule: 'github-actions-mutable-action-tag',
     match: 'kestra-io/actions/',
     reason: 'this repository publishes those actions; consumers track @main by design (see .pinact.yaml)'
+  },
+  {
+    // secrets-inherit flags the `secrets: inherit` line, but whether that is acceptable depends on
+    // the `uses:` above it naming who receives them — so the match is anchored there. Scoped to our
+    // own reusable workflows: `secrets: inherit` into a third-party workflow is exactly the finding
+    // this rule should keep making.
+    rule: 'secrets-inherit',
+    match: 'kestra-io/actions/',
+    matchNearest: '^\\s*uses:',
+    reason: 'secrets are inherited into our own reusable workflows, not a third party'
   }
+] as const
+
+/**
+ * Paths excluded everywhere.
+ *
+ * OpenGrep's built-in .semgrepignore already skips test sources, so this is belt and braces — but
+ * the built-in defaults are *replaced*, not merged, the moment a repository adds a .semgrepignore
+ * of its own. Passing these as --exclude keeps them holding regardless. The `**` prefix covers the
+ * multi-module layout (plugin-jdbc-mysql/src/test/...) as well as a single-module one.
+ */
+export const DEFAULT_EXCLUDED_PATHS = [
+  '**/src/test/**',
+  '**/src/testFixtures/**'
 ] as const
 
 /**

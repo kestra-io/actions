@@ -40,6 +40,7 @@ import require$$0$c from 'string_decoder';
 import * as require$$2 from 'child_process';
 import require$$2__default from 'child_process';
 import require$$6$1, { setTimeout as setTimeout$1 } from 'timers';
+import require$$0$g, { readFileSync as readFileSync$1 } from 'node:fs';
 import * as fs$1 from 'node:fs/promises';
 import * as path$1 from 'node:path';
 import * as require$$0$4 from 'stream';
@@ -52,7 +53,6 @@ import require$$1$8 from 'node:https';
 import require$$0$d from 'tty';
 import require$$0$f, { createHash } from 'node:crypto';
 import require$$2$3 from 'buffer';
-import require$$0$g from 'node:fs';
 
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -42042,7 +42042,21 @@ const DEFAULT_IGNORED_FINDINGS = [
     rule: "github-actions-mutable-action-tag",
     match: "kestra-io/actions/",
     reason: "this repository publishes those actions; consumers track @main by design (see .pinact.yaml)"
+  },
+  {
+    // secrets-inherit flags the `secrets: inherit` line, but whether that is acceptable depends on
+    // the `uses:` above it naming who receives them — so the match is anchored there. Scoped to our
+    // own reusable workflows: `secrets: inherit` into a third-party workflow is exactly the finding
+    // this rule should keep making.
+    rule: "secrets-inherit",
+    match: "kestra-io/actions/",
+    matchNearest: "^\\s*uses:",
+    reason: "secrets are inherited into our own reusable workflows, not a third party"
   }
+];
+const DEFAULT_EXCLUDED_PATHS = [
+  "**/src/test/**",
+  "**/src/testFixtures/**"
 ];
 const KNOWN_PACKS = [
   "p/default",
@@ -42139,7 +42153,15 @@ function normaliseIgnoreRules(value) {
     if (!entry?.rule || !entry?.match) {
       throw new Error(`ignore-findings[${index}] needs both a 'rule' and a 'match'.`);
     }
-    return { rule: String(entry.rule), match: String(entry.match), reason: entry.reason };
+    const raw = entry;
+    const matchNearest = raw.matchNearest ?? raw["match-nearest"];
+    return {
+      rule: String(entry.rule),
+      match: String(entry.match),
+      ...matchNearest ? { matchNearest: String(matchNearest) } : {},
+      ...entry.within != null ? { within: Number(entry.within) } : {},
+      reason: entry.reason
+    };
   });
 }
 function resolveSettings(config, inputs) {
@@ -42149,7 +42171,7 @@ function resolveSettings(config, inputs) {
     rulesets: rulesets.length > 0 ? rulesets.join(",") : inputs.rulesets || DEFAULT_RULESETS,
     excludeRules: [...new Set(asList(config["exclude-rules"]))],
     ignoreFindings: dedupeIgnoreRules([...DEFAULT_IGNORED_FINDINGS, ...normaliseIgnoreRules(config["ignore-findings"])]),
-    excludePaths: asList(config["exclude-paths"]),
+    excludePaths: [.../* @__PURE__ */ new Set([...DEFAULT_EXCLUDED_PATHS, ...asList(config["exclude-paths"])])],
     mode: config.mode ?? inputs.mode,
     severity: severity.length > 0 ? severity.join(",") : inputs.severity,
     failOnSeverity: config["fail-on-severity"] ?? inputs.failOnSeverity
@@ -112577,6 +112599,7 @@ function buildRuleset(rulesets, localRulesDir) {
   return { configs, root: localRulesDir ? path$1.resolve(localRulesDir) : "", source };
 }
 
+const DEFAULT_WITHIN = 20;
 function matcher(rule) {
   try {
     return new RegExp(rule.match);
@@ -112584,16 +112607,37 @@ function matcher(rule) {
     throw new Error(`Invalid 'match' regular expression in ignore-findings for rule '${rule.rule}': ${error.message}`);
   }
 }
-function isSuppressed(result, rule, pattern) {
-  if (!result.check_id?.includes(rule.rule)) return false;
-  return pattern.test(result.extra?.lines ?? "");
+function subjectFor(result, rule, readLines) {
+  if (!rule.matchNearest) {
+    return result.extra?.lines ?? "";
+  }
+  if (!readLines) return null;
+  let anchor;
+  try {
+    anchor = new RegExp(rule.matchNearest);
+  } catch (error) {
+    throw new Error(`Invalid 'match-nearest' regular expression for rule '${rule.rule}': ${error.message}`);
+  }
+  const lines = readLines(result.path);
+  const within = rule.within ?? DEFAULT_WITHIN;
+  const from = result.start.line - 2;
+  for (let i = from; i >= 0 && i > from - within; i--) {
+    const line = lines[i];
+    if (line != null && anchor.test(line)) return line;
+  }
+  return null;
 }
-function applySuppressions(report, rules) {
+function isSuppressed(result, rule, pattern, readLines) {
+  if (!result.check_id?.includes(rule.rule)) return false;
+  const subject = subjectFor(result, rule, readLines);
+  return subject != null && pattern.test(subject);
+}
+function applySuppressions(report, rules, readLines) {
   if (rules.length === 0) return { report, suppressions: [], total: 0 };
   const patterns = rules.map((rule) => ({ rule, pattern: matcher(rule) }));
   const counts = new Map(rules.map((rule) => [rule, 0]));
   const kept = (report.results ?? []).filter((result) => {
-    const hit = patterns.find(({ rule, pattern }) => isSuppressed(result, rule, pattern));
+    const hit = patterns.find(({ rule, pattern }) => isSuppressed(result, rule, pattern, readLines));
     if (!hit) return true;
     counts.set(hit.rule, (counts.get(hit.rule) ?? 0) + 1);
     return false;
@@ -112607,7 +112651,8 @@ function applySuppressions(report, rules) {
 }
 function describeSuppression({ rule, count }) {
   const reason = rule.reason ? ` \u2014 ${rule.reason}` : "";
-  return `${count} finding(s) matching /${rule.match}/ in ${rule.rule}${reason}`;
+  const where = rule.matchNearest ? ` near /${rule.matchNearest}/` : "";
+  return `${count} finding(s) matching /${rule.match}/${where} in ${rule.rule}${reason}`;
 }
 
 function parseMode(value) {
@@ -112735,7 +112780,20 @@ async function run() {
     return;
   }
   const scanned = normaliseReport(await readJson(jsonOutput), ruleset.root);
-  const { report, suppressions, total: suppressed } = applySuppressions(scanned, settings.ignoreFindings);
+  const lineCache = /* @__PURE__ */ new Map();
+  const readLines = (file) => {
+    let lines = lineCache.get(file);
+    if (!lines) {
+      try {
+        lines = readFileSync$1(file, "utf8").split("\n");
+      } catch {
+        lines = [];
+      }
+      lineCache.set(file, lines);
+    }
+    return lines;
+  };
+  const { report, suppressions, total: suppressed } = applySuppressions(scanned, settings.ignoreFindings, readLines);
   for (const suppression of suppressions) {
     info(`Suppressed ${describeSuppression(suppression)}`);
   }

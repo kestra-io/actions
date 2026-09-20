@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import * as exec from '@actions/exec'
 import * as github from '@actions/github'
+import { readFileSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { toAnnotations } from './annotations.js'
@@ -138,7 +139,23 @@ async function run(): Promise<void> {
   // Suppression runs after normalisation, so ignore rules match the clean ids a human would write,
   // and before everything downstream, so a suppressed finding reaches neither the gate, the
   // annotations, nor the comment.
-  const { report, suppressions, total: suppressed } = applySuppressions(scanned, settings.ignoreFindings)
+  // Some suppressions need the lines around a finding, not just the finding. Memoised because a
+  // file typically carries several findings and each would otherwise re-read it.
+  const lineCache = new Map<string, string[]>()
+  const readLines = (file: string): string[] => {
+    let lines = lineCache.get(file)
+    if (!lines) {
+      try {
+        lines = readFileSync(file, 'utf8').split('\n')
+      } catch {
+        lines = []
+      }
+      lineCache.set(file, lines)
+    }
+    return lines
+  }
+
+  const { report, suppressions, total: suppressed } = applySuppressions(scanned, settings.ignoreFindings, readLines)
   for (const suppression of suppressions) {
     // Logged even at zero: a suppression that quietly stops matching, because the rule id moved
     // upstream or the pattern no longer fits, should be visible rather than discovered later.
