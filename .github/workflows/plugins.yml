@@ -358,10 +358,12 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # OpenGrep static analysis
+      # OpenGrep static analysis. 
       - name: OpenGrep - Static analysis
         if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-opengrep@main
+        # TESTING: pinned to plan-opengrep-code-scanning so a plugin repository can exercise this
+        # before the branch lands. Revert to @main before merge.
+        uses: kestra-io/actions/composite/scan-opengrep@plan-opengrep-code-scanning
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: full

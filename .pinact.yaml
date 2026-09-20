@@ -5,6 +5,9 @@ ignore_actions:
   # First-party, consumed from main on purpose.
   - name: kestra-io/actions/.*
     ref: main
+  # TESTING: scan-opengrep is pinned to its branch until it lands on main. Revert before merge.
+  - name: kestra-io/actions/.*
+    ref: plan-opengrep-code-scanning
   # Only tagged v0.1.0 (January 2026), far behind the main this repo tracks.
   - name: regclient/actions/.*
     ref: main
