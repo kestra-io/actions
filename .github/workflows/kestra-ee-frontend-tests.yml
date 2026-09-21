@@ -19,7 +19,7 @@ env:
 jobs:
   check:
     name: Check
-    runs-on: kestra-private-4cpu-4gb
+    runs-on: kestra-private-4cpu-8gb
     timeout-minutes: 60
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.
@@ -97,7 +97,21 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: npx playwright install --with-deps
 
+      # Hoisted out of `precheck:types`, which is where it used to run: the unit tests import
+      # @kestra-io/kestra-sdk through its dist, so both steps below need it built beforehand.
+      - name: Npm - Bundle the SDK
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: node ../../kestra/ui/scripts/ensure-sdk.mjs && node scripts/ensure-sdk.mjs
+
+      # The unit tests share this group with the type check so the two longest steps overlap.
+      # Nothing in the group writes what another step reads now that the SDK is built above.
       - parallel:
+          - name: Run front-end unit tests
+            shell: bash
+            working-directory: kestra-ee/ui-ee
+            run: npm run test:unit
+
           - name: Npm - Check types
             shell: bash
             working-directory: kestra-ee/ui-ee
@@ -127,11 +141,6 @@ jobs:
               github_token: ${{ secrets.GITHUB_TOKEN }}
               reporter: github-pr-review
               workdir: "kestra-ee/ui-ee"
-
-      - name: Run front-end unit tests
-        shell: bash
-        working-directory: kestra-ee/ui-ee
-        run: npm run test:unit
 
       - name: Storybook - Wait for Playwright install
         wait: [playwright-install]
