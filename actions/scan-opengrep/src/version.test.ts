@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import * as versionModule from './version.js'
 import {
   assetNameFor,
-  DEFAULT_IGNORED_FINDINGS,
   DEFAULT_RULESETS,
   KNOWN_PACKS,
   REGISTRY_HOST,
@@ -68,9 +68,6 @@ test('the registry host is recorded, since a scan depends on reaching it', () =>
   assert.equal(REGISTRY_HOST, 'semgrep.dev')
 })
 
-test('the mutable-action-tag default is scoped to kestra-io/actions, not the whole rule', () => {
-  const ignore = DEFAULT_IGNORED_FINDINGS.find(entry => entry.rule === 'github-actions-mutable-action-tag')
-  assert.ok(ignore, 'expected a default suppression for the mutable action tag rule')
-  assert.equal(ignore.match, 'kestra-io/actions/')
-  assert.ok(ignore.reason)
+test('the action ships no built-in suppressions; they come from .opengrep/config.yml', () => {
+  assert.equal('DEFAULT_IGNORED_FINDINGS' in versionModule, false)
 })

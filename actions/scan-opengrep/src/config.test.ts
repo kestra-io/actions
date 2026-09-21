@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { parseConfig, resolveSettings, type Inputs } from './config.js'
-import { DEFAULT_EXCLUDED_PATHS, DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
+import { DEFAULT_EXCLUDED_PATHS, DEFAULT_RULESETS } from './version.js'
 
 const MUTABLE_TAG =
   'yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag'
@@ -44,14 +44,13 @@ test('resolveSettings joins a ruleset list into the comma form the resolver expe
   assert.equal(resolveSettings({ rulesets: ['p/java', 'p/secrets'] }, inputs).rulesets, 'p/java,p/secrets')
 })
 
-test('resolveSettings always applies the org-wide suppressions', () => {
-  assert.deepEqual(resolveSettings({}, inputs).ignoreFindings, [...DEFAULT_IGNORED_FINDINGS])
+test('a repository with no ignore-findings suppresses nothing', () => {
+  assert.deepEqual(resolveSettings({}, inputs).ignoreFindings, [])
 })
 
-test('the secrets-inherit default is anchored to the uses: line above it', () => {
-  const ignore = resolveSettings({}, inputs).ignoreFindings.find(e => e.rule === 'secrets-inherit')
-  assert.equal(ignore?.match, 'kestra-io/actions/')
-  assert.match(ignore?.matchNearest ?? '', /uses:/)
+test('suppressions come only from the config file, never from a built-in list', () => {
+  const settings = resolveSettings({ 'ignore-findings': [{ rule: 'only-mine', match: 'x' }] }, inputs)
+  assert.deepEqual(settings.ignoreFindings.map(e => e.rule), ['only-mine'])
 })
 
 test('the hyphenated match-nearest key from YAML reaches the resolved rule', () => {
@@ -64,37 +63,42 @@ test('the hyphenated match-nearest key from YAML reaches the resolved rule', () 
   assert.equal(rule?.within, 5)
 })
 
-test('the mutable-tag rule is suppressed by context, never excluded wholesale', () => {
-  const settings = resolveSettings({}, inputs)
+test('the shipped config suppresses the mutable-tag rule by context, not wholesale', () => {
+  const settings = resolveSettings(
+    { 'ignore-findings': [{ rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' }] },
+    inputs
+  )
   assert.deepEqual(settings.excludeRules, [])
   const ignore = settings.ignoreFindings.find(entry => MUTABLE_TAG.includes(entry.rule))
   assert.equal(ignore?.match, 'kestra-io/actions/')
 })
 
-test('a repository suppression is added to the org-wide ones, never replacing them', () => {
+test('every suppression a repository declares is kept, in order', () => {
   const settings = resolveSettings(
-    { 'ignore-findings': [{ rule: 'my.rule', match: 'vendor/' }] },
+    { 'ignore-findings': [{ rule: 'a', match: 'x' }, { rule: 'b', match: 'y' }] },
     inputs
   )
-  assert.equal(settings.ignoreFindings.length, DEFAULT_IGNORED_FINDINGS.length + 1)
-  assert.equal(settings.ignoreFindings.some(entry => entry.rule === 'my.rule'), true)
+  assert.deepEqual(settings.ignoreFindings.map(e => e.rule), ['a', 'b'])
 })
 
-test('repeating an org-wide suppression does not log it twice with a misleading zero', () => {
+test('the same suppression listed twice is collapsed, not logged twice with a misleading zero', () => {
   const settings = resolveSettings(
-    { 'ignore-findings': [{ rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' }] },
+    {
+      'ignore-findings': [
+        { rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' },
+        { rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' }
+      ]
+    },
     inputs
   )
-  const matching = settings.ignoreFindings.filter(
-    entry => entry.rule === 'github-actions-mutable-action-tag' && entry.match === 'kestra-io/actions/'
-  )
-  assert.equal(matching.length, 1)
+  assert.equal(settings.ignoreFindings.length, 1)
 })
 
 test('two suppressions for the same rule with different patterns are both kept', () => {
   const settings = resolveSettings(
     {
       'ignore-findings': [
+        { rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' },
         { rule: 'github-actions-mutable-action-tag', match: 'regclient/actions/' }
       ]
     },

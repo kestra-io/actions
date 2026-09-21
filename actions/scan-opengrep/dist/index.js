@@ -42037,23 +42037,6 @@ function parse(src, reviver, options) {
 
 const REGISTRY_HOST = "semgrep.dev";
 const DEFAULT_RULESETS = "p/default";
-const DEFAULT_IGNORED_FINDINGS = [
-  {
-    rule: "github-actions-mutable-action-tag",
-    match: "kestra-io/actions/",
-    reason: "this repository publishes those actions; consumers track @main by design (see .pinact.yaml)"
-  },
-  {
-    // secrets-inherit flags the `secrets: inherit` line, but whether that is acceptable depends on
-    // the `uses:` above it naming who receives them — so the match is anchored there. Scoped to our
-    // own reusable workflows: `secrets: inherit` into a third-party workflow is exactly the finding
-    // this rule should keep making.
-    rule: "secrets-inherit",
-    match: "kestra-io/actions/",
-    matchNearest: "^\\s*uses:",
-    reason: "secrets are inherited into our own reusable workflows, not a third party"
-  }
-];
 const DEFAULT_EXCLUDED_PATHS = [
   "**/src/test/**",
   "**/src/testFixtures/**"
@@ -42170,7 +42153,7 @@ function resolveSettings(config, inputs) {
   return {
     rulesets: rulesets.length > 0 ? rulesets.join(",") : inputs.rulesets || DEFAULT_RULESETS,
     excludeRules: [...new Set(asList(config["exclude-rules"]))],
-    ignoreFindings: dedupeIgnoreRules([...DEFAULT_IGNORED_FINDINGS, ...normaliseIgnoreRules(config["ignore-findings"])]),
+    ignoreFindings: dedupeIgnoreRules(normaliseIgnoreRules(config["ignore-findings"])),
     excludePaths: [.../* @__PURE__ */ new Set([...DEFAULT_EXCLUDED_PATHS, ...asList(config["exclude-paths"])])],
     mode: config.mode ?? inputs.mode,
     severity: severity.length > 0 ? severity.join(",") : inputs.severity,

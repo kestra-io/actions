@@ -1,6 +1,6 @@
 import { parse as parseYaml } from 'yaml'
 import type { IgnoreRule } from './suppress.js'
-import { DEFAULT_EXCLUDED_PATHS, DEFAULT_IGNORED_FINDINGS, DEFAULT_RULESETS } from './version.js'
+import { DEFAULT_EXCLUDED_PATHS, DEFAULT_RULESETS } from './version.js'
 
 /**
  * The shape of `.opengrep/config.yml` in the repository being scanned.
@@ -51,11 +51,9 @@ function asList(value: string[] | undefined): string[] {
 }
 
 /**
- * Two identical suppressions are one suppression.
- *
- * Defensive, not expected: a repository should not restate an org-wide default, and none does. But
- * if one did, the same rule would be logged twice — once with the real count and once with a
- * misleading zero — which reads as a broken suppression.
+ * Two identical suppressions are one suppression. Without this, a config file listing the same rule
+ * twice logs it twice — once with the real count and once with a misleading zero, which reads as a
+ * suppression that stopped working.
  */
 function dedupeIgnoreRules(rules: IgnoreRule[]): IgnoreRule[] {
   const seen = new Set<string>()
@@ -93,9 +91,11 @@ function normaliseIgnoreRules(value: IgnoreRule[] | undefined): IgnoreRule[] {
  * `scan-path`, because that is per job: a repository with a backend and a frontend job scans `.` in
  * one and `ui` in the other, and a single file at the repository root cannot express both.
  *
- * The file wins on every key it does set, because it is the thing a repository owner can edit. The
- * exception is ignore-findings, which is additive: DEFAULT_IGNORED_FINDINGS carries org-wide
- * decisions that a repository should not silently lose by declaring a suppression of its own.
+ * The file wins on every key it does set, because it is the thing a repository owner can edit.
+ *
+ * Suppressions come from the config file alone — there are no built-in ones. A repository that
+ * wants a finding silenced says so in a file it owns, which keeps the reason next to the code it
+ * applies to and leaves nothing suppressed from somewhere the repository cannot see.
  */
 export function resolveSettings(config: OpengrepConfig, inputs: Inputs): Settings {
   const rulesets = asList(config.rulesets)
@@ -104,7 +104,7 @@ export function resolveSettings(config: OpengrepConfig, inputs: Inputs): Setting
   return {
     rulesets: rulesets.length > 0 ? rulesets.join(',') : inputs.rulesets || DEFAULT_RULESETS,
     excludeRules: [...new Set(asList(config['exclude-rules']))],
-    ignoreFindings: dedupeIgnoreRules([...DEFAULT_IGNORED_FINDINGS, ...normaliseIgnoreRules(config['ignore-findings'])]),
+    ignoreFindings: dedupeIgnoreRules(normaliseIgnoreRules(config['ignore-findings'])),
     excludePaths: [...new Set([...DEFAULT_EXCLUDED_PATHS, ...asList(config['exclude-paths'])])],
     mode: config.mode ?? inputs.mode,
     severity: severity.length > 0 ? severity.join(',') : inputs.severity,

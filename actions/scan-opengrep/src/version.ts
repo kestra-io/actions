@@ -18,39 +18,6 @@ export const REGISTRY_HOST = 'semgrep.dev'
 export const DEFAULT_RULESETS = 'p/default'
 
 /**
- * Findings suppressed everywhere, for reasons true org-wide rather than per repository.
- *
- * These live here rather than in .opengrep/config.yml because they have to reach the 239 plugin
- * repositories that ship no config file, and they say something true of all of them rather than of
- * any one. Anything true of a single repository belongs in that repository's config instead.
- * Nothing here is silent: every suppression is logged at scan time with its reason and count.
- *
- * Scoped to the offending reference rather than excluding the rule. github-actions-mutable-action-tag
- * is correct about third-party actions — on plugin-jdbc it caught dorny/paths-filter@v4,
- * docker/login-action@v4 and five more — and wrong only about kestra-io/actions/...@main, which is
- * deliberate: this repository publishes those actions, consumers are meant to track main, and
- * .pinact.yaml carves out exactly the same exception for the pinning check. Excluding the whole
- * rule would have hidden 7 real findings to silence 1.
- */
-export const DEFAULT_IGNORED_FINDINGS = [
-  {
-    rule: 'github-actions-mutable-action-tag',
-    match: 'kestra-io/actions/',
-    reason: 'this repository publishes those actions; consumers track @main by design (see .pinact.yaml)'
-  },
-  {
-    // secrets-inherit flags the `secrets: inherit` line, but whether that is acceptable depends on
-    // the `uses:` above it naming who receives them — so the match is anchored there. Scoped to our
-    // own reusable workflows: `secrets: inherit` into a third-party workflow is exactly the finding
-    // this rule should keep making.
-    rule: 'secrets-inherit',
-    match: 'kestra-io/actions/',
-    matchNearest: '^\\s*uses:',
-    reason: 'secrets are inherited into our own reusable workflows, not a third party'
-  }
-] as const
-
-/**
  * Paths excluded everywhere.
  *
  * OpenGrep's built-in .semgrepignore already skips test sources, so this is belt and braces — but
