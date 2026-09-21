@@ -20,6 +20,11 @@ export const DEFAULT_RULESETS = 'p/default'
 /**
  * Findings suppressed everywhere, for reasons true org-wide rather than per repository.
  *
+ * These live here rather than in .opengrep/config.yml because they have to reach the 239 plugin
+ * repositories that ship no config file, and they say something true of all of them rather than of
+ * any one. Anything true of a single repository belongs in that repository's config instead.
+ * Nothing here is silent: every suppression is logged at scan time with its reason and count.
+ *
  * Scoped to the offending reference rather than excluding the rule. github-actions-mutable-action-tag
  * is correct about third-party actions — on plugin-jdbc it caught dorny/paths-filter@v4,
  * docker/login-action@v4 and five more — and wrong only about kestra-io/actions/...@main, which is

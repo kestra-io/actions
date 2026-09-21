@@ -51,9 +51,11 @@ function asList(value: string[] | undefined): string[] {
 }
 
 /**
- * Two identical suppressions are one suppression. Repeating an org-wide default in a repository
- * config is a natural thing to do for documentation, and without this it logs the same rule twice —
- * once with the real count and once with a misleading zero.
+ * Two identical suppressions are one suppression.
+ *
+ * Defensive, not expected: a repository should not restate an org-wide default, and none does. But
+ * if one did, the same rule would be logged twice — once with the real count and once with a
+ * misleading zero — which reads as a broken suppression.
  */
 function dedupeIgnoreRules(rules: IgnoreRule[]): IgnoreRule[] {
   const seen = new Set<string>()

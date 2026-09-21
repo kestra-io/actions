@@ -10,30 +10,19 @@
 rulesets:
   - p/default
 
-# Suppress individual findings, matching a substring of the rule id against a regular expression
-# tested on the offending source line. Prefer this over exclude-rules: it silences the case that is
-# wrong for us without losing the cases the rule gets right.
+# Suppressions that are true for every kestra-io repository — `kestra-io/actions/...@main` being
+# intentional, and `secrets: inherit` into our own reusable workflows — are not repeated here. They
+# live in DEFAULT_IGNORED_FINDINGS in actions/scan-opengrep/src/version.ts, because the 239 plugin
+# repositories that need them ship no config file of their own. Every applied suppression is
+# printed at scan time with its reason and count, so nothing is silently dropped.
 #
-# These are applied to every repository from DEFAULT_IGNORED_FINDINGS in
-# actions/scan-opengrep/src/version.ts; repeating one here is harmless and additive.
-ignore-findings:
-  # `kestra-io/actions/...@main` is deliberate — this repository publishes those actions and
-  # consumers are meant to track main, exactly as .pinact.yaml already allows for the pinning check.
-  # Scoped to that prefix on purpose: excluding the whole rule would also have hidden the 7
-  # third-party mutable tags it correctly caught on plugin-jdbc (dorny/paths-filter@v4,
-  # docker/login-action@v4 and friends), which are worth fixing.
-  - rule: github-actions-mutable-action-tag
-    match: 'kestra-io/actions/'
-    reason: this repository publishes those actions; consumers track @main by design
-
-  # secrets-inherit flags the `secrets: inherit` line, but what makes it acceptable is the `uses:`
-  # above it naming who receives the secrets. match-nearest walks back to that line, so inheriting
-  # into our own reusable workflows is quiet while inheriting into a third party still reports.
-  - rule: secrets-inherit
-    match: 'kestra-io/actions/'
-    match-nearest: '^\s*uses:'
-    within: 20
-    reason: secrets are inherited into our own reusable workflows, not a third party
+# Add repository-specific suppressions below, matching a substring of the rule id against a regular
+# expression tested on the offending source line. Prefer this over exclude-rules: it silences the
+# case that is wrong for this repository without losing the cases the rule gets right.
+# ignore-findings:
+#   - rule: some-rule-id
+#     match: 'some-pattern'
+#     reason: why this one is acceptable here
 
 # Rule ids to drop entirely. Reach for ignore-findings first.
 exclude-rules: []
