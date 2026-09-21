@@ -3,8 +3,6 @@ import { test } from 'node:test'
 import * as versionModule from './version.js'
 import {
   assetNameFor,
-  DEFAULT_RULESETS,
-  KNOWN_PACKS,
   REGISTRY_HOST,
   releaseApiUrl,
   selectAsset
@@ -56,12 +54,10 @@ test('selectAsset fails loudly when the release has no asset for this architectu
   assert.throws(() => selectAsset({ tag_name: 'v1.30.0', assets: [] }, 'X64'), /has no asset named/)
 })
 
-test('the default ruleset is a registry pack', () => {
-  assert.match(DEFAULT_RULESETS, /^p\//)
-})
-
-test('every known pack is p/ prefixed, so the bare-word sugar cannot collide with a path', () => {
-  for (const pack of KNOWN_PACKS) assert.match(pack, /^p\/[a-z0-9-]+$/)
+test('the action holds no scan settings; those come from .opengrep/config.yml', () => {
+  for (const name of ['DEFAULT_RULESETS', 'DEFAULT_EXCLUDED_PATHS', 'DEFAULT_IGNORED_FINDINGS', 'KNOWN_PACKS']) {
+    assert.equal(name in versionModule, false, `${name} should not be hardcoded in the action`)
+  }
 })
 
 test('the registry host is recorded, since a scan depends on reaching it', () => {

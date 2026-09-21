@@ -1,13 +1,10 @@
 import * as path from 'node:path'
-import { KNOWN_PACKS } from './version.js'
 
 /** A registry ref, a local file, or a local directory. Anything shell-hostile is rejected. */
 const REF_PATTERN = /^[A-Za-z0-9._/@-]+$/
 
 export interface ResolvedRulesets {
   readonly rulesets: string[]
-  /** Refs that look like a typo: pack-shaped but not one we have seen resolve. */
-  readonly unknown: string[]
 }
 
 /**
@@ -23,7 +20,6 @@ export function resolveRulesets(input: string): ResolvedRulesets {
     .filter(entry => entry.length > 0)
 
   const rulesets: string[] = []
-  const unknown: string[] = []
 
   for (const entry of requested) {
     if (!REF_PATTERN.test(entry)) {
@@ -33,15 +29,13 @@ export function resolveRulesets(input: string): ResolvedRulesets {
     // A bare word is a pack name; a path keeps its shape.
     const ref = entry.includes('/') || entry.includes('.') ? entry : `p/${entry}`
     if (!rulesets.includes(ref)) rulesets.push(ref)
-
-    if (ref.startsWith('p/') && !(KNOWN_PACKS as readonly string[]).includes(ref)) unknown.push(ref)
   }
 
   if (rulesets.length === 0) {
     throw new Error(`No OpenGrep rulesets resolved from rulesets='${input}'.`)
   }
 
-  return { rulesets, unknown }
+  return { rulesets }
 }
 
 export interface Ruleset {

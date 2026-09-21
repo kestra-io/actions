@@ -14,33 +14,6 @@ import * as core from '@actions/core'
  */
 export const REGISTRY_HOST = 'semgrep.dev'
 
-/** Semgrep's curated cross-language set — the broadest sensible default. */
-export const DEFAULT_RULESETS = 'p/default'
-
-/**
- * Paths excluded everywhere.
- *
- * OpenGrep's built-in .semgrepignore already skips test sources, so this is belt and braces — but
- * the built-in defaults are *replaced*, not merged, the moment a repository adds a .semgrepignore
- * of its own. Passing these as --exclude keeps them holding regardless. The `**` prefix covers the
- * multi-module layout (plugin-jdbc-mysql/src/test/...) as well as a single-module one.
- */
-export const DEFAULT_EXCLUDED_PATHS = [
-  '**/src/test/**',
-  '**/src/testFixtures/**'
-] as const
-
-/**
- * Packs verified to resolve. Used to warn on a likely typo, not to reject: the registry gains packs
- * over time and this list would otherwise turn every new one into a hard failure.
- */
-export const KNOWN_PACKS = [
-  'p/default', 'p/security-audit', 'p/owasp-top-ten', 'p/ci', 'p/secrets',
-  'p/java', 'p/javascript', 'p/typescript', 'p/python', 'p/golang', 'p/ruby',
-  'p/docker', 'p/dockerfile', 'p/kubernetes', 'p/github-actions', 'p/terraform',
-  'p/xss', 'p/sql-injection', 'p/command-injection', 'p/insecure-transport', 'p/jwt'
-] as const
-
 const ASSET_BY_ARCH: Record<string, string> = {
   X64: 'opengrep_manylinux_x86',
   ARM64: 'opengrep_manylinux_aarch64'

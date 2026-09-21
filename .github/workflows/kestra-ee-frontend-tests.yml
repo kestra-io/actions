@@ -203,7 +203,6 @@ jobs:
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          rulesets: p/javascript,p/typescript,p/secrets
           scan-path: kestra-ee/ui-ee
 
       - name: Storybook - Wait for Playwright install

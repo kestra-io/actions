@@ -7,7 +7,7 @@ import * as path from 'node:path'
 import { toAnnotations } from './annotations.js'
 import { resolveBaseline } from './baseline.js'
 import { publishCheckRun } from './checks.js'
-import { parseConfig, resolveSettings, type OpengrepConfig } from './config.js'
+import { actionRepoRoot, loadConfig, resolveSettings } from './config.js'
 import {
   blockingCount,
   fatalMessages,
@@ -41,28 +41,14 @@ async function readJson<T>(file: string): Promise<T> {
   return JSON.parse(await fs.readFile(file, 'utf8')) as T
 }
 
-async function loadConfig(configDir: string): Promise<OpengrepConfig> {
-  for (const name of ['config.yml', 'config.yaml']) {
-    const file = path.join(configDir, name)
-    if (await exists(file)) {
-      core.info(`Using repository configuration: ${file}`)
-      return parseConfig(await fs.readFile(file, 'utf8'))
-    }
-  }
-  return {}
-}
-
 async function run(): Promise<void> {
   const configDir = core.getInput('config-dir') || '.opengrep'
   const token = core.getInput('github-token')
-
-  const settings = resolveSettings(await loadConfig(configDir), {
-    rulesets: core.getInput('rulesets'),
-    mode: core.getInput('mode') || 'auto',
-    severity: core.getInput('severity') || 'ERROR,WARNING',
-    failOnSeverity: core.getInput('fail-on-severity') || 'none'
-  })
   const scanPath = core.getInput('scan-path') || '.'
+
+  // The scanned repository's own config, or the one shipped in kestra-io/actions when it has none.
+  const loaded = await loadConfig(configDir, path.join(actionRepoRoot(import.meta.url), '.opengrep'))
+  const settings = resolveSettings(loaded.config)
 
   const mode = parseMode(settings.mode)
   const severities = parseSeverities(settings.severity)
@@ -74,10 +60,7 @@ async function run(): Promise<void> {
   const jsonOutput = path.join(temp, 'opengrep.json')
   const sarifOutput = path.join(temp, 'opengrep.sarif')
 
-  const { rulesets, unknown } = resolveRulesets(settings.rulesets)
-  for (const pack of unknown) {
-    core.warning(`Ruleset '${pack}' is not one of the packs known to resolve; if the scan cannot fetch it, check the name.`)
-  }
+  const { rulesets } = resolveRulesets(settings.rulesets)
 
   // A repository's own rules sit alongside the registry packs, not instead of them.
   const localRulesDir = path.join(configDir, 'rules')
@@ -188,7 +171,7 @@ async function run(): Promise<void> {
   const model = buildCommentModel(report, maxRows)
   const markdown = renderStepSummary({
     mode: effectiveMode,
-    rulesSource: ruleset.source,
+    rulesSource: loaded.fromFallback ? `${ruleset.source} (kestra-io/actions config)` : ruleset.source,
     engineVersion: release.version,
     summary,
     model,

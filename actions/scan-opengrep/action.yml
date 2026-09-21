@@ -21,37 +21,20 @@ inputs:
 
   config-dir:
     description: >-
-      Directory holding the repository's OpenGrep configuration. config.yml there overrides these
-      inputs, and rules/*.yml there are loaded alongside the registry packs
+      Directory holding the repository's OpenGrep configuration. config.yml there is the sole source
+      of scan behaviour; when absent, the one shipped in kestra-io/actions is used. rules/*.yml
+      there are loaded alongside the registry packs
     required: false
     default: '.opengrep'
 
-  mode:
-    description: auto, diff or full. auto scans only what a pull request changed, and the whole tree everywhere else
-    required: false
-    default: 'auto'
 
-  rulesets:
-    description: >-
-      Comma-separated Semgrep registry packs, fetched at scan time. A bare word is sugar for a pack
-      (java -> p/java); a path is passed through as a local config. Overridden by config.yml
-    required: false
-    default: 'p/default'
 
   scan-path:
     description: Path to scan
     required: false
     default: '.'
 
-  severity:
-    description: Comma-separated severities to report
-    required: false
-    default: 'ERROR,WARNING'
 
-  fail-on-severity:
-    description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
-    required: false
-    default: 'none'
 
   comment-max-rows:
     description: Maximum findings rendered in the summary and comment before they link to the artifact

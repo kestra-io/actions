@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { test } from 'node:test'
-import { parseConfig, resolveSettings, type Inputs } from './config.js'
-import { DEFAULT_EXCLUDED_PATHS, DEFAULT_RULESETS } from './version.js'
+import { actionRepoRoot, loadConfig, parseConfig, resolveSettings } from './config.js'
 
 const MUTABLE_TAG =
   'yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag'
 
-const inputs: Inputs = {
-  rulesets: '',
+const MINIMAL = {
+  rulesets: ['p/default'],
+  severity: ['ERROR', 'WARNING'],
   mode: 'auto',
-  severity: 'ERROR,WARNING',
-  failOnSeverity: 'none'
+  'fail-on-severity': 'none'
 }
 
 test('parseConfig reads a mapping', () => {
@@ -27,152 +29,151 @@ test('parseConfig rejects a file that is not a mapping, rather than ignoring it'
   assert.throws(() => parseConfig('just a string\n'), /must be a YAML mapping/)
 })
 
-test('resolveSettings falls back to the built-in default when nothing sets rulesets', () => {
-  assert.equal(resolveSettings({}, inputs).rulesets, DEFAULT_RULESETS)
+// Every scan-affecting setting is required, with no fallback in code. That is what makes a local
+// `opengrep scan` reproducible from the config file alone.
+
+test('rulesets is required, since the action ships no default', () => {
+  assert.throws(() => resolveSettings({ ...MINIMAL, rulesets: [] }), /must set 'rulesets'/)
+  assert.throws(() => resolveSettings({ ...MINIMAL, rulesets: undefined }), /must set 'rulesets'/)
 })
 
-test('resolveSettings prefers the action input over the built-in default', () => {
-  assert.equal(resolveSettings({}, { ...inputs, rulesets: 'p/java' }).rulesets, 'p/java')
+test('severity is required', () => {
+  assert.throws(() => resolveSettings({ ...MINIMAL, severity: undefined }), /must set 'severity'/)
 })
 
-test('the config file wins over the action input, since it is what a repository owns', () => {
-  const settings = resolveSettings({ rulesets: ['p/python'] }, { ...inputs, rulesets: 'p/java' })
-  assert.equal(settings.rulesets, 'p/python')
+test('fail-on-severity is required, so the gate is never implicit', () => {
+  assert.throws(() => resolveSettings({ ...MINIMAL, 'fail-on-severity': undefined }), /must set 'fail-on-severity'/)
 })
 
-test('resolveSettings joins a ruleset list into the comma form the resolver expects', () => {
-  assert.equal(resolveSettings({ rulesets: ['p/java', 'p/secrets'] }, inputs).rulesets, 'p/java,p/secrets')
+test('mode is required', () => {
+  assert.throws(() => resolveSettings({ ...MINIMAL, mode: undefined }), /must set 'mode'/)
+})
+
+test('an empty config names the first thing it is missing', () => {
+  assert.throws(() => resolveSettings({}), /must set 'rulesets'/)
+})
+
+test('resolveSettings joins lists into the comma form the resolvers expect', () => {
+  const settings = resolveSettings({ ...MINIMAL, rulesets: ['p/java', 'p/secrets'] })
+  assert.equal(settings.rulesets, 'p/java,p/secrets')
+  assert.equal(settings.severity, 'ERROR,WARNING')
+})
+
+test('resolveSettings carries mode and the gate through verbatim', () => {
+  const settings = resolveSettings({ ...MINIMAL, mode: 'full', 'fail-on-severity': 'ERROR' })
+  assert.equal(settings.mode, 'full')
+  assert.equal(settings.failOnSeverity, 'ERROR')
+})
+
+test('resolveSettings ignores blank and whitespace-only list entries', () => {
+  assert.equal(resolveSettings({ ...MINIMAL, rulesets: [' p/java ', '', '   '] }).rulesets, 'p/java')
 })
 
 test('a repository with no ignore-findings suppresses nothing', () => {
-  assert.deepEqual(resolveSettings({}, inputs).ignoreFindings, [])
+  assert.deepEqual(resolveSettings(MINIMAL).ignoreFindings, [])
 })
 
-test('suppressions come only from the config file, never from a built-in list', () => {
-  const settings = resolveSettings({ 'ignore-findings': [{ rule: 'only-mine', match: 'x' }] }, inputs)
+test('exclude-paths and exclude-rules default to empty, not to a built-in list', () => {
+  assert.deepEqual(resolveSettings(MINIMAL).excludePaths, [])
+  assert.deepEqual(resolveSettings(MINIMAL).excludeRules, [])
+})
+
+test('suppressions come only from the config file', () => {
+  const settings = resolveSettings({ ...MINIMAL, 'ignore-findings': [{ rule: 'only-mine', match: 'x' }] })
   assert.deepEqual(settings.ignoreFindings.map(e => e.rule), ['only-mine'])
+})
+
+test('the shipped config suppresses the mutable-tag rule by context, not wholesale', () => {
+  const settings = resolveSettings({
+    ...MINIMAL,
+    'ignore-findings': [{ rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' }]
+  })
+  assert.deepEqual(settings.excludeRules, [])
+  assert.equal(settings.ignoreFindings.find(e => MUTABLE_TAG.includes(e.rule))?.match, 'kestra-io/actions/')
+})
+
+test('the same suppression listed twice is collapsed, not logged twice with a misleading zero', () => {
+  const rule = { rule: 'r', match: 'kestra-io/actions/' }
+  assert.equal(resolveSettings({ ...MINIMAL, 'ignore-findings': [rule, rule] }).ignoreFindings.length, 1)
+})
+
+test('two suppressions for the same rule with different patterns are both kept', () => {
+  const settings = resolveSettings({
+    ...MINIMAL,
+    'ignore-findings': [
+      { rule: 'mutable-action-tag', match: 'kestra-io/actions/' },
+      { rule: 'mutable-action-tag', match: 'regclient/actions/' }
+    ]
+  })
+  assert.equal(settings.ignoreFindings.length, 2)
+})
+
+test('an ignore rule missing rule or match is rejected, not silently dropped', () => {
+  assert.throws(() => resolveSettings({ ...MINIMAL, 'ignore-findings': [{ rule: 'x' } as never] }), /needs both/)
+  assert.throws(() => resolveSettings({ ...MINIMAL, 'ignore-findings': [{ match: 'y' } as never] }), /needs both/)
 })
 
 test('the hyphenated match-nearest key from YAML reaches the resolved rule', () => {
   const settings = resolveSettings(
-    parseConfig('ignore-findings:\n  - rule: r\n    match: m\n    match-nearest: \'^\\s*uses:\'\n    within: 5\n'),
-    inputs
+    parseConfig(
+      'rulesets: [p/default]\nseverity: [ERROR]\nmode: auto\nfail-on-severity: none\n' +
+        "ignore-findings:\n  - rule: r\n    match: m\n    match-nearest: '^\\s*uses:'\n    within: 5\n"
+    )
   )
   const rule = settings.ignoreFindings.find(e => e.rule === 'r')
   assert.equal(rule?.matchNearest, '^\\s*uses:')
   assert.equal(rule?.within, 5)
 })
 
-test('the shipped config suppresses the mutable-tag rule by context, not wholesale', () => {
-  const settings = resolveSettings(
-    { 'ignore-findings': [{ rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' }] },
-    inputs
+// --- discovery and the kestra-io/actions fallback ------------------------------------------------
+
+test('actionRepoRoot climbs out of actions/<name>/dist to the repository root', () => {
+  const root = actionRepoRoot('file:///checkout/actions/scan-opengrep/dist/index.js')
+  assert.equal(root, path.resolve('/checkout'))
+})
+
+const tmpdir = async (): Promise<string> => fs.mkdtemp(path.join(os.tmpdir(), 'og-cfg-'))
+
+test('a repository config is used when present', async () => {
+  const dir = await tmpdir()
+  await fs.mkdir(path.join(dir, 'own'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'own', 'config.yml'), 'rulesets: [p/mine]\n')
+  const loaded = await loadConfig(path.join(dir, 'own'), path.join(dir, 'fallback'))
+  assert.deepEqual(loaded.config.rulesets, ['p/mine'])
+  assert.equal(loaded.fromFallback, false)
+})
+
+test('the kestra-io/actions config is used when the repository has none', async () => {
+  const dir = await tmpdir()
+  await fs.mkdir(path.join(dir, 'fallback'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'fallback', 'config.yml'), 'rulesets: [p/default]\n')
+  const loaded = await loadConfig(path.join(dir, 'missing'), path.join(dir, 'fallback'))
+  assert.deepEqual(loaded.config.rulesets, ['p/default'])
+  assert.equal(loaded.fromFallback, true)
+})
+
+test('a repository config wins over the fallback, rather than merging with it', async () => {
+  const dir = await tmpdir()
+  for (const [sub, body] of [['own', 'rulesets: [p/mine]\n'], ['fallback', 'rulesets: [p/default]\nmode: full\n']]) {
+    await fs.mkdir(path.join(dir, sub!), { recursive: true })
+    await fs.writeFile(path.join(dir, sub!, 'config.yml'), body!)
+  }
+  const loaded = await loadConfig(path.join(dir, 'own'), path.join(dir, 'fallback'))
+  assert.deepEqual(loaded.config.rulesets, ['p/mine'])
+  assert.equal(loaded.config.mode, undefined)
+})
+
+test('config.yaml is accepted as well as config.yml', async () => {
+  const dir = await tmpdir()
+  await fs.mkdir(path.join(dir, 'own'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'own', 'config.yaml'), 'rulesets: [p/mine]\n')
+  assert.deepEqual((await loadConfig(path.join(dir, 'own'), path.join(dir, 'none'))).config.rulesets, ['p/mine'])
+})
+
+test('with no config anywhere the action fails loudly instead of inventing defaults', async () => {
+  const dir = await tmpdir()
+  await assert.rejects(
+    () => loadConfig(path.join(dir, 'a'), path.join(dir, 'b')),
+    /No OpenGrep configuration found/
   )
-  assert.deepEqual(settings.excludeRules, [])
-  const ignore = settings.ignoreFindings.find(entry => MUTABLE_TAG.includes(entry.rule))
-  assert.equal(ignore?.match, 'kestra-io/actions/')
-})
-
-test('every suppression a repository declares is kept, in order', () => {
-  const settings = resolveSettings(
-    { 'ignore-findings': [{ rule: 'a', match: 'x' }, { rule: 'b', match: 'y' }] },
-    inputs
-  )
-  assert.deepEqual(settings.ignoreFindings.map(e => e.rule), ['a', 'b'])
-})
-
-test('the same suppression listed twice is collapsed, not logged twice with a misleading zero', () => {
-  const settings = resolveSettings(
-    {
-      'ignore-findings': [
-        { rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' },
-        { rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' }
-      ]
-    },
-    inputs
-  )
-  assert.equal(settings.ignoreFindings.length, 1)
-})
-
-test('two suppressions for the same rule with different patterns are both kept', () => {
-  const settings = resolveSettings(
-    {
-      'ignore-findings': [
-        { rule: 'github-actions-mutable-action-tag', match: 'kestra-io/actions/' },
-        { rule: 'github-actions-mutable-action-tag', match: 'regclient/actions/' }
-      ]
-    },
-    inputs
-  )
-  const matching = settings.ignoreFindings.filter(entry => entry.rule === 'github-actions-mutable-action-tag')
-  assert.equal(matching.length, 2)
-})
-
-test('an ignore rule missing rule or match is rejected, not silently dropped', () => {
-  assert.throws(() => resolveSettings({ 'ignore-findings': [{ rule: 'x' } as never] }, inputs), /needs both/)
-  assert.throws(() => resolveSettings({ 'ignore-findings': [{ match: 'y' } as never] }, inputs), /needs both/)
-})
-
-test('exclude-rules still exists for genuinely removing a whole rule', () => {
-  assert.deepEqual(resolveSettings({ 'exclude-rules': ['noisy.rule'] }, inputs).excludeRules, ['noisy.rule'])
-})
-
-test('resolveSettings carries mode, severity and the gate from the config file', () => {
-  const settings = resolveSettings({ mode: 'full', severity: ['ERROR'], 'fail-on-severity': 'ERROR' }, inputs)
-  assert.equal(settings.mode, 'full')
-  assert.equal(settings.severity, 'ERROR')
-  assert.equal(settings.failOnSeverity, 'ERROR')
-})
-
-test('resolveSettings keeps the inputs for every key the config file leaves out', () => {
-  const settings = resolveSettings({ rulesets: ['p/java'] }, { ...inputs, mode: 'diff' })
-  assert.equal(settings.mode, 'diff')
-})
-
-test('scan-path is not settable from the config file, since it differs between jobs of one repo', () => {
-  const settings = resolveSettings({ 'scan-path': 'ui' } as never, inputs)
-  assert.equal('scanPath' in settings, false)
-})
-
-test('exclude-paths defaults to the org-wide test-source excludes', () => {
-  assert.deepEqual(resolveSettings({}, inputs).excludePaths, [...DEFAULT_EXCLUDED_PATHS])
-})
-
-test('a repository exclude-path is added to the defaults, never replacing them', () => {
-  const paths = resolveSettings({ 'exclude-paths': ['**/build/**'] }, inputs).excludePaths
-  assert.equal(paths.includes('**/build/**'), true)
-  assert.equal(paths.includes('**/src/test/**'), true)
-})
-
-test('the test excludes cover the multi-module layout, not just src/test at the root', () => {
-  // plugin-jdbc-mysql/src/test/... needs the ** prefix to match.
-  assert.equal(DEFAULT_EXCLUDED_PATHS.every(p => p.startsWith('**/')), true)
-})
-
-test('repeating a default exclude-path does not duplicate the flag', () => {
-  const paths = resolveSettings({ 'exclude-paths': ['**/src/test/**'] }, inputs).excludePaths
-  assert.equal(paths.filter(p => p === '**/src/test/**').length, 1)
-})
-
-test('resolveSettings ignores blank and whitespace-only list entries', () => {
-  const settings = resolveSettings({ rulesets: [' p/java ', '', '   '] }, inputs)
-  assert.equal(settings.rulesets, 'p/java')
-})
-
-test('an empty rulesets list in the config falls back rather than scanning with nothing', () => {
-  assert.equal(resolveSettings({ rulesets: [] }, inputs).rulesets, DEFAULT_RULESETS)
-})
-
-test('end to end: the shipped config shape parses and resolves', () => {
-  const settings = resolveSettings(
-    parseConfig(
-      'rulesets:\n  - p/default\n' +
-        'ignore-findings:\n  - rule: github-actions-mutable-action-tag\n    match: kestra-io/actions/\n' +
-        'fail-on-severity: none\n'
-    ),
-    inputs
-  )
-  assert.equal(settings.rulesets, 'p/default')
-  assert.equal(settings.failOnSeverity, 'none')
-  assert.equal(settings.ignoreFindings.some(entry => entry.match === 'kestra-io/actions/'), true)
 })

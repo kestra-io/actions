@@ -32,7 +32,7 @@ import require$$1$3 from 'node:zlib';
 import require$$5$1 from 'node:perf_hooks';
 import require$$8$1 from 'node:util/types';
 import require$$1$2 from 'node:worker_threads';
-import require$$1$4 from 'node:url';
+import require$$1$4, { fileURLToPath } from 'node:url';
 import require$$5$2 from 'node:async_hooks';
 import require$$1$5 from 'node:console';
 import require$$1$6 from 'node:dns';
@@ -42035,86 +42035,12 @@ function parse(src, reviver, options) {
     return doc.toJS(Object.assign({ reviver: _reviver }, options));
 }
 
-const REGISTRY_HOST = "semgrep.dev";
-const DEFAULT_RULESETS = "p/default";
-const DEFAULT_EXCLUDED_PATHS = [
-  "**/src/test/**",
-  "**/src/testFixtures/**"
-];
-const KNOWN_PACKS = [
-  "p/default",
-  "p/security-audit",
-  "p/owasp-top-ten",
-  "p/ci",
-  "p/secrets",
-  "p/java",
-  "p/javascript",
-  "p/typescript",
-  "p/python",
-  "p/golang",
-  "p/ruby",
-  "p/docker",
-  "p/dockerfile",
-  "p/kubernetes",
-  "p/github-actions",
-  "p/terraform",
-  "p/xss",
-  "p/sql-injection",
-  "p/command-injection",
-  "p/insecure-transport",
-  "p/jwt"
-];
-const ASSET_BY_ARCH = {
-  X64: "opengrep_manylinux_x86",
-  ARM64: "opengrep_manylinux_aarch64"
-};
-function assetNameFor(arch) {
-  const name = ASSET_BY_ARCH[arch];
-  if (!name) {
-    throw new Error(`Unsupported runner architecture '${arch}' for OpenGrep. Supported: ${Object.keys(ASSET_BY_ARCH).join(", ")}`);
-  }
-  return name;
-}
-function releaseApiUrl(version) {
-  return version === "latest" ? "https://api.github.com/repos/opengrep/opengrep/releases/latest" : `https://api.github.com/repos/opengrep/opengrep/releases/tags/${version.startsWith("v") ? version : `v${version}`}`;
-}
-function selectAsset(release, arch) {
-  const assetName = assetNameFor(arch);
-  const asset = release.assets?.find((candidate) => candidate.name === assetName);
-  if (!asset) {
-    throw new Error(`OpenGrep release ${release.tag_name} has no asset named '${assetName}'.`);
-  }
-  const digest = asset.digest ?? null;
-  return {
-    tag: release.tag_name,
-    version: release.tag_name.replace(/^v/, ""),
-    assetUrl: asset.browser_download_url,
-    sha256: digest?.startsWith("sha256:") ? digest.slice("sha256:".length) : null
-  };
-}
-async function resolveRelease(version, arch, token) {
-  const url = releaseApiUrl(version);
-  const headers = {
-    accept: "application/vnd.github+json",
-    "user-agent": "kestra-io/actions scan-opengrep"
-  };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`Could not resolve OpenGrep release '${version}' (${url} returned HTTP ${response.status}).`);
-  }
-  const release = selectAsset(await response.json(), arch);
-  if (!release.sha256) {
-    warning(`The OpenGrep releases API reported no checksum for ${release.tag}; the download cannot be verified.`);
-  }
-  return release;
-}
-
+const CONFIG_FILENAMES = ["config.yml", "config.yaml"];
 function parseConfig(source) {
   const parsed = parse(source);
   if (parsed == null) return {};
   if (typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(".opengrep/config.yml must be a YAML mapping.");
+    throw new Error("OpenGrep config must be a YAML mapping.");
   }
   return parsed;
 }
@@ -42136,8 +42062,7 @@ function normaliseIgnoreRules(value) {
     if (!entry?.rule || !entry?.match) {
       throw new Error(`ignore-findings[${index}] needs both a 'rule' and a 'match'.`);
     }
-    const raw = entry;
-    const matchNearest = raw.matchNearest ?? raw["match-nearest"];
+    const matchNearest = entry.matchNearest ?? entry["match-nearest"];
     return {
       rule: String(entry.rule),
       match: String(entry.match),
@@ -42147,18 +42072,59 @@ function normaliseIgnoreRules(value) {
     };
   });
 }
-function resolveSettings(config, inputs) {
+function resolveSettings(config) {
   const rulesets = asList(config.rulesets);
+  if (rulesets.length === 0) {
+    throw new Error("OpenGrep config must set 'rulesets'; the action ships no default.");
+  }
   const severity = asList(config.severity);
+  if (severity.length === 0) {
+    throw new Error("OpenGrep config must set 'severity'; the action ships no default.");
+  }
+  if (!config["fail-on-severity"]) {
+    throw new Error("OpenGrep config must set 'fail-on-severity'; the action ships no default.");
+  }
+  if (!config.mode) {
+    throw new Error("OpenGrep config must set 'mode'; the action ships no default.");
+  }
   return {
-    rulesets: rulesets.length > 0 ? rulesets.join(",") : inputs.rulesets || DEFAULT_RULESETS,
+    rulesets: rulesets.join(","),
     excludeRules: [...new Set(asList(config["exclude-rules"]))],
     ignoreFindings: dedupeIgnoreRules(normaliseIgnoreRules(config["ignore-findings"])),
-    excludePaths: [.../* @__PURE__ */ new Set([...DEFAULT_EXCLUDED_PATHS, ...asList(config["exclude-paths"])])],
-    mode: config.mode ?? inputs.mode,
-    severity: severity.length > 0 ? severity.join(",") : inputs.severity,
-    failOnSeverity: config["fail-on-severity"] ?? inputs.failOnSeverity
+    excludePaths: [...new Set(asList(config["exclude-paths"]))],
+    mode: config.mode,
+    severity: severity.join(","),
+    failOnSeverity: config["fail-on-severity"]
   };
+}
+function actionRepoRoot(moduleUrl) {
+  return path$1.resolve(path$1.dirname(fileURLToPath(moduleUrl)), "..", "..", "..");
+}
+async function readFirst(dir) {
+  for (const name of CONFIG_FILENAMES) {
+    const file = path$1.join(dir, name);
+    try {
+      return { text: await fs$1.readFile(file, "utf8"), file };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+async function loadConfig(configDir, fallbackDir) {
+  const own = await readFirst(configDir);
+  if (own) {
+    info(`Configuration: ${own.file}`);
+    return { config: parseConfig(own.text), source: own.file, fromFallback: false };
+  }
+  const fallback = await readFirst(fallbackDir);
+  if (fallback) {
+    info(`Configuration: none in ${configDir}, using the kestra-io/actions default (${fallback.file})`);
+    return { config: parseConfig(fallback.text), source: fallback.file, fromFallback: true };
+  }
+  throw new Error(
+    `No OpenGrep configuration found in '${configDir}' or in the action's own '${fallbackDir}'. The action ships no defaults; add .opengrep/config.yml.`
+  );
 }
 
 function rulePrefixes(rulesRoot) {
@@ -112452,6 +112418,53 @@ function _getGlobal(key, defaultValue) {
     return value !== undefined ? value : defaultValue;
 }
 
+const REGISTRY_HOST = "semgrep.dev";
+const ASSET_BY_ARCH = {
+  X64: "opengrep_manylinux_x86",
+  ARM64: "opengrep_manylinux_aarch64"
+};
+function assetNameFor(arch) {
+  const name = ASSET_BY_ARCH[arch];
+  if (!name) {
+    throw new Error(`Unsupported runner architecture '${arch}' for OpenGrep. Supported: ${Object.keys(ASSET_BY_ARCH).join(", ")}`);
+  }
+  return name;
+}
+function releaseApiUrl(version) {
+  return version === "latest" ? "https://api.github.com/repos/opengrep/opengrep/releases/latest" : `https://api.github.com/repos/opengrep/opengrep/releases/tags/${version.startsWith("v") ? version : `v${version}`}`;
+}
+function selectAsset(release, arch) {
+  const assetName = assetNameFor(arch);
+  const asset = release.assets?.find((candidate) => candidate.name === assetName);
+  if (!asset) {
+    throw new Error(`OpenGrep release ${release.tag_name} has no asset named '${assetName}'.`);
+  }
+  const digest = asset.digest ?? null;
+  return {
+    tag: release.tag_name,
+    version: release.tag_name.replace(/^v/, ""),
+    assetUrl: asset.browser_download_url,
+    sha256: digest?.startsWith("sha256:") ? digest.slice("sha256:".length) : null
+  };
+}
+async function resolveRelease(version, arch, token) {
+  const url = releaseApiUrl(version);
+  const headers = {
+    accept: "application/vnd.github+json",
+    "user-agent": "kestra-io/actions scan-opengrep"
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`Could not resolve OpenGrep release '${version}' (${url} returned HTTP ${response.status}).`);
+  }
+  const release = selectAsset(await response.json(), arch);
+  if (!release.sha256) {
+    warning(`The OpenGrep releases API reported no checksum for ${release.tag}; the download cannot be verified.`);
+  }
+  return release;
+}
+
 async function sha256(file) {
   return createHash("sha256").update(await fs$1.readFile(file)).digest("hex");
 }
@@ -112561,19 +112574,17 @@ const REF_PATTERN = /^[A-Za-z0-9._/@-]+$/;
 function resolveRulesets(input) {
   const requested = input.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
   const rulesets = [];
-  const unknown = [];
   for (const entry of requested) {
     if (!REF_PATTERN.test(entry)) {
       throw new Error(`Invalid ruleset '${entry}'. Expected a registry pack like p/java, or a path to a rule file.`);
     }
     const ref = entry.includes("/") || entry.includes(".") ? entry : `p/${entry}`;
     if (!rulesets.includes(ref)) rulesets.push(ref);
-    if (ref.startsWith("p/") && !KNOWN_PACKS.includes(ref)) unknown.push(ref);
   }
   if (rulesets.length === 0) {
     throw new Error(`No OpenGrep rulesets resolved from rulesets='${input}'.`);
   }
-  return { rulesets, unknown };
+  return { rulesets };
 }
 function buildRuleset(rulesets, localRulesDir) {
   const configs = [...rulesets];
@@ -112689,26 +112700,12 @@ async function exists(target) {
 async function readJson(file) {
   return JSON.parse(await fs$1.readFile(file, "utf8"));
 }
-async function loadConfig(configDir) {
-  for (const name of ["config.yml", "config.yaml"]) {
-    const file = path$1.join(configDir, name);
-    if (await exists(file)) {
-      info(`Using repository configuration: ${file}`);
-      return parseConfig(await fs$1.readFile(file, "utf8"));
-    }
-  }
-  return {};
-}
 async function run() {
   const configDir = getInput("config-dir") || ".opengrep";
   const token = getInput("github-token");
-  const settings = resolveSettings(await loadConfig(configDir), {
-    rulesets: getInput("rulesets"),
-    mode: getInput("mode") || "auto",
-    severity: getInput("severity") || "ERROR,WARNING",
-    failOnSeverity: getInput("fail-on-severity") || "none"
-  });
   const scanPath = getInput("scan-path") || ".";
+  const loaded = await loadConfig(configDir, path$1.join(actionRepoRoot(import.meta.url), ".opengrep"));
+  const settings = resolveSettings(loaded.config);
   const mode = parseMode(settings.mode);
   const severities = parseSeverities(settings.severity);
   const failOn = parseFailOn(settings.failOnSeverity);
@@ -112717,10 +112714,7 @@ async function run() {
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const jsonOutput = path$1.join(temp, "opengrep.json");
   const sarifOutput = path$1.join(temp, "opengrep.sarif");
-  const { rulesets, unknown } = resolveRulesets(settings.rulesets);
-  for (const pack of unknown) {
-    warning(`Ruleset '${pack}' is not one of the packs known to resolve; if the scan cannot fetch it, check the name.`);
-  }
+  const { rulesets } = resolveRulesets(settings.rulesets);
   const localRulesDir = path$1.join(configDir, "rules");
   const ruleset = buildRuleset(rulesets, await exists(localRulesDir) ? localRulesDir : null);
   info(`Rulesets: ${rulesets.join(", ")} (fetched from ${REGISTRY_HOST} at scan time)`);
@@ -112802,7 +112796,7 @@ ${detail.map((d) => `- ${d}`).join("\n")}`).write();
   const model = buildCommentModel(report, maxRows);
   const markdown = renderStepSummary({
     mode: effectiveMode,
-    rulesSource: ruleset.source,
+    rulesSource: loaded.fromFallback ? `${ruleset.source} (kestra-io/actions config)` : ruleset.source,
     engineVersion: release.version,
     summary,
     model,

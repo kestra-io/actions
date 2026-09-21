@@ -167,7 +167,6 @@ jobs:
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          rulesets: p/java,p/secrets,p/github-actions,p/dockerfile
 
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}

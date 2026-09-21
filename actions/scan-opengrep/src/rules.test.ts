@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import * as path from 'node:path'
 import { test } from 'node:test'
 import { buildRuleset, resolveRulesets } from './rules.js'
-import { KNOWN_PACKS } from './version.js'
 
 test('resolveRulesets expands a bare word into a registry pack', () => {
   assert.deepEqual(resolveRulesets('java').rulesets, ['p/java'])
@@ -25,20 +24,6 @@ test('resolveRulesets deduplicates', () => {
   assert.deepEqual(resolveRulesets('java,p/java,java').rulesets, ['p/java'])
 })
 
-test('resolveRulesets reports unknown packs as a warning signal, not an error', () => {
-  const { rulesets, unknown } = resolveRulesets('p/java,p/not-a-real-pack')
-  assert.deepEqual(rulesets, ['p/java', 'p/not-a-real-pack'])
-  assert.deepEqual(unknown, ['p/not-a-real-pack'])
-})
-
-test('resolveRulesets does not flag packs that are known to resolve', () => {
-  assert.deepEqual(resolveRulesets('p/default,p/secrets').unknown, [])
-})
-
-test('resolveRulesets does not flag local paths as unknown packs', () => {
-  assert.deepEqual(resolveRulesets('./my-rules/x.yaml').unknown, [])
-})
-
 test('resolveRulesets rejects a ref with shell-hostile characters', () => {
   assert.throws(() => resolveRulesets('p/java; rm -rf /'), /Invalid ruleset/)
   assert.throws(() => resolveRulesets('p/java$(whoami)'), /Invalid ruleset/)
@@ -49,9 +34,8 @@ test('resolveRulesets rejects an empty input rather than scanning with no rules'
   assert.throws(() => resolveRulesets('  , '), /No OpenGrep rulesets resolved/)
 })
 
-test('p/vue is not a known pack, so asking for it warns before the scan tries to fetch it', () => {
-  assert.equal((KNOWN_PACKS as readonly string[]).includes('p/vue'), false)
-  assert.deepEqual(resolveRulesets('vue').unknown, ['p/vue'])
+test('an unresolvable pack is passed through; the registry 404 is the error, not a guess here', () => {
+  assert.deepEqual(resolveRulesets('vue').rulesets, ['p/vue'])
 })
 
 test('buildRuleset passes registry refs through with no rule-id root to strip', () => {
