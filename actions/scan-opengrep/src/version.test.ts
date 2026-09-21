@@ -54,7 +54,7 @@ test('selectAsset fails loudly when the release has no asset for this architectu
   assert.throws(() => selectAsset({ tag_name: 'v1.30.0', assets: [] }, 'X64'), /has no asset named/)
 })
 
-test('the action holds no scan settings; those come from .opengrep/config.yml', () => {
+test('the action holds no scan settings; those come from .opengrep/settings.yml', () => {
   for (const name of ['DEFAULT_RULESETS', 'DEFAULT_EXCLUDED_PATHS', 'DEFAULT_IGNORED_FINDINGS', 'KNOWN_PACKS']) {
     assert.equal(name in versionModule, false, `${name} should not be hardcoded in the action`)
   }
@@ -64,6 +64,6 @@ test('the registry host is recorded, since a scan depends on reaching it', () =>
   assert.equal(REGISTRY_HOST, 'semgrep.dev')
 })
 
-test('the action ships no built-in suppressions; they come from .opengrep/config.yml', () => {
+test('the action ships no built-in suppressions; they come from .opengrep/settings.yml', () => {
   assert.equal('DEFAULT_IGNORED_FINDINGS' in versionModule, false)
 })

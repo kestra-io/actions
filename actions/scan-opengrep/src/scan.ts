@@ -25,7 +25,7 @@ export interface ScanArgsOptions {
 }
 
 /**
- * Values reaching argv come from .opengrep/config.yml, which any repository can edit.
+ * Values reaching argv come from .opengrep/settings.yml, which any repository can edit.
  *
  * exec.exec spawns without a shell, so there is no command injection to have here — but a value
  * beginning with `-` is still read by opengrep as a flag rather than as data, which would let a

@@ -42035,12 +42035,12 @@ function parse(src, reviver, options) {
     return doc.toJS(Object.assign({ reviver: _reviver }, options));
 }
 
-const CONFIG_FILENAMES = ["config.yml", "config.yaml"];
+const CONFIG_FILENAMES = ["settings.yml", "settings.yaml"];
 function parseConfig(source) {
   const parsed = parse(source);
   if (parsed == null) return {};
   if (typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("OpenGrep config must be a YAML mapping.");
+    throw new Error("OpenGrep settings must be a YAML mapping.");
   }
   return parsed;
 }
@@ -42123,7 +42123,7 @@ async function loadConfig(configDir, fallbackDir) {
     return { config: parseConfig(fallback.text), source: fallback.file, fromFallback: true };
   }
   throw new Error(
-    `No OpenGrep configuration found in '${configDir}' or in the action's own '${fallbackDir}'. The action ships no defaults; add .opengrep/config.yml.`
+    `No OpenGrep configuration found in '${configDir}' or in the action's own '${fallbackDir}'. The action ships no defaults; add .opengrep/settings.yml.`
   );
 }
 

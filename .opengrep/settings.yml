@@ -1,25 +1,29 @@
-# OpenGrep configuration.
+# OpenGrep settings.
 #
-# This file is the only source of scan behaviour — actions/scan-opengrep holds no defaults for
-# rulesets, severity, exclusions, suppressions or the gate. Two consequences worth knowing:
+# Named settings.yml, not config.yml, on purpose: `opengrep --config` takes a *rules* file, so
+# `opengrep scan --config .opengrep/settings.yml` fails with "One of these properties is missing:
+# 'rules'". OpenGrep has no settings-file concept — --config accepts rules only — so something has
+# to turn these keys into flags. Rules, which --config does accept, go in .opengrep/rules/.
 #
-#  1. A repository scanning with no .opengrep/config.yml of its own falls back to *this* file,
-#     because the action reads it out of its own checkout. Copy it to change anything.
-#  2. Running the scan locally needs nothing but this file. Each key maps one-to-one onto an
-#     opengrep flag — rulesets to --config, severity to --severity, exclude-paths to --exclude,
-#     exclude-rules to --exclude-rule — so the whole scan is:
+# To run the same scan locally, from actions/scan-opengrep:
 #
-#       opengrep scan --config p/default \
-#         --severity ERROR --severity WARNING \
-#         --exclude 'actions/*/dist/**' --exclude '**/src/test/**' \
-#         --exclude '**/src/testFixtures/**' \
-#         --no-error --quiet .
+#   npm run scan -- /path/to/repo           # run it
+#   npm run scan -- /path/to/repo --print   # just print the opengrep command
 #
-#     CI also prints what it ran on the `[command]` line; quote the globs when copying it, or the
-#     shell expands them before opengrep sees them. ignore-findings has no flag — the action drops
-#     those findings after the scan, and logs each one with its count.
+# That shares the action's own argument builder, so local and CI cannot drift. It also prints the
+# full command, which is roughly:
 #
-# Every key here is required; the action fails rather than guessing.
+#   opengrep scan --config p/default \
+#     --severity ERROR --severity WARNING \
+#     --exclude 'actions/*/dist/**' --exclude '**/src/test/**' \
+#     --exclude '**/src/testFixtures/**' \
+#     --no-error --quiet .
+#
+# ignore-findings has no flag: those findings are dropped after the scan, each logged with a count.
+#
+# This file is the only source of scan behaviour — actions/scan-opengrep holds no defaults. A
+# repository with no .opengrep/settings.yml of its own falls back to *this* file, which the action
+# reads out of its own checkout. Every key below is required; the action fails rather than guessing.
 
 # Rulesets are fetched from the Semgrep registry when the scan runs, so they are always current.
 # A bare word is shorthand for a pack: `java` means `p/java`.

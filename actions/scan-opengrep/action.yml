@@ -21,7 +21,7 @@ inputs:
 
   config-dir:
     description: >-
-      Directory holding the repository's OpenGrep configuration. config.yml there is the sole source
+      Directory holding the repository's OpenGrep configuration. settings.yml there is the sole source
       of scan behaviour; when absent, the one shipped in kestra-io/actions is used. rules/*.yml
       there are loaded alongside the registry packs
     required: false

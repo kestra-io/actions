@@ -137,7 +137,7 @@ const tmpdir = async (): Promise<string> => fs.mkdtemp(path.join(os.tmpdir(), 'o
 test('a repository config is used when present', async () => {
   const dir = await tmpdir()
   await fs.mkdir(path.join(dir, 'own'), { recursive: true })
-  await fs.writeFile(path.join(dir, 'own', 'config.yml'), 'rulesets: [p/mine]\n')
+  await fs.writeFile(path.join(dir, 'own', 'settings.yml'), 'rulesets: [p/mine]\n')
   const loaded = await loadConfig(path.join(dir, 'own'), path.join(dir, 'fallback'))
   assert.deepEqual(loaded.config.rulesets, ['p/mine'])
   assert.equal(loaded.fromFallback, false)
@@ -146,7 +146,7 @@ test('a repository config is used when present', async () => {
 test('the kestra-io/actions config is used when the repository has none', async () => {
   const dir = await tmpdir()
   await fs.mkdir(path.join(dir, 'fallback'), { recursive: true })
-  await fs.writeFile(path.join(dir, 'fallback', 'config.yml'), 'rulesets: [p/default]\n')
+  await fs.writeFile(path.join(dir, 'fallback', 'settings.yml'), 'rulesets: [p/default]\n')
   const loaded = await loadConfig(path.join(dir, 'missing'), path.join(dir, 'fallback'))
   assert.deepEqual(loaded.config.rulesets, ['p/default'])
   assert.equal(loaded.fromFallback, true)
@@ -156,17 +156,17 @@ test('a repository config wins over the fallback, rather than merging with it', 
   const dir = await tmpdir()
   for (const [sub, body] of [['own', 'rulesets: [p/mine]\n'], ['fallback', 'rulesets: [p/default]\nmode: full\n']]) {
     await fs.mkdir(path.join(dir, sub!), { recursive: true })
-    await fs.writeFile(path.join(dir, sub!, 'config.yml'), body!)
+    await fs.writeFile(path.join(dir, sub!, 'settings.yml'), body!)
   }
   const loaded = await loadConfig(path.join(dir, 'own'), path.join(dir, 'fallback'))
   assert.deepEqual(loaded.config.rulesets, ['p/mine'])
   assert.equal(loaded.config.mode, undefined)
 })
 
-test('config.yaml is accepted as well as config.yml', async () => {
+test('settings.yaml is accepted as well as settings.yml', async () => {
   const dir = await tmpdir()
   await fs.mkdir(path.join(dir, 'own'), { recursive: true })
-  await fs.writeFile(path.join(dir, 'own', 'config.yaml'), 'rulesets: [p/mine]\n')
+  await fs.writeFile(path.join(dir, 'own', 'settings.yaml'), 'rulesets: [p/mine]\n')
   assert.deepEqual((await loadConfig(path.join(dir, 'own'), path.join(dir, 'none'))).config.rulesets, ['p/mine'])
 })
 
@@ -176,4 +176,11 @@ test('with no config anywhere the action fails loudly instead of inventing defau
     () => loadConfig(path.join(dir, 'a'), path.join(dir, 'b')),
     /No OpenGrep configuration found/
   )
+})
+
+test('a file named config.yml is ignored, since --config would reject it as a rules file', async () => {
+  const dir = await tmpdir()
+  await fs.mkdir(path.join(dir, 'own'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'own', 'config.yml'), 'rulesets: [p/trap]\n')
+  await assert.rejects(() => loadConfig(path.join(dir, 'own'), path.join(dir, 'none')), /No OpenGrep configuration found/)
 })

@@ -23,3 +23,7 @@ out/
 
 **/node_modules/*
 **/coverage/**
+
+### OpenGrep local scan output
+.opengrep-local.json
+.opengrep-local.sarif

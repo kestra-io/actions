@@ -6,7 +6,7 @@ import { parse as parseYaml } from 'yaml'
 import type { IgnoreRule } from './suppress.js'
 
 /**
- * The shape of `.opengrep/config.yml`.
+ * The shape of `.opengrep/settings.yml`.
  *
  * This file is the only source of scan behaviour. The action holds no defaults for rulesets,
  * severities, exclusions, suppressions or the gate — so running opengrep by hand with the values in
@@ -32,13 +32,19 @@ export interface Settings {
   readonly failOnSeverity: string
 }
 
-export const CONFIG_FILENAMES = ['config.yml', 'config.yaml'] as const
+/**
+ * Deliberately not `config.yml`: `opengrep --config` takes a *rules* file, and a file by that name
+ * inside .opengrep/ invites `opengrep scan --config .opengrep/config.yml`, which fails with
+ * "One of these properties is missing: 'rules'". Settings and rules are different things to
+ * OpenGrep — rules live in .opengrep/rules/ and are what --config accepts.
+ */
+export const CONFIG_FILENAMES = ['settings.yml', 'settings.yaml'] as const
 
 export function parseConfig(source: string): OpengrepConfig {
   const parsed = parseYaml(source) as unknown
   if (parsed == null) return {}
   if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('OpenGrep config must be a YAML mapping.')
+    throw new Error('OpenGrep settings must be a YAML mapping.')
   }
   return parsed as OpengrepConfig
 }
@@ -157,6 +163,6 @@ export async function loadConfig(configDir: string, fallbackDir: string): Promis
 
   throw new Error(
     `No OpenGrep configuration found in '${configDir}' or in the action's own '${fallbackDir}'. ` +
-      'The action ships no defaults; add .opengrep/config.yml.'
+      'The action ships no defaults; add .opengrep/settings.yml.'
   )
 }
