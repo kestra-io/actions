@@ -49,9 +49,11 @@ inputs:
     description: >-
       Extra Gradle arguments for the private-registry publish. The default serialises the build
       because the plugin repositories publish the same SNAPSHOT coordinates from several
-      concurrent workflows; a repository without that problem should override it.
+      concurrent workflows; a repository without that problem should override it. Keep
+      --continue in any override: the already-published guard below can only clear a failure
+      if Gradle attempted every module rather than stopping at the first rejected upload.
     required: false
-    default: '--no-daemon --no-parallel --max-workers=1 --stacktrace'
+    default: '--no-daemon --no-parallel --max-workers=1 --stacktrace --continue'
 
   registry-token:
     description: >-
@@ -93,20 +95,32 @@ runs:
         # GCP Artifact Registry answers a re-upload of an existing release artifact with a bare
         # 400 Bad Request - the very same status it returns for a concurrent SNAPSHOT write and
         # for a malformed request, so the status code on its own proves nothing. Confirm instead
-        # by reading every rejected coordinate back: if they are all already in the registry, an
-        # earlier run published this release and there is nothing left to do.
+        # by reading every rejected coordinate back from the registry.
+        #
+        # Clearing a build this way is only sound when NOTHING ELSE went wrong, so every failed
+        # task must be one of those rejected uploads. A task that failed any other way - a
+        # broken pipe mid-upload, a compile or signing error - means something never reached the
+        # registry, and no amount of duplicate-checking can clear it. kestra-ee run 32846309046
+        # is exactly that: six coordinates rejected as duplicates plus :core-ee: dying on a
+        # broken pipe.
         #
         # SNAPSHOT coordinates are deliberately excluded. There a 400 is the concurrent-write
         # race the retry below handles, and finding the artifact present only means some other
         # build won the race - not that THIS build's snapshot was published.
-        #
-        # This is sound only because every publication was attempted: Gradle stops at the first
-        # failed upload unless the caller passes --continue, and modules it never reached would
-        # otherwise be silently counted as published.
         rejected_uploads_already_in_registry() {
-          local urls url version code token
-          urls=$(grep -oE "Could not PUT '[^']+'" /tmp/publish.log | sed -E "s/^Could not PUT '//; s/'$//" | sort -u)
+          local failed_tasks urls rejected url file version artifact token code
+
+          urls=$(grep -oE "Could not PUT '[^']+'\. Received status code 400" /tmp/publish.log \
+                 | sed -E "s/^Could not PUT '//; s/'\. Received status code 400$//" | sort -u)
           [ -n "$urls" ] || return 1
+
+          # Anything that failed but was not refused with a 400 leaves the build incomplete.
+          failed_tasks=$(grep -cE "^Execution failed for task '" /tmp/publish.log | tr -d ' ' || true)
+          rejected=$(printf '%s\n' "$urls" | grep -c . | tr -d ' ' || true)
+          if [ "${failed_tasks:-0}" -ne "${rejected:-0}" ]; then
+            echo "::warning::${failed_tasks} task(s) failed but only ${rejected} were duplicate uploads; something else went wrong."
+            return 1
+          fi
 
           token="${REGISTRY_READ_TOKEN:-${MAVEN_REMOTE_TOKEN:-}}"
           if [ -z "$token" ]; then
@@ -116,10 +130,22 @@ runs:
 
           while IFS= read -r url; do
             [ -n "$url" ] || continue
+            file=$(basename "$url")
             version=$(basename "$(dirname "$url")")
+            artifact=$(basename "$(dirname "$(dirname "$url")")")
+
+            # Only a real .../<artifact>/<version>/<artifact>-<version>* coordinate is immutable
+            # enough to prove anything. maven-metadata.xml lands one directory higher - its
+            # parent segment is the artifactId, which would sail past the SNAPSHOT check below -
+            # and it is rewritten on every publish, so finding one proves nothing at all.
+            case "$file" in
+              "${artifact}-${version}"*) ;;
+              *) echo "::warning::${url} is not a versioned artifact; cannot treat it as already published."; return 1 ;;
+            esac
             case "$version" in
               *-SNAPSHOT) return 1 ;;
             esac
+
             code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${token}" "$url" || echo 000)
             if [ "$code" != "200" ]; then
               echo "::warning::${url} was rejected but is not in the registry (HTTP ${code}); this is a real publish failure."
