@@ -79,6 +79,8 @@ jobs:
       # Hoisted out of `prebuild`/`precheck:types`, which is where it used to run: the unit tests
       # import @kestra-io/kestra-sdk through its dist, so the group below needs it built first.
       - name: Npm - bundle the SDK
+        # Release branches pin this workflow at @main and predate the script, same as `check:ts-any` below.
+        if: hashFiles('ui/scripts/ensure-sdk.mjs') != ''
         working-directory: ui
         run: node scripts/ensure-sdk.mjs
 

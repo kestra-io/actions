@@ -99,10 +99,19 @@ jobs:
 
       # Hoisted out of `precheck:types`, which is where it used to run: the unit tests import
       # @kestra-io/kestra-sdk through its dist, so both steps below need it built beforehand.
-      - name: Npm - Bundle the SDK
+      # Split in two so each side can be skipped on its own: release branches pin this workflow
+      # at @main and predate the scripts, same as `check:ts-any` below.
+      - name: Npm - Bundle the SDK (OSS)
+        if: hashFiles('kestra/ui/scripts/ensure-sdk.mjs') != ''
         shell: bash
         working-directory: kestra-ee/ui-ee
-        run: node ../../kestra/ui/scripts/ensure-sdk.mjs && node scripts/ensure-sdk.mjs
+        run: node ../../kestra/ui/scripts/ensure-sdk.mjs
+
+      - name: Npm - Bundle the SDK (EE)
+        if: hashFiles('kestra-ee/ui-ee/scripts/ensure-sdk.mjs') != ''
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: node scripts/ensure-sdk.mjs
 
       # The unit tests share this group with the type check so the two longest steps overlap.
       # Nothing in the group writes what another step reads now that the SDK is built above.
