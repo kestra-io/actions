@@ -1,0 +1,58 @@
+name: 'Publish docs'
+description: 'Sync the repository docs folder to the internal documentation bucket'
+
+inputs:
+  google-service-account:
+    description: 'Service account JSON with write access to the bucket'
+    required: true
+  path:
+    description: 'Docs folder inside the repository'
+    required: false
+    default: 'docs'
+  name:
+    description: 'Destination folder under docs/, defaults to the repository name'
+    required: false
+    default: ''
+  bucket:
+    description: 'Target bucket'
+    required: false
+    default: 'internal-kestra-host'
+
+runs:
+  using: composite
+  steps:
+    - name: GCP - Auth
+      uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
+      with:
+        credentials_json: ${{ inputs.google-service-account }}
+
+    - name: GCP - Setup Cloud SDK
+      uses: 'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db' # v3.0.1
+
+    - name: Docs - Sync to bucket
+      shell: bash
+      env:
+        DOCS_PATH: ${{ inputs.path }}
+        DOCS_NAME: ${{ inputs.name }}
+        DOCS_BUCKET: ${{ inputs.bucket }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -d "$DOCS_PATH" ]; then
+          echo "::notice::no '$DOCS_PATH' folder, nothing to publish"
+          exit 0
+        fi
+
+        name="${DOCS_NAME:-${GITHUB_REPOSITORY##*/}}"
+        staging="$(mktemp -d)"
+
+        # rsync takes .docsignore as-is, where gsutil -x would expect a Python regex
+        excludes=(--exclude=.docsignore)
+        if [ -f "$DOCS_PATH/.docsignore" ]; then
+          excludes+=(--exclude-from="$DOCS_PATH/.docsignore")
+        fi
+
+        rsync -a --prune-empty-dirs "${excludes[@]}" "$DOCS_PATH/" "$staging/"
+
+        # -d prunes what the repo deleted, scoped to this repo's own prefix
+        gsutil -m rsync -d -r "$staging/" "gs://$DOCS_BUCKET/docs/$name/"
