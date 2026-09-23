@@ -1,40 +1,37 @@
 name: 'Publish docs'
-description: 'Sync the repository docs folder to the internal documentation bucket'
+description: 'Publish the repository docs folder as Notion pages'
 
 inputs:
-  google-service-account:
-    description: 'Service account JSON with write access to the bucket'
+  notion-token:
+    description: 'Notion integration token, with access to the parent page'
+    required: true
+  notion-parent-page-id:
+    description: 'Page the per-repository pages live under'
     required: true
   path:
     description: 'Docs folder inside the repository'
     required: false
     default: 'docs'
   name:
-    description: 'Destination folder under docs/, defaults to the repository name'
+    description: 'Page title for this repository, defaults to the repository name'
     required: false
     default: ''
-  bucket:
-    description: 'Target bucket'
-    required: false
-    default: 'internal-kestra-host'
 
 runs:
   using: composite
   steps:
-    - name: GCP - Auth
-      uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
+    - name: Node - Setup
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        credentials_json: ${{ inputs.google-service-account }}
+        node-version: '22'
 
-    - name: GCP - Setup Cloud SDK
-      uses: 'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db' # v3.0.1
-
-    - name: Docs - Sync to bucket
+    - name: Docs - Publish to Notion
       shell: bash
       env:
         DOCS_PATH: ${{ inputs.path }}
         DOCS_NAME: ${{ inputs.name }}
-        DOCS_BUCKET: ${{ inputs.bucket }}
+        NOTION_TOKEN: ${{ inputs.notion-token }}
+        NOTION_PARENT_PAGE_ID: ${{ inputs.notion-parent-page-id }}
       run: |
         set -euo pipefail
 
@@ -43,16 +40,16 @@ runs:
           exit 0
         fi
 
-        name="${DOCS_NAME:-${GITHUB_REPOSITORY##*/}}"
-        staging="$(mktemp -d)"
+        export DOCS_NAME="${DOCS_NAME:-${GITHUB_REPOSITORY##*/}}"
+        export DOCS_DIR="$(mktemp -d)"
 
-        # rsync takes .docsignore as-is, where gsutil -x would expect a Python regex
+        # rsync takes .docsignore as-is, where a glob passed to another tool would need translating
         excludes=(--exclude=.docsignore)
         if [ -f "$DOCS_PATH/.docsignore" ]; then
           excludes+=(--exclude-from="$DOCS_PATH/.docsignore")
         fi
 
-        rsync -a --prune-empty-dirs "${excludes[@]}" "$DOCS_PATH/" "$staging/"
+        rsync -a --prune-empty-dirs "${excludes[@]}" "$DOCS_PATH/" "$DOCS_DIR/"
 
-        # -d prunes what the repo deleted, scoped to this repo's own prefix
-        gsutil -m rsync -d -r "$staging/" "gs://$DOCS_BUCKET/docs/$name/"
+        npm ci --prefix "$GITHUB_ACTION_PATH" --omit=dev --no-audit --no-fund
+        node "$GITHUB_ACTION_PATH/sync.mjs"

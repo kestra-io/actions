@@ -1,0 +1,12 @@
+{
+  "name": "@kestra-io/publish-docs",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@notionhq/client": "^5.26.0",
+    "markdown-it": "^15.0.2"
+  }
+}
