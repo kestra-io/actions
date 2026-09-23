@@ -1,0 +1,120 @@
+name: 'OpenGrep Scan'
+description: 'Static analysis with OpenGrep, reported as check annotations, a pull request comment and an artifact'
+
+# Thin wiring only. Everything with logic in it — install, cache, rule resolution, the scan, rule
+# id normalisation, the summary and the gate — lives in actions/scan-opengrep, where it is unit
+# tested. This file exists so the four workflows below do not each repeat the same three steps.
+
+inputs:
+  # Takes a single token rather than `toJSON(secrets)`. The other composites in this repository
+  # pass the whole secret set because they genuinely need several of them; this one only ever read
+  # GITHUB_TOKEN out of it, and handing a scanner every secret in the repository to use one is the
+  # kind of thing CodeQL's excessive-secrets-exposure rule exists to catch.
+  github-token:
+    description: 'Token used to publish the check run annotations and the pull request comment'
+    required: true
+
+  opengrep-version:
+    description: 'OpenGrep release to run. Defaults to latest; pin a version for reproducible scans'
+    required: false
+    default: "latest"
+
+  config-dir:
+    description: "Directory holding the repository's OpenGrep configuration"
+    required: false
+    default: ".opengrep"
+
+
+
+  mode:
+    description: 'auto, diff or full. auto scans only what a pull request changed, and the whole tree everywhere else'
+    required: false
+    default: "auto"
+
+  severity:
+    description: 'Comma-separated severities to report'
+    required: false
+    default: "ERROR,WARNING"
+
+  fail-on-severity:
+    description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
+    required: false
+    default: "none"
+
+  scan-path:
+    description: 'Path to scan'
+    required: false
+    default: "."
+
+
+
+outputs:
+  summary:
+    description: 'Finding counts by severity as JSON'
+    value: ${{ steps.scan.outputs.summary }}
+
+  findings-count:
+    description: 'Total number of findings'
+    value: ${{ steps.scan.outputs.findings-count }}
+
+  json-file:
+    description: 'Absolute path to the OpenGrep JSON report'
+    value: ${{ steps.scan.outputs.json-file }}
+
+  sarif-file:
+    description: 'Absolute path to the OpenGrep SARIF report'
+    value: ${{ steps.scan.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: OpenGrep - Scan
+      id: scan
+      uses: kestra-io/actions/actions/scan-opengrep@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        opengrep-version: ${{ inputs.opengrep-version }}
+        config-dir: ${{ inputs.config-dir }}
+        mode: ${{ inputs.mode }}
+        severity: ${{ inputs.severity }}
+        fail-on-severity: ${{ inputs.fail-on-severity }}
+        scan-path: ${{ inputs.scan-path }}
+
+    # Reports run even when the gate above failed the scan step: that is exactly when someone
+    # needs to see what was found.
+    - name: OpenGrep - Comment pull request
+      if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        title: "🔎 OpenGrep"
+        files: |
+          ${{ steps.scan.outputs.comment-file }}
+        template: |
+          {% if files[0] and files[0].total > 0 %}
+          Found **{{ files[0].total }}** finding(s).
+
+          | Severity | Rule | Location | Message |
+          | :--- | :--- | :--- | :--- |
+          {%- for finding in files[0].shown %}
+          | {{ finding.severity }} | `{{ finding.rule }}` | `{{ finding.location }}` | {{ finding.message }} |
+          {%- endfor %}
+          {% if files[0].overflow > 0 %}
+          _… and {{ files[0].overflow }} more, see the `opengrep-report` artifact._
+          {% endif %}
+          {% else %}
+          No findings.
+          {% endif %}
+
+    - name: OpenGrep - Upload report
+      if: ${{ !cancelled() }}
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: opengrep-report
+        path: |
+          ${{ steps.scan.outputs.json-file }}
+          ${{ steps.scan.outputs.sarif-file }}
+        if-no-files-found: warn
+        retention-days: 30

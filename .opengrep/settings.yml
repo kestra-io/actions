@@ -1,0 +1,93 @@
+# OpenGrep settings for actions/scan-opengrep.
+#
+# Not an opengrep file: `--config` takes a *rules* file, so `opengrep scan --config
+# .opengrep/settings.yml` fails with "One of these properties is missing: 'rules'". The action
+# parses this and builds the opengrep command from it.
+#
+# Every key maps onto a flag, so the scan is reproducible by hand and nothing is filtered after
+# opengrep runs — a finding this file does not silence is one opengrep itself reported:
+#
+#   rulesets      -> --config          rules         -> --config <generated file>
+#   exclude-rules -> --exclude-rule    exclude-paths -> --exclude
+#
+# To run it, from actions/scan-opengrep:
+#
+#   npm run scan -- /path/to/repo           # same findings as CI
+#   npm run scan -- /path/to/repo --print   # print the opengrep command only
+#
+# severity, mode and fail-on-severity are not here. They describe how a workflow runs the scan
+# rather than what this repository considers a finding, so they are action inputs.
+#
+# A repository with no .opengrep/settings.yml of its own falls back to *this* file, which the
+# action reads from its own checkout. Copy it to change anything.
+
+# Rulesets are fetched from the Semgrep registry when the scan runs, so they are always current.
+# A bare word is shorthand for a pack: `java` means `p/java`.
+rulesets:
+  - p/default
+
+# Rule ids to drop entirely. These must be the *full* dotted id — `--exclude-rule` matches the whole
+# id, so a short name silently drops nothing. Both are replaced by narrower rules below.
+exclude-rules:
+  - yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+  - yaml.github-actions.security.secrets-inherit.secrets-inherit
+
+# Paths skipped, as --exclude. OpenGrep's built-in .semgrepignore already drops test sources, but a
+# repository adding its own .semgrepignore replaces those built-ins rather than extending them, so
+# anything that must hold is listed explicitly here.
+exclude-paths:
+  # Bundled action output is vendored, not ours to fix.
+  - 'actions/*/dist/**'
+  - '**/src/test/**'
+  - '**/src/testFixtures/**'
+
+# Repository rules, written to a file and passed as an extra --config. Loaded in addition to the
+# registry packs above, not instead of them.
+#
+# The two below replace the registry rules excluded above. They are narrowed, not disabled: each
+# still reports the case the upstream rule is right about, and stays quiet only on the one it is
+# wrong about for us. Written from scratch rather than copied — registry rules carry the Semgrep
+# Rules License, which does not permit redistributing them from a public repository.
+rules:
+  # Upstream flags every mutable `uses:` ref. Correct for third parties — it caught
+  # dorny/paths-filter@v4 and docker/login-action@v4 on plugin-jdbc — but `kestra-io/actions/...@main`
+  # is deliberate: this repository publishes those actions and consumers are meant to track main,
+  # exactly as .pinact.yaml already allows for the pinning check.
+  - id: kestra-mutable-action-tag
+    patterns:
+      - pattern-inside: '{steps: ...}'
+      - pattern: 'uses: "$ACTION"'
+      - metavariable-pattern:
+          metavariable: $ACTION
+          language: generic
+          patterns:
+            - pattern-not-regex: ^\./
+            - pattern-not-regex: ^docker://
+            - pattern-not-regex: '@[0-9a-f]{40}(\s|$)'
+            - pattern-not-regex: ^kestra-io/actions/
+    message: >-
+      Pin this action to a full 40-character commit SHA. A tag or branch can be repointed by its
+      owner, so the code that runs is not the code that was reviewed.
+    languages: [yaml]
+    severity: WARNING
+
+  # Upstream flags the `secrets: inherit` line alone. What makes it acceptable is the `uses:` in the
+  # same job naming who receives the secrets, so this ties the two together and stays quiet only when
+  # they go to our own reusable workflows.
+  - id: kestra-secrets-inherit
+    patterns:
+      - pattern-inside: |
+          $JOB:
+            ...
+      - pattern: |
+          uses: $WF
+          ...
+          secrets: inherit
+      - metavariable-regex:
+          metavariable: $WF
+          regex: '^(?!kestra-io/actions/).*'
+    message: >-
+      Pass only the secrets this workflow needs instead of inheriting every repository secret, so a
+      compromise of the called workflow cannot reach all of them.
+    languages: [yaml]
+    severity: ERROR

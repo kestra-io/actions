@@ -156,6 +156,15 @@ jobs:
               reporter: github-pr-review
               workdir: ui
 
+      # OpenGrep static analysis.
+      - name: OpenGrep - Static analysis
+        id: opengrep
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
+          scan-path: ui
+
       - name: Storybook - Wait for Playwright install
         wait: [playwright-install]
 

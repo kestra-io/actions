@@ -159,6 +159,14 @@ jobs:
           fi
           ./gradlew check --parallel $MAX_WORKERS_FLAG --console=plain
 
+      # OpenGrep static analysis.
+      - name: OpenGrep - Static analysis
+        id: opengrep
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:

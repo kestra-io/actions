@@ -1,0 +1,84 @@
+name: OpenGrep Scan
+description: Static analysis with OpenGrep, reported as check run annotations
+
+runs:
+  using: node24
+  main: dist/index.js
+
+inputs:
+  github-token:
+    description: Token used to publish the check run annotations. Leave empty to skip annotations
+    required: false
+    default: ''
+
+  opengrep-version:
+    description: >-
+      OpenGrep release to run, e.g. 1.30.0. Defaults to latest, which resolves the newest release
+      at scan time and verifies the download against the checksum the releases API reports. Pin a
+      version for reproducible scans
+    required: false
+    default: 'latest'
+
+  config-dir:
+    description: >-
+      Directory holding the repository's OpenGrep configuration. settings.yml there is the sole source
+      of scan behaviour; when absent, the one shipped in kestra-io/actions is used. rules/*.yml
+      there are loaded alongside the registry packs
+    required: false
+    default: '.opengrep'
+
+
+
+  mode:
+    description: auto, diff or full. auto scans only what a pull request changed, and the whole tree everywhere else
+    required: false
+    default: 'auto'
+
+  severity:
+    description: Comma-separated severities to report
+    required: false
+    default: 'ERROR,WARNING'
+
+  fail-on-severity:
+    description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
+    required: false
+    default: 'none'
+
+  scan-path:
+    description: Path to scan
+    required: false
+    default: '.'
+
+
+
+  comment-max-rows:
+    description: Maximum findings rendered in the summary and comment before they link to the artifact
+    required: false
+    default: '50'
+
+  check-name:
+    description: Name of the check run the annotations are attached to
+    required: false
+    default: 'OpenGrep'
+
+outputs:
+  json-file:
+    description: Absolute path to the OpenGrep JSON report
+
+  sarif-file:
+    description: Absolute path to the OpenGrep SARIF report
+
+  comment-file:
+    description: Absolute path to the flattened findings used to render the pull request comment
+
+  summary:
+    description: 'Finding counts by severity as JSON, e.g. {"ERROR":2,"WARNING":11,"INFO":0,"total":13,"parseErrors":6}'
+
+  findings-count:
+    description: Total number of findings
+
+  markdown:
+    description: The rendered findings table, identical to the job summary
+
+  skipped:
+    description: '"true" when the scan could not run, typically a registry fetch failure'

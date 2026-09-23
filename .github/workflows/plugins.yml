@@ -335,7 +335,7 @@ jobs:
 
           echo "🗑️ Deleting large pre-installed tools (Dotnet, Android, Haskell)"
           sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android 
+          sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
 
           echo "⚠️ Deleting tmp folders"
@@ -357,6 +357,13 @@ jobs:
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           secrets: ${{ toJSON(secrets) }}
+
+      # OpenGrep static analysis. 
+      - name: OpenGrep - Static analysis
+        if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # GitHub Release
       - name: GitHub - Create release
@@ -398,12 +405,12 @@ jobs:
         shell: bash
         run: |
           REPORT_DIR="build/reports/allure"
-          
+
           # Check if the Allure report directory actually exists before attempting chown.
           # This prevents the "No such file or directory" error (EACCES context).
           if [ -d "$REPORT_DIR" ]; then
             echo "🔧 Fixing permissions for Allure report directory: $REPORT_DIR"
-            # Use chown to transfer ownership from 'root' (often the case after Docker build) 
+            # Use chown to transfer ownership from 'root' (often the case after Docker build)
             # to the GitHub Actions runner user, solving the EACCES error during 'unlink'.
             sudo chown -R $(whoami) "$REPORT_DIR"
           else
