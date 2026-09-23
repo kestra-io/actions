@@ -113,6 +113,20 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: node scripts/ensure-sdk.mjs
 
+      # Release branches pin this workflow at @main and predate the rule, with neither the config
+      # nor stylelint installed. Same guard as OSS, where only the lockfile test separates them.
+      - name: Npm - can stylelint run here
+        id: stylelint-available
+        shell: bash
+        working-directory: kestra-ee/ui-ee
+        run: |
+          if [ -f stylelint.config.mjs ] && grep -q '"node_modules/stylelint":' package-lock.json; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "stylelint is not installed here, so the token rule has nothing to run."
+          fi
+
       # The unit tests share this group with the type check so the two longest steps overlap.
       # Nothing in the group writes what another step reads now that the SDK is built above.
       - parallel:
@@ -132,10 +146,24 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
+          # fail_level matches oxlint below, which also fails on error; eslint only comments.
+          # nofilter: the dead tokens it finds sit on lines no PR touches (kestra-io/kestra-ee#10820).
+          - name: Npm - Lint (stylelint)
+            if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
+            uses: reviewdog/action-stylelint@141932ac62d4ea66e15b79de824ff44d0def0b0b # v1.33.0
+            with:
+              github_token: ${{ secrets.GITHUB_TOKEN }}
+              workdir: kestra-ee/ui-ee
+              stylelint_input: "{src,tests}/**/*.{vue,scss,css}"
+              reporter: github-pr-review
+              filter_mode: nofilter
+              fail_level: error
+
           - name: Npm - Lint (oxlint)
-            shell: bash
-            working-directory: kestra-ee/ui-ee
-            run: npx oxlint@latest
+            uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
+            with:
+              working-directory: kestra-ee/ui-ee
+              all-files: true
 
           # reporter: github-pr-review only has somewhere to post on a pull_request run. On a
           # push or dispatch build reviewdog prints "this is not PullRequest build" and drops every
