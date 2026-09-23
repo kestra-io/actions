@@ -113,8 +113,8 @@ jobs:
         working-directory: kestra-ee/ui-ee
         run: node scripts/ensure-sdk.mjs
 
-      # Release branches pin this workflow at @main and predate the rule; they still carry a dead
-      # stylelint.config.mjs, so the lockfile is what says stylelint can actually run.
+      # Release branches pin this workflow at @main and predate the rule, with neither the config
+      # nor stylelint installed. Same guard as OSS, where only the lockfile test separates them.
       - name: Npm - can stylelint run here
         id: stylelint-available
         shell: bash
