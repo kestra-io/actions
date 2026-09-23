@@ -84,6 +84,19 @@ jobs:
         working-directory: ui
         run: node scripts/ensure-sdk.mjs
 
+      # Release branches pin this workflow at @main and predate the rule; they still carry a dead
+      # stylelint.config.mjs, so the lockfile is what says stylelint can actually run.
+      - name: Npm - can stylelint run here
+        id: stylelint-available
+        working-directory: ui
+        run: |
+          if [ -f stylelint.config.mjs ] && grep -q '"node_modules/stylelint":' package-lock.json; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "stylelint is not installed here, so the token rule has nothing to run."
+          fi
+
       # oxlint/eslint are `uses:` steps inside a `parallel:` block, which is undocumented as of
       # writing (every public example uses bare `run:` steps) — verify this combination on a
       # scratch dispatch before relying on it; fall back to sequential if it misbehaves.
@@ -110,18 +123,18 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
-          # The oxlint and eslint steps in this group only report: neither fails the build. This one
-          # does, so an error-level rule blocks a merge (kestra-io/kestra#18777).
-          - name: Npm - lint (blocking)
-            working-directory: ui
-            # Release branches pin this workflow at @main and predate the rule; they still carry a
-            # dead stylelint.config.mjs, so the lockfile is what says the rule can actually run.
-            run: |
-              if [ ! -f stylelint.config.mjs ] || ! grep -q '"node_modules/stylelint":' package-lock.json; then
-                echo "Skipped: stylelint is not installed here, so test:lint would not run the token rule."
-                exit 0
-              fi
-              npm run test:lint
+          # The oxlint and eslint steps only report; fail_level makes this one block. nofilter because
+          # the dead tokens it finds sit on lines a PR never touched (kestra-io/kestra#18777).
+          - name: Npm - lint (stylelint)
+            if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
+            uses: reviewdog/action-stylelint@83470434fa888657ba0bb45aa183cbce0baca666 # v1.33.0
+            with:
+              github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
+              workdir: ui
+              stylelint_input: "{src,packages,tests}/**/*.{vue,scss,css}"
+              reporter: github-pr-review
+              filter_mode: nofilter
+              fail_level: error
 
           - name: Npm - lint (oxlint)
             uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
