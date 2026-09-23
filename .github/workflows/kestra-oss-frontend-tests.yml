@@ -156,11 +156,7 @@ jobs:
               reporter: github-pr-review
               workdir: ui
 
-      # OpenGrep static analysis. Sequential rather than inside the parallel block above: that
-      # block's support for `uses:` steps is still flagged as unverified there, and this is not
-      # on the critical path. node_modules is skipped via the ruleset's default gitignore handling.
-      # No permissions block exists on this workflow, so it posts with the same token the eslint
-      # step above uses rather than relying on an inherited one.
+      # OpenGrep static analysis.
       - name: OpenGrep - Static analysis
         id: opengrep
         if: ${{ !cancelled() }}
