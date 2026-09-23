@@ -15,7 +15,7 @@ const renderRows = (tokens, from, to) => {
             rows.push(`<tr>${cells.join('')}</tr>`);
             cells = null;
         } else if (token.type === 'inline' && cells) {
-            cells.push(`<td>${md.renderer.renderInline(token.children, md.options, {})}</td>`);
+            cells.push(`<td>${token.content}</td>`);
         }
     }
 
@@ -23,7 +23,7 @@ const renderRows = (tokens, from, to) => {
 };
 
 // Notion's markdown flavor takes HTML tables, not GFM pipes
-export const tablesToHtml = (markdown) => {
+const tablesToHtml = (markdown) => {
     const tokens = md.parse(markdown, {});
     const tables = [];
 
@@ -61,3 +61,22 @@ export const tablesToHtml = (markdown) => {
 
     return out.join('\n');
 };
+
+// Notion guesses javascript on an unlabelled fence, which mangles ASCII diagrams
+const defaultFenceLanguage = (markdown) => {
+    const bare = md.parse(markdown, {}).filter((token) => token.type === 'fence' && token.info.trim() === '');
+
+    if (bare.length === 0) {
+        return markdown;
+    }
+
+    const lines = markdown.split('\n');
+
+    for (const token of bare) {
+        lines[token.map[0]] = `${lines[token.map[0]].trimEnd()}text`;
+    }
+
+    return lines.join('\n');
+};
+
+export const toNotionMarkdown = (markdown) => tablesToHtml(defaultFenceLanguage(markdown));

@@ -1,7 +1,7 @@
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join} from 'node:path';
 import {Client} from '@notionhq/client';
-import {tablesToHtml} from './tables.mjs';
+import {toNotionMarkdown} from './markdown.mjs';
 
 const {NOTION_TOKEN, NOTION_PARENT_PAGE_ID, DOCS_DIR, DOCS_NAME} = process.env;
 
@@ -86,7 +86,7 @@ const publish = async (parent, directory) => {
 
         const body = readFileSync(entry.path, 'utf8');
         const large = statSync(entry.path).size > ASYNC_THRESHOLD;
-        const response = await createPage(parent, titleOf(entry.name, body), tablesToHtml(body), large);
+        const response = await createPage(parent, titleOf(entry.name, body), toNotionMarkdown(body), large);
 
         if (response.truncated) {
             console.log(`::warning file=${entry.path}::content truncated by Notion`);
