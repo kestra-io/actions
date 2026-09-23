@@ -123,8 +123,8 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
-          # The oxlint and eslint steps only report; fail_level makes this one block. nofilter because
-          # the dead tokens it finds sit on lines a PR never touched (kestra-io/kestra#18777).
+          # fail_level matches oxlint below, which also fails on error; eslint only comments.
+          # nofilter: the dead tokens it finds sit on lines no PR touches (kestra-io/kestra#18777).
           - name: Npm - lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
             uses: reviewdog/action-stylelint@141932ac62d4ea66e15b79de824ff44d0def0b0b # v1.33.0

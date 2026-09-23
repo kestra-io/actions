@@ -146,8 +146,8 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
-          # The oxlint and eslint steps only report; fail_level makes this one block. nofilter because
-          # the dead tokens it finds sit on lines a PR never touched (kestra-io/kestra-ee#10820).
+          # fail_level matches oxlint below, which also fails on error; eslint only comments.
+          # nofilter: the dead tokens it finds sit on lines no PR touches (kestra-io/kestra-ee#10820).
           - name: Npm - Lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
             uses: reviewdog/action-stylelint@141932ac62d4ea66e15b79de824ff44d0def0b0b # v1.33.0
@@ -160,9 +160,10 @@ jobs:
               fail_level: error
 
           - name: Npm - Lint (oxlint)
-            shell: bash
-            working-directory: kestra-ee/ui-ee
-            run: npx oxlint@latest
+            uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
+            with:
+              working-directory: kestra-ee/ui-ee
+              all-files: true
 
           # reporter: github-pr-review only has somewhere to post on a pull_request run. On a
           # push or dispatch build reviewdog prints "this is not PullRequest build" and drops every
