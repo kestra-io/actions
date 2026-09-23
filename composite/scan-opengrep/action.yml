@@ -70,9 +70,7 @@ runs:
   steps:
     - name: OpenGrep - Scan
       id: scan
-      # TESTING: pinned alongside plugins.yml. actions/scan-opengrep does not exist on
-      # main yet, so @main here would fail the whole chain. Revert before merge.
-      uses: kestra-io/actions/actions/scan-opengrep@plan-opengrep-code-scanning
+      uses: kestra-io/actions/actions/scan-opengrep@main
       with:
         github-token: ${{ inputs.github-token }}
         opengrep-version: ${{ inputs.opengrep-version }}
