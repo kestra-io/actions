@@ -127,6 +127,19 @@ jobs:
             echo "stylelint is not installed here, so the token rule has nothing to run."
           fi
 
+      # oxlint-action runs `git fetch origin <base>` at the workspace root, which holds two checkouts
+      # but no repo. Give it one whose origin is the local EE clone until the action scopes that fetch.
+      - name: Oxlint - Root git repo for the action's base fetch
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git -C kestra-ee branch -f "$BASE_REF" HEAD
+          rm -rf .git
+          git init -q .
+          git remote add origin "file://$GITHUB_WORKSPACE/kestra-ee"
+
       # The unit tests share this group with the type check so the two longest steps overlap.
       # Nothing in the group writes what another step reads now that the SDK is built above.
       - parallel:
