@@ -150,7 +150,7 @@ jobs:
           # the dead tokens it finds sit on lines a PR never touched (kestra-io/kestra-ee#10820).
           - name: Npm - Lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
-            uses: reviewdog/action-stylelint@83470434fa888657ba0bb45aa183cbce0baca666 # v1.33.0
+            uses: reviewdog/action-stylelint@141932ac62d4ea66e15b79de824ff44d0def0b0b # v1.33.0
             with:
               github_token: ${{ secrets.GITHUB_TOKEN }}
               workdir: kestra-ee/ui-ee
