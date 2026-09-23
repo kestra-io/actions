@@ -114,7 +114,14 @@ jobs:
           # does, so an error-level rule blocks a merge (kestra-io/kestra#18777).
           - name: Npm - lint (blocking)
             working-directory: ui
-            run: npm run test:lint
+            # Release branches pin this workflow at @main and predate the rule; they still carry a
+            # dead stylelint.config.mjs, so the lockfile is what says the rule can actually run.
+            run: |
+              if [ ! -f stylelint.config.mjs ] || ! grep -q '"node_modules/stylelint":' package-lock.json; then
+                echo "Skipped: stylelint is not installed here, so test:lint would not run the token rule."
+                exit 0
+              fi
+              npm run test:lint
 
           - name: Npm - lint (oxlint)
             uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
