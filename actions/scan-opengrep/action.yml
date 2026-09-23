@@ -29,6 +29,21 @@ inputs:
 
 
 
+  mode:
+    description: auto, diff or full. auto scans only what a pull request changed, and the whole tree everywhere else
+    required: false
+    default: 'auto'
+
+  severity:
+    description: Comma-separated severities to report
+    required: false
+    default: 'ERROR,WARNING'
+
+  fail-on-severity:
+    description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
+    required: false
+    default: 'none'
+
   scan-path:
     description: Path to scan
     required: false

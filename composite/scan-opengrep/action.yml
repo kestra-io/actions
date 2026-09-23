@@ -26,6 +26,21 @@ inputs:
 
 
 
+  mode:
+    description: 'auto, diff or full. auto scans only what a pull request changed, and the whole tree everywhere else'
+    required: false
+    default: "auto"
+
+  severity:
+    description: 'Comma-separated severities to report'
+    required: false
+    default: "ERROR,WARNING"
+
+  fail-on-severity:
+    description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
+    required: false
+    default: "none"
+
   scan-path:
     description: 'Path to scan'
     required: false
@@ -62,6 +77,9 @@ runs:
         github-token: ${{ inputs.github-token }}
         opengrep-version: ${{ inputs.opengrep-version }}
         config-dir: ${{ inputs.config-dir }}
+        mode: ${{ inputs.mode }}
+        severity: ${{ inputs.severity }}
+        fail-on-severity: ${{ inputs.fail-on-severity }}
         scan-path: ${{ inputs.scan-path }}
 
     # Reports run even when the gate above failed the scan step: that is exactly when someone

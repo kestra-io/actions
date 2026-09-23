@@ -46,14 +46,14 @@ test('buildRuleset passes registry refs through with no rule-id root to strip', 
 })
 
 test('buildRuleset adds repository rules alongside the registry, not instead of it', () => {
-  const ruleset = buildRuleset(['p/java'], '.opengrep/rules')
-  assert.deepEqual(ruleset.configs, ['p/java', path.resolve('.opengrep/rules')])
+  const ruleset = buildRuleset(['p/java'], '/tmp/runner/repo-rules.yml')
+  assert.deepEqual(ruleset.configs, ['p/java', path.resolve('/tmp/runner/repo-rules.yml')])
   assert.equal(ruleset.source, 'registry+local')
 })
 
 test('buildRuleset reports local-only when a repository opts out of the registry', () => {
-  const ruleset = buildRuleset([], '.opengrep/rules')
-  assert.deepEqual(ruleset.configs, [path.resolve('.opengrep/rules')])
+  const ruleset = buildRuleset([], '/tmp/runner/repo-rules.yml')
+  assert.deepEqual(ruleset.configs, [path.resolve('/tmp/runner/repo-rules.yml')])
   assert.equal(ruleset.source, 'local')
   assert.equal(path.isAbsolute(ruleset.root), true)
 })

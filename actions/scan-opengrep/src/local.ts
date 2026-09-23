@@ -2,25 +2,32 @@
  * Run the same scan CI runs, locally.
  *
  * `opengrep scan --config .opengrep/settings.yml` cannot work: --config takes a rules file and
- * OpenGrep has no settings-file concept, so something must translate settings into flags. Worse,
- * not every setting *is* a flag — ignore-findings and fail-on-severity are applied to the report
- * after opengrep exits. So the printed command alone gives the unsuppressed result, and only this
- * entrypoint reproduces what CI reports. It shares the action's own modules, so the two cannot
- * drift.
+ * OpenGrep has no settings-file concept, so something must turn settings into flags. This is that
+ * translation, sharing the action's own modules so the two cannot drift.
  *
- *   npm run scan -- /path/to/repo            # same numbers as CI
- *   npm run scan -- /path/to/repo --print    # print the opengrep command only
+ * Every setting does map to a flag, so the command printed here is the whole scan — running it by
+ * hand gives exactly what CI reports.
+ *
+ *   npm run scan -- /path/to/repo                    # run it
+ *   npm run scan -- /path/to/repo --print            # print the command only
+ *   npm run scan -- /path/to/repo --severity ERROR   # default is ERROR,WARNING
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
-import { actionRepoRoot, loadConfig, resolveSettings } from './config.js'
-import { blockingCount, normaliseReport, parseFailOn, summarise, type OpengrepReport } from './findings.js'
+import { stringify as stringifyYaml } from 'yaml'
+import { actionRepoRoot, loadConfig, resolveSettings, shortRuleIds } from './config.js'
+import { normaliseReport, summarise, type OpengrepReport } from './findings.js'
 import { buildRuleset, resolveRulesets } from './rules.js'
 import { buildScanArgs, parseSeverities } from './scan.js'
-import { applySuppressions, describeSuppression } from './suppress.js'
 
 const quote = (value: string): string => (/[^\w@%+=:,./-]/.test(value) ? `'${value.replace(/'/g, `'\\''`)}'` : value)
+
+function flag(args: string[], name: string, fallback: string): string {
+  const i = args.indexOf(`--${name}`)
+  return i >= 0 && args[i + 1] ? args[i + 1]! : fallback
+}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
@@ -28,40 +35,40 @@ async function main(): Promise<void> {
   const target = args.find(a => !a.startsWith('--')) ?? '.'
   const root = path.resolve(target)
 
-  const configDir = path.join(root, '.opengrep')
   const { config, fromFallback } = await loadConfig(
-    configDir,
+    path.join(root, '.opengrep'),
     path.join(actionRepoRoot(import.meta.url), '.opengrep')
   )
   const settings = resolveSettings(config)
   if (fromFallback) console.log('(using the kestra-io/actions fallback settings)')
-  console.log()
+  for (const id of shortRuleIds(settings.excludeRules)) {
+    console.log(`warning: exclude-rules entry '${id}' has no dots; --exclude-rule needs the full id and drops nothing.`)
+  }
+
+  // Outside the scanned tree on purpose: opengrep reads a --config value starting `p/` or `r/` as a
+  // registry reference, so a rules file written into the workspace can be fetched from semgrep.dev.
+  let rulesFile: string | null = null
+  if (settings.rules.length > 0) {
+    rulesFile = path.join(os.tmpdir(), 'opengrep-repository-rules.yml')
+    writeFileSync(rulesFile, stringifyYaml({ rules: settings.rules }))
+  }
 
   const { rulesets } = resolveRulesets(settings.rulesets)
-  const localRules = path.join(configDir, 'rules')
-  const ruleset = buildRuleset(rulesets, existsSync(localRules) ? localRules : null)
+  const ruleset = buildRuleset(rulesets, rulesFile)
+  const json = path.join(os.tmpdir(), 'opengrep-local.json')
 
-  const json = path.join(root, '.opengrep-local.json')
   const argv = buildScanArgs({
     ruleset,
     scanPath: '.',
-    severities: parseSeverities(settings.severity),
+    severities: parseSeverities(flag(args, 'severity', 'ERROR,WARNING')),
     jsonOutput: json,
-    sarifOutput: path.join(root, '.opengrep-local.sarif'),
+    sarifOutput: path.join(os.tmpdir(), 'opengrep-local.sarif'),
     excludeRules: settings.excludeRules,
     excludePaths: settings.excludePaths
   })
 
-  console.log(`opengrep ${argv.map(quote).join(' ')}\n`)
-  if (printOnly) {
-    if (settings.ignoreFindings.length > 0) {
-      console.log(
-        `note: ${settings.ignoreFindings.length} ignore-findings rule(s) are applied after this ` +
-          'command by the action, so running it alone reports more findings than CI does.'
-      )
-    }
-    return
-  }
+  console.log(`\nopengrep ${argv.map(quote).join(' ')}\n`)
+  if (printOnly) return
 
   const run = spawnSync('opengrep', argv, { cwd: root, stdio: 'inherit' })
   if (run.error) {
@@ -69,24 +76,8 @@ async function main(): Promise<void> {
   }
 
   const report = normaliseReport(JSON.parse(readFileSync(json, 'utf8')) as OpengrepReport, ruleset.root)
-  const { report: kept, suppressions } = applySuppressions(report, settings.ignoreFindings, file =>
-    readFileSync(path.join(root, file), 'utf8').split('\n')
-  )
-  for (const suppression of suppressions) console.log(`suppressed ${describeSuppression(suppression)}`)
-
-  const raw = summarise(report)
-  const summary = summarise(kept)
-  const dropped = raw.total - summary.total
-  console.log(
-    `\n${raw.total} finding(s) from opengrep, ${dropped} dropped by ignore-findings` +
-      `\n${summary.total} reported: ${summary.ERROR} error, ${summary.WARNING} warning, ${summary.INFO} info`
-  )
-
-  const blocking = blockingCount(summary, parseFailOn(settings.failOnSeverity))
-  if (blocking > 0) {
-    console.error(`\nfail-on-severity=${settings.failOnSeverity}: ${blocking} finding(s) would fail CI`)
-    process.exitCode = 1
-  }
+  const summary = summarise(report)
+  console.log(`\n${summary.total} finding(s): ${summary.ERROR} error, ${summary.WARNING} warning, ${summary.INFO} info`)
 }
 
 main().catch((error: Error) => {

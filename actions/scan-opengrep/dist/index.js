@@ -40,7 +40,6 @@ import require$$0$c from 'string_decoder';
 import * as require$$2 from 'child_process';
 import require$$2__default from 'child_process';
 import require$$6$1, { setTimeout as setTimeout$1 } from 'timers';
-import require$$0$g, { readFileSync as readFileSync$1 } from 'node:fs';
 import * as fs$1 from 'node:fs/promises';
 import * as path$1 from 'node:path';
 import * as require$$0$4 from 'stream';
@@ -53,6 +52,7 @@ import require$$1$8 from 'node:https';
 import require$$0$d from 'tty';
 import require$$0$f, { createHash } from 'node:crypto';
 import require$$2$3 from 'buffer';
+import require$$0$g from 'node:fs';
 
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -36603,7 +36603,7 @@ function stringifyProps(node, tagObj, { anchors, doc }) {
         props.push(doc.directives.tagString(tag));
     return props.join(' ');
 }
-function stringify(item, ctx, onComment, onChompKeep) {
+function stringify$1(item, ctx, onComment, onChompKeep) {
     if (isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
     if (isAlias(item)) {
@@ -36666,7 +36666,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
     });
     let keyCommentDone = false;
     let chompKeep = false;
-    let str = stringify(key, ctx, () => (keyCommentDone = true), () => (chompKeep = true));
+    let str = stringify$1(key, ctx, () => (keyCommentDone = true), () => (chompKeep = true));
     if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
             throw new Error('With simple keys, single line scalar must not span more than 1024 characters');
@@ -36729,7 +36729,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
         ctx.indent = ctx.indent.substring(2);
     }
     let valueCommentDone = false;
-    const valueStr = stringify(value, ctx, () => (valueCommentDone = true), () => (chompKeep = true));
+    const valueStr = stringify$1(value, ctx, () => (valueCommentDone = true), () => (chompKeep = true));
     let ws = ' ';
     if (keyComment || vsb || vcb) {
         ws = vsb ? '\n' : '';
@@ -36968,7 +36968,7 @@ function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, fl
             }
         }
         chompKeep = false;
-        let str = stringify(item, itemCtx, () => (comment = null), () => (chompKeep = true));
+        let str = stringify$1(item, itemCtx, () => (comment = null), () => (chompKeep = true));
         if (comment)
             str += lineComment(str, itemIndent, commentString(comment));
         if (chompKeep && comment)
@@ -37038,7 +37038,7 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
         }
         if (comment)
             reqNewline = true;
-        let str = stringify(item, itemCtx, () => (comment = null));
+        let str = stringify$1(item, itemCtx, () => (comment = null));
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes('\n'));
         if (i < items.length - 1) {
             str += ',';
@@ -38243,7 +38243,7 @@ function stringifyDocument(doc, options) {
             contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? undefined : () => (chompKeep = true);
-        let body = stringify(doc.contents, ctx, () => (contentComment = null), onChompKeep);
+        let body = stringify$1(doc.contents, ctx, () => (contentComment = null), onChompKeep);
         if (contentComment)
             body += lineComment(body, '', commentString(contentComment));
         if ((body[0] === '|' || body[0] === '>') &&
@@ -38256,7 +38256,7 @@ function stringifyDocument(doc, options) {
             lines.push(body);
     }
     else {
-        lines.push(stringify(doc.contents, ctx));
+        lines.push(stringify$1(doc.contents, ctx));
     }
     if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -42034,6 +42034,20 @@ function parse(src, reviver, options) {
     }
     return doc.toJS(Object.assign({ reviver: _reviver }, options));
 }
+function stringify(value, replacer, options) {
+    let _replacer = null;
+    if (Array.isArray(replacer)) {
+        _replacer = replacer;
+    }
+    if (value === undefined) {
+        const { keepUndefined } = {};
+        if (!keepUndefined)
+            return undefined;
+    }
+    if (isDocument(value) && !_replacer)
+        return value.toString(options);
+    return new Document(value, _replacer, options).toString(options);
+}
 
 const CONFIG_FILENAMES = ["settings.yml", "settings.yaml"];
 function parseConfig(source) {
@@ -42047,54 +42061,20 @@ function parseConfig(source) {
 function asList(value) {
   return Array.isArray(value) ? value.map(String).map((entry) => entry.trim()).filter(Boolean) : [];
 }
-function dedupeIgnoreRules(rules) {
-  const seen = /* @__PURE__ */ new Set();
-  return rules.filter((rule) => {
-    const key = `${rule.rule}\0${rule.match}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-function normaliseIgnoreRules(value) {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry, index) => {
-    if (!entry?.rule || !entry?.match) {
-      throw new Error(`ignore-findings[${index}] needs both a 'rule' and a 'match'.`);
-    }
-    const matchNearest = entry.matchNearest ?? entry["match-nearest"];
-    return {
-      rule: String(entry.rule),
-      match: String(entry.match),
-      ...matchNearest ? { matchNearest: String(matchNearest) } : {},
-      ...entry.within != null ? { within: Number(entry.within) } : {},
-      reason: entry.reason
-    };
-  });
+function shortRuleIds(excludeRules) {
+  return excludeRules.filter((id) => !id.includes("."));
 }
 function resolveSettings(config) {
   const rulesets = asList(config.rulesets);
-  if (rulesets.length === 0) {
-    throw new Error("OpenGrep config must set 'rulesets'; the action ships no default.");
-  }
-  const severity = asList(config.severity);
-  if (severity.length === 0) {
-    throw new Error("OpenGrep config must set 'severity'; the action ships no default.");
-  }
-  if (!config["fail-on-severity"]) {
-    throw new Error("OpenGrep config must set 'fail-on-severity'; the action ships no default.");
-  }
-  if (!config.mode) {
-    throw new Error("OpenGrep config must set 'mode'; the action ships no default.");
+  const rules = Array.isArray(config.rules) ? config.rules : [];
+  if (rulesets.length === 0 && rules.length === 0) {
+    throw new Error("OpenGrep settings must set 'rulesets' or 'rules'; the action ships no default.");
   }
   return {
     rulesets: rulesets.join(","),
     excludeRules: [...new Set(asList(config["exclude-rules"]))],
-    ignoreFindings: dedupeIgnoreRules(normaliseIgnoreRules(config["ignore-findings"])),
     excludePaths: [...new Set(asList(config["exclude-paths"]))],
-    mode: config.mode,
-    severity: severity.join(","),
-    failOnSeverity: config["fail-on-severity"]
+    rules
   };
 }
 function actionRepoRoot(moduleUrl) {
@@ -42114,16 +42094,16 @@ async function readFirst(dir) {
 async function loadConfig(configDir, fallbackDir) {
   const own = await readFirst(configDir);
   if (own) {
-    info(`Configuration: ${own.file}`);
+    info(`Settings: ${own.file}`);
     return { config: parseConfig(own.text), source: own.file, fromFallback: false };
   }
   const fallback = await readFirst(fallbackDir);
   if (fallback) {
-    info(`Configuration: none in ${configDir}, using the kestra-io/actions default (${fallback.file})`);
+    info(`Settings: none in ${configDir}, using the kestra-io/actions default (${fallback.file})`);
     return { config: parseConfig(fallback.text), source: fallback.file, fromFallback: true };
   }
   throw new Error(
-    `No OpenGrep configuration found in '${configDir}' or in the action's own '${fallbackDir}'. The action ships no defaults; add .opengrep/settings.yml.`
+    `No OpenGrep settings found in '${configDir}' or in the action's own '${fallbackDir}'. The action ships no defaults; add .opengrep/settings.yml.`
   );
 }
 
@@ -112586,67 +112566,11 @@ function resolveRulesets(input) {
   }
   return { rulesets };
 }
-function buildRuleset(rulesets, localRulesDir) {
+function buildRuleset(rulesets, localRulesFile) {
   const configs = [...rulesets];
-  if (localRulesDir) configs.push(path$1.resolve(localRulesDir));
-  const source = localRulesDir ? rulesets.length > 0 ? "registry+local" : "local" : "registry";
-  return { configs, root: localRulesDir ? path$1.resolve(localRulesDir) : "", source };
-}
-
-const DEFAULT_WITHIN = 20;
-function matcher(rule) {
-  try {
-    return new RegExp(rule.match);
-  } catch (error) {
-    throw new Error(`Invalid 'match' regular expression in ignore-findings for rule '${rule.rule}': ${error.message}`);
-  }
-}
-function subjectFor(result, rule, readLines) {
-  if (!rule.matchNearest) {
-    return result.extra?.lines ?? "";
-  }
-  if (!readLines) return null;
-  let anchor;
-  try {
-    anchor = new RegExp(rule.matchNearest);
-  } catch (error) {
-    throw new Error(`Invalid 'match-nearest' regular expression for rule '${rule.rule}': ${error.message}`);
-  }
-  const lines = readLines(result.path);
-  const within = rule.within ?? DEFAULT_WITHIN;
-  const from = result.start.line - 2;
-  for (let i = from; i >= 0 && i > from - within; i--) {
-    const line = lines[i];
-    if (line != null && anchor.test(line)) return line;
-  }
-  return null;
-}
-function isSuppressed(result, rule, pattern, readLines) {
-  if (!result.check_id?.includes(rule.rule)) return false;
-  const subject = subjectFor(result, rule, readLines);
-  return subject != null && pattern.test(subject);
-}
-function applySuppressions(report, rules, readLines) {
-  if (rules.length === 0) return { report, suppressions: [], total: 0 };
-  const patterns = rules.map((rule) => ({ rule, pattern: matcher(rule) }));
-  const counts = new Map(rules.map((rule) => [rule, 0]));
-  const kept = (report.results ?? []).filter((result) => {
-    const hit = patterns.find(({ rule, pattern }) => isSuppressed(result, rule, pattern, readLines));
-    if (!hit) return true;
-    counts.set(hit.rule, (counts.get(hit.rule) ?? 0) + 1);
-    return false;
-  });
-  const suppressions = rules.map((rule) => ({ rule, count: counts.get(rule) ?? 0 }));
-  return {
-    report: { ...report, results: kept },
-    suppressions,
-    total: suppressions.reduce((sum, entry) => sum + entry.count, 0)
-  };
-}
-function describeSuppression({ rule, count }) {
-  const reason = rule.reason ? ` \u2014 ${rule.reason}` : "";
-  const where = rule.matchNearest ? ` near /${rule.matchNearest}/` : "";
-  return `${count} finding(s) matching /${rule.match}/${where} in ${rule.rule}${reason}`;
+  if (localRulesFile) configs.push(path$1.resolve(localRulesFile));
+  const source = localRulesFile ? rulesets.length > 0 ? "registry+local" : "local" : "registry";
+  return { configs, root: localRulesFile ? path$1.dirname(path$1.resolve(localRulesFile)) : "", source };
 }
 
 function parseMode(value) {
@@ -112706,20 +112630,27 @@ async function run() {
   const scanPath = getInput("scan-path") || ".";
   const loaded = await loadConfig(configDir, path$1.join(actionRepoRoot(import.meta.url), ".opengrep"));
   const settings = resolveSettings(loaded.config);
-  const mode = parseMode(settings.mode);
-  const severities = parseSeverities(settings.severity);
-  const failOn = parseFailOn(settings.failOnSeverity);
+  const mode = parseMode(getInput("mode") || "auto");
+  const severities = parseSeverities(getInput("severity") || "ERROR,WARNING");
+  const failOn = parseFailOn(getInput("fail-on-severity") || "none");
+  for (const id of shortRuleIds(settings.excludeRules)) {
+    warning(`exclude-rules entry '${id}' has no dots; --exclude-rule matches the full rule id, so this drops nothing.`);
+  }
   const maxRows = Number(getInput("comment-max-rows") || "50");
   const checkName = getInput("check-name") || "OpenGrep";
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const jsonOutput = path$1.join(temp, "opengrep.json");
   const sarifOutput = path$1.join(temp, "opengrep.sarif");
   const { rulesets } = resolveRulesets(settings.rulesets);
-  const localRulesDir = path$1.join(configDir, "rules");
-  const ruleset = buildRuleset(rulesets, await exists(localRulesDir) ? localRulesDir : null);
+  let localRulesFile = null;
+  if (settings.rules.length > 0) {
+    localRulesFile = path$1.join(temp, "opengrep-repository-rules.yml");
+    await fs$1.writeFile(localRulesFile, stringify({ rules: settings.rules }));
+    info(`Repository rules: ${settings.rules.length} from ${loaded.source}`);
+  }
+  const ruleset = buildRuleset(rulesets, localRulesFile);
   info(`Rulesets: ${rulesets.join(", ")} (fetched from ${REGISTRY_HOST} at scan time)`);
-  if (ruleset.source !== "registry") info(`Plus repository rules: ${localRulesDir}`);
-  if (settings.excludeRules.length > 0) info(`Excluded rules: ${settings.excludeRules.length}`);
+  if (settings.excludeRules.length > 0) info(`Excluded rules: ${settings.excludeRules.join(", ")}`);
   const { binary: opengrep, release } = await installOpengrep(
     getInput("opengrep-version") || "latest",
     process.env.RUNNER_ARCH ?? "X64",
@@ -112756,25 +112687,7 @@ async function run() {
     skip(`no report was produced, rules are fetched from ${REGISTRY_HOST} at scan time`);
     return;
   }
-  const scanned = normaliseReport(await readJson(jsonOutput), ruleset.root);
-  const lineCache = /* @__PURE__ */ new Map();
-  const readLines = (file) => {
-    let lines = lineCache.get(file);
-    if (!lines) {
-      try {
-        lines = readFileSync$1(file, "utf8").split("\n");
-      } catch {
-        lines = [];
-      }
-      lineCache.set(file, lines);
-    }
-    return lines;
-  };
-  const { report, suppressions, total: suppressed } = applySuppressions(scanned, settings.ignoreFindings, readLines);
-  for (const suppression of suppressions) {
-    info(`Suppressed ${describeSuppression(suppression)}`);
-  }
-  if (suppressed > 0) info(`${suppressed} finding(s) suppressed by ignore-findings.`);
+  const report = normaliseReport(await readJson(jsonOutput), ruleset.root);
   await fs$1.writeFile(jsonOutput, JSON.stringify(report, null, 2));
   if (await exists(sarifOutput)) {
     await fs$1.writeFile(sarifOutput, JSON.stringify(normaliseSarif(await readJson(sarifOutput), ruleset.root), null, 2));

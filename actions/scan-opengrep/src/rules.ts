@@ -47,16 +47,19 @@ export interface Ruleset {
 }
 
 /**
- * Registry packs plus, when the repository ships one, its own rules directory.
+ * Registry packs plus, when the settings file declares any, the repository's own rules.
  *
- * The local directory is additive rather than a replacement: a repository that writes one rule of
- * its own should not thereby lose the entire registry ruleset. Passing an empty rulesets list is
- * how a repository opts out of the registry entirely.
+ * Local rules are additive: a repository that writes one rule of its own should not thereby lose
+ * the registry ruleset. An empty rulesets list is how a repository opts out of the registry.
+ *
+ * `localRulesFile` must sit outside the scanned tree — RUNNER_TEMP, not the workspace. A path
+ * beginning `p/` or `r/` is a registry reference to opengrep, not a file, so a rules file written
+ * anywhere that could be read that way is silently fetched from semgrep.dev instead.
  */
-export function buildRuleset(rulesets: string[], localRulesDir: string | null): Ruleset {
+export function buildRuleset(rulesets: string[], localRulesFile: string | null): Ruleset {
   const configs = [...rulesets]
-  if (localRulesDir) configs.push(path.resolve(localRulesDir))
+  if (localRulesFile) configs.push(path.resolve(localRulesFile))
 
-  const source = localRulesDir ? (rulesets.length > 0 ? 'registry+local' : 'local') : 'registry'
-  return { configs, root: localRulesDir ? path.resolve(localRulesDir) : '', source }
+  const source = localRulesFile ? (rulesets.length > 0 ? 'registry+local' : 'local') : 'registry'
+  return { configs, root: localRulesFile ? path.dirname(path.resolve(localRulesFile)) : '', source }
 }

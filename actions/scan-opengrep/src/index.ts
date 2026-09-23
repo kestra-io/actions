@@ -1,13 +1,12 @@
 import * as core from '@actions/core'
 import * as exec from '@actions/exec'
 import * as github from '@actions/github'
-import { readFileSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { toAnnotations } from './annotations.js'
 import { resolveBaseline } from './baseline.js'
 import { publishCheckRun } from './checks.js'
-import { actionRepoRoot, loadConfig, resolveSettings } from './config.js'
+import { actionRepoRoot, loadConfig, resolveSettings, shortRuleIds } from './config.js'
 import {
   blockingCount,
   fatalMessages,
@@ -22,7 +21,7 @@ import {
 import { installOpengrep } from './install.js'
 import { buildCommentModel, renderStepSummary } from './report.js'
 import { buildRuleset, resolveRulesets } from './rules.js'
-import { applySuppressions, describeSuppression } from './suppress.js'
+import { stringify as stringifyYaml } from 'yaml'
 import { buildScanArgs, parseMode, parseSeverities, resolveMode } from './scan.js'
 import { REGISTRY_HOST } from './version.js'
 
@@ -46,13 +45,17 @@ async function run(): Promise<void> {
   const token = core.getInput('github-token')
   const scanPath = core.getInput('scan-path') || '.'
 
-  // The scanned repository's own config, or the one shipped in kestra-io/actions when it has none.
+  // The scanned repository's own settings, or the one shipped in kestra-io/actions when it has none.
   const loaded = await loadConfig(configDir, path.join(actionRepoRoot(import.meta.url), '.opengrep'))
   const settings = resolveSettings(loaded.config)
+  const mode = parseMode(core.getInput('mode') || 'auto')
+  const severities = parseSeverities(core.getInput('severity') || 'ERROR,WARNING')
+  const failOn = parseFailOn(core.getInput('fail-on-severity') || 'none')
 
-  const mode = parseMode(settings.mode)
-  const severities = parseSeverities(settings.severity)
-  const failOn = parseFailOn(settings.failOnSeverity)
+  for (const id of shortRuleIds(settings.excludeRules)) {
+    core.warning(`exclude-rules entry '${id}' has no dots; --exclude-rule matches the full rule id, so this drops nothing.`)
+  }
+
   const maxRows = Number(core.getInput('comment-max-rows') || '50')
   const checkName = core.getInput('check-name') || 'OpenGrep'
 
@@ -62,12 +65,17 @@ async function run(): Promise<void> {
 
   const { rulesets } = resolveRulesets(settings.rulesets)
 
-  // A repository's own rules sit alongside the registry packs, not instead of them.
-  const localRulesDir = path.join(configDir, 'rules')
-  const ruleset = buildRuleset(rulesets, (await exists(localRulesDir)) ? localRulesDir : null)
+  // Inline `rules:` become a real rules file. It goes in RUNNER_TEMP, never the workspace: opengrep
+  // reads a --config value starting `p/` or `r/` as a registry reference rather than a path.
+  let localRulesFile: string | null = null
+  if (settings.rules.length > 0) {
+    localRulesFile = path.join(temp, 'opengrep-repository-rules.yml')
+    await fs.writeFile(localRulesFile, stringifyYaml({ rules: settings.rules }))
+    core.info(`Repository rules: ${settings.rules.length} from ${loaded.source}`)
+  }
+  const ruleset = buildRuleset(rulesets, localRulesFile)
   core.info(`Rulesets: ${rulesets.join(', ')} (fetched from ${REGISTRY_HOST} at scan time)`)
-  if (ruleset.source !== 'registry') core.info(`Plus repository rules: ${localRulesDir}`)
-  if (settings.excludeRules.length > 0) core.info(`Excluded rules: ${settings.excludeRules.length}`)
+  if (settings.excludeRules.length > 0) core.info(`Excluded rules: ${settings.excludeRules.join(', ')}`)
 
   const { binary: opengrep, release } = await installOpengrep(
     core.getInput('opengrep-version') || 'latest',
@@ -117,35 +125,7 @@ async function run(): Promise<void> {
     return
   }
 
-  const scanned = normaliseReport(await readJson<OpengrepReport>(jsonOutput), ruleset.root)
-
-  // Suppression runs after normalisation, so ignore rules match the clean ids a human would write,
-  // and before everything downstream, so a suppressed finding reaches neither the gate, the
-  // annotations, nor the comment.
-  // Some suppressions need the lines around a finding, not just the finding. Memoised because a
-  // file typically carries several findings and each would otherwise re-read it.
-  const lineCache = new Map<string, string[]>()
-  const readLines = (file: string): string[] => {
-    let lines = lineCache.get(file)
-    if (!lines) {
-      try {
-        lines = readFileSync(file, 'utf8').split('\n')
-      } catch {
-        lines = []
-      }
-      lineCache.set(file, lines)
-    }
-    return lines
-  }
-
-  const { report, suppressions, total: suppressed } = applySuppressions(scanned, settings.ignoreFindings, readLines)
-  for (const suppression of suppressions) {
-    // Logged even at zero: a suppression that quietly stops matching, because the rule id moved
-    // upstream or the pattern no longer fits, should be visible rather than discovered later.
-    core.info(`Suppressed ${describeSuppression(suppression)}`)
-  }
-  if (suppressed > 0) core.info(`${suppressed} finding(s) suppressed by ignore-findings.`)
-
+  const report = normaliseReport(await readJson<OpengrepReport>(jsonOutput), ruleset.root)
   await fs.writeFile(jsonOutput, JSON.stringify(report, null, 2))
   if (await exists(sarifOutput)) {
     await fs.writeFile(sarifOutput, JSON.stringify(normaliseSarif(await readJson(sarifOutput), ruleset.root), null, 2))
