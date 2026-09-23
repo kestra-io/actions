@@ -136,8 +136,8 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           git -C kestra-ee branch -f "$BASE_REF" HEAD
+          rm -rf .git
           git init -q .
-          git remote remove origin 2>/dev/null || true
           git remote add origin "file://$GITHUB_WORKSPACE/kestra-ee"
 
       # The unit tests share this group with the type check so the two longest steps overlap.
