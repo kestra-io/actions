@@ -1,29 +1,36 @@
-# OpenGrep settings.
+# OpenGrep settings for actions/scan-opengrep.
 #
-# Named settings.yml, not config.yml, on purpose: `opengrep --config` takes a *rules* file, so
+# OpenGrep has no settings-file concept: `--config` takes a *rules* file, so
 # `opengrep scan --config .opengrep/settings.yml` fails with "One of these properties is missing:
-# 'rules'". OpenGrep has no settings-file concept — --config accepts rules only — so something has
-# to turn these keys into flags. Rules, which --config does accept, go in .opengrep/rules/.
+# 'rules'". That is why this is settings.yml, not config.yml, and why rules — which --config does
+# accept — live in .opengrep/rules/ instead.
 #
-# To run the same scan locally, from actions/scan-opengrep:
+# The keys below split into two groups, and the difference matters when reproducing a scan:
 #
-#   npm run scan -- /path/to/repo           # run it
+#   Become opengrep flags          Applied by the action, after opengrep has run
+#   ---------------------          --------------------------------------------
+#   rulesets      -> --config      ignore-findings   drops matching findings from the report
+#   severity      -> --severity    fail-on-severity  decides the step's exit code
+#   exclude-rules -> --exclude-rule
+#   exclude-paths -> --exclude
+#   mode          -> --baseline-commit (on a pull request)
+#
+# So running the printed opengrep command by hand gives the *unsuppressed* result — on this
+# repository 157 findings, of which 85 are the kestra-io/actions references ignore-findings drops.
+# To reproduce what CI reports (72), run the action's own path, which applies both groups:
+#
+#   cd actions/scan-opengrep
+#   npm run scan -- /path/to/repo           # same numbers as CI
 #   npm run scan -- /path/to/repo --print   # just print the opengrep command
 #
-# That shares the action's own argument builder, so local and CI cannot drift. It also prints the
-# full command, which is roughly:
+# ignore-findings is deliberately not an opengrep flag. OpenGrep's native suppression is
+# --exclude-rule (the whole rule, everywhere), a `nosemgrep` comment (per line, editing the source)
+# or .semgrepignore (per path). None can express "this rule, but only where the line matches X" —
+# silencing the kestra-io/actions references natively would mean 84 inline comments.
 #
-#   opengrep scan --config p/default \
-#     --severity ERROR --severity WARNING \
-#     --exclude 'actions/*/dist/**' --exclude '**/src/test/**' \
-#     --exclude '**/src/testFixtures/**' \
-#     --no-error --quiet .
-#
-# ignore-findings has no flag: those findings are dropped after the scan, each logged with a count.
-#
-# This file is the only source of scan behaviour — actions/scan-opengrep holds no defaults. A
-# repository with no .opengrep/settings.yml of its own falls back to *this* file, which the action
-# reads out of its own checkout. Every key below is required; the action fails rather than guessing.
+# This file is the only source of scan behaviour; the action holds no defaults. A repository with no
+# .opengrep/settings.yml falls back to *this* file, read from the action's own checkout. Every key
+# below is required.
 
 # Rulesets are fetched from the Semgrep registry when the scan runs, so they are always current.
 # A bare word is shorthand for a pack: `java` means `p/java`.

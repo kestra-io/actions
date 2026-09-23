@@ -1,14 +1,15 @@
 /**
  * Run the same scan CI runs, locally.
  *
- * `opengrep scan --config .opengrep/settings.yml` cannot work: --config takes a rules file, and
- * OpenGrep has no settings-file concept, so something has to translate settings into flags. This
- * entrypoint is that translation — and it is the *same* code the action uses, so local and CI
- * cannot drift. It prints the command before running it, so the flags can be copied and adjusted.
+ * `opengrep scan --config .opengrep/settings.yml` cannot work: --config takes a rules file and
+ * OpenGrep has no settings-file concept, so something must translate settings into flags. Worse,
+ * not every setting *is* a flag — ignore-findings and fail-on-severity are applied to the report
+ * after opengrep exits. So the printed command alone gives the unsuppressed result, and only this
+ * entrypoint reproduces what CI reports. It shares the action's own modules, so the two cannot
+ * drift.
  *
- *   npm run scan                 # scan the current directory
- *   npm run scan -- ../../        # scan somewhere else
- *   npm run scan -- . --print     # print the command without running it
+ *   npm run scan -- /path/to/repo            # same numbers as CI
+ *   npm run scan -- /path/to/repo --print    # print the opengrep command only
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -52,7 +53,15 @@ async function main(): Promise<void> {
   })
 
   console.log(`opengrep ${argv.map(quote).join(' ')}\n`)
-  if (printOnly) return
+  if (printOnly) {
+    if (settings.ignoreFindings.length > 0) {
+      console.log(
+        `note: ${settings.ignoreFindings.length} ignore-findings rule(s) are applied after this ` +
+          'command by the action, so running it alone reports more findings than CI does.'
+      )
+    }
+    return
+  }
 
   const run = spawnSync('opengrep', argv, { cwd: root, stdio: 'inherit' })
   if (run.error) {
@@ -65,8 +74,13 @@ async function main(): Promise<void> {
   )
   for (const suppression of suppressions) console.log(`suppressed ${describeSuppression(suppression)}`)
 
+  const raw = summarise(report)
   const summary = summarise(kept)
-  console.log(`\n${summary.total} finding(s): ${summary.ERROR} error, ${summary.WARNING} warning, ${summary.INFO} info`)
+  const dropped = raw.total - summary.total
+  console.log(
+    `\n${raw.total} finding(s) from opengrep, ${dropped} dropped by ignore-findings` +
+      `\n${summary.total} reported: ${summary.ERROR} error, ${summary.WARNING} warning, ${summary.INFO} info`
+  )
 
   const blocking = blockingCount(summary, parseFailOn(settings.failOnSeverity))
   if (blocking > 0) {
