@@ -1,11 +1,22 @@
-import {readdirSync, readFileSync, statSync} from 'node:fs';
-import {join} from 'node:path';
+import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
+import {basename, extname, join} from 'node:path';
 import {Client} from '@notionhq/client';
 import {toNotionMarkdown} from './markdown.mjs';
 
 const {NOTION_TOKEN, NOTION_PARENT_PAGE_ID, DOCS_DIR, DOCS_NAME} = process.env;
 
 const ASYNC_THRESHOLD = 100 * 1024;
+
+const IMAGE_TYPES = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+    '.avif': 'image/avif',
+    '.bmp': 'image/bmp',
+};
 
 const notion = new Client({auth: NOTION_TOKEN, notionVersion: '2026-03-11'});
 
@@ -40,12 +51,16 @@ const humanize = (name) => name
     .replace(/[-_]/g, ' ')
     .replace(/^./, (character) => character.toUpperCase());
 
-const titleOf = (name, body) => {
-    const frontmatter = body.match(/^---\n([\s\S]*?)\n---/);
-    const declared = frontmatter?.[1].match(/^title:\s*(.+)$/m)?.[1].trim().replace(/^["']|["']$/g, '');
+const frontmatter = (raw) => raw.match(/^---\n([\s\S]*?)\n---\n?/);
 
-    return declared || body.match(/^#\s+(.+)$/m)?.[1].trim() || humanize(name);
-};
+const field = (front, name) => front?.[1]
+    .match(new RegExp(`^${name}:[^\\S\\n]*(.+)$`, 'm'))?.[1]
+    .trim()
+    .replace(/^["']|["']$/g, '');
+
+const titleOf = (name, front, body) => field(front, 'title')
+    || body.match(/^#\s+(.+)$/m)?.[1].trim()
+    || humanize(name);
 
 const entries = (directory) => readdirSync(directory, {withFileTypes: true})
     .filter((entry) => entry.isDirectory() || entry.name.endsWith('.md'))
@@ -74,6 +89,47 @@ const listChildren = async (block) => {
     return blocks;
 };
 
+// markdown and children are mutually exclusive on page creation, so the image can only be appended
+const attachImage = async (page, directory, front, source) => {
+    const declared = field(front, 'image');
+
+    if (!declared) {
+        if (/^image:[^\S\n]*$/m.test(front?.[1] ?? '')) {
+            console.log(`::warning file=${source}::declare a single image, not a list`);
+        }
+
+        return;
+    }
+
+    const path = join(directory, declared);
+    const type = IMAGE_TYPES[extname(path).toLowerCase()];
+
+    if (!existsSync(path)) {
+        console.log(`::warning file=${source}::image not found: ${declared}`);
+
+        return;
+    }
+
+    if (!type) {
+        console.log(`::warning file=${source}::unsupported image format: ${declared}`);
+
+        return;
+    }
+
+    const filename = basename(path);
+    const upload = await call(() => notion.fileUploads.create({mode: 'single_part', filename, content_type: type}));
+
+    await call(() => notion.fileUploads.send({
+        file_upload_id: upload.id,
+        file: {filename, data: new Blob([readFileSync(path)], {type})},
+    }));
+
+    await call(() => notion.blocks.children.append({
+        block_id: page,
+        children: [{type: 'image', image: {type: 'file_upload', file_upload: {id: upload.id}}}],
+    }));
+};
+
 const publish = async (parent, directory) => {
     for (const entry of entries(directory)) {
         if (entry.directory) {
@@ -84,13 +140,17 @@ const publish = async (parent, directory) => {
             continue;
         }
 
-        const body = readFileSync(entry.path, 'utf8');
+        const raw = readFileSync(entry.path, 'utf8');
+        const front = frontmatter(raw);
+        const body = front ? raw.slice(front[0].length) : raw;
         const large = statSync(entry.path).size > ASYNC_THRESHOLD;
-        const response = await createPage(parent, titleOf(entry.name, body), toNotionMarkdown(body), large);
+        const response = await createPage(parent, titleOf(entry.name, front, body), toNotionMarkdown(body), large);
 
         if (response.truncated) {
             console.log(`::warning file=${entry.path}::content truncated by Notion`);
         }
+
+        await attachImage(response.id, directory, front, entry.path);
     }
 };
 
