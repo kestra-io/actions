@@ -40432,7 +40432,6 @@ class CommentUpdate {
   octokit;
   title;
   titleHash;
-  displayTitle = "";
   boldTitle = "";
   summarySuffix = "";
   resultTemplate;
@@ -40609,14 +40608,9 @@ ${s}`);
     this.summarySuffix = this._summarySuffix(
       this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ""
     );
-    this.displayTitle = `${this.boldTitle}${this.summarySuffix}`;
     await this._addComment(renderer);
     if (this.addSummary && renderer.trim() !== "") {
-      let section = `## ${this.displayTitle}
-
-${renderer}
-`;
-      summary.addRaw(section, true).write();
+      summary.addRaw(this._sectionContent(renderer), true).write();
     }
   }
   async _fetchUnreleasedCommits() {

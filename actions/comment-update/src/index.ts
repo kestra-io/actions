@@ -18,7 +18,6 @@ class CommentUpdate {
     private octokit: InstanceType<typeof GitHub>;
     private readonly title: string;
     private readonly titleHash: string;
-    private displayTitle: string = '';
     private boldTitle: string = '';
     private summarySuffix: string = '';
     private readonly resultTemplate: string;
@@ -234,13 +233,11 @@ class CommentUpdate {
         this.summarySuffix = this._summarySuffix(
             this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ''
         );
-        this.displayTitle = `${this.boldTitle}${this.summarySuffix}`;
 
         await this._addComment(renderer);
 
         if (this.addSummary && renderer.trim() !== '') {
-            let section = `## ${this.displayTitle}\n\n${renderer}\n`
-            core.summary.addRaw(section, true).write();
+            core.summary.addRaw(this._sectionContent(renderer), true).write();
         }
     }
 
