@@ -17,10 +17,10 @@
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-node-resolve": "^16.0.3",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.1",
     "@types/nunjucks": "^3.2.6",
     "esbuild": "^0.28.2",
-    "rollup": "^4.63.2",
+    "rollup": "^4.63.3",
     "rollup-plugin-esbuild": "^6.2.1",
     "typescript": "^7.0.2"
   },
