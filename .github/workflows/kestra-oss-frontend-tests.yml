@@ -165,6 +165,23 @@ jobs:
           github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
           scan-path: ui
 
+      # Ship the findings to Elastic, alongside the pull request comment and the artifact the
+      # composite above already produces. Reuses the OTLP secrets: the managed _bulk input lives on
+      # the same ingest host as the Managed OTLP Endpoint and authenticates the same way.
+      - name: OpenGrep - Report findings to Elastic
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
+        continue-on-error: true
+        uses: kestra-io/actions/actions/report-sarif@main
+        with:
+          sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
+          # Static analysis, not a vulnerability scanner: no CVE, no package, a rule a file breaks.
+          type: misconfigurations
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=kestra
+            component=frontend
+
       - name: Storybook - Wait for Playwright install
         wait: [playwright-install]
 

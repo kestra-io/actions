@@ -353,17 +353,54 @@ jobs:
 
       # Trivy scan for PR
       - name: Trivy - Scan jar for PR only
+        id: trivy
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # OpenGrep static analysis. 
+      # Dependency CVEs, shipped to the same data stream as the OpenGrep findings below — one view
+      # over both. Gated on the scan's outcome because that step only runs for a pull request with a
+      # shadow jar; a skipped or failed scan leaves no report to ship.
+      - name: Trivy - Report findings to Elastic
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy.outcome == 'success' }}
+        continue-on-error: true
+        uses: kestra-io/actions/actions/report-sarif@main
+        with:
+          # The native JSON, not the SARIF the composite also produces: SARIF drops the advisory
+          # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
+          sarif-files: ${{ steps.trivy.outputs.json-file }}
+          type: vulnerabilities
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=${{ github.event.repository.name }}
+            component=plugin
+
+      # OpenGrep static analysis.
       - name: OpenGrep - Static analysis
+        id: opengrep
         if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Ship the findings to Elastic, alongside the pull request comment and the artifact the
+      # composite above already produces. Reuses the OTLP secrets: the managed _bulk input lives on
+      # the same ingest host as the Managed OTLP Endpoint and authenticates the same way.
+      - name: OpenGrep - Report findings to Elastic
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && startsWith(github.repository, 'kestra-io/') }}
+        continue-on-error: true
+        uses: kestra-io/actions/actions/report-sarif@main
+        with:
+          sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
+          # Static analysis, not a vulnerability scanner: no CVE, no package, a rule a file breaks.
+          type: misconfigurations
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=${{ github.event.repository.name }}
+            component=plugin
 
       # GitHub Release
       - name: GitHub - Create release

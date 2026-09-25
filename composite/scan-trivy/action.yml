@@ -16,6 +16,15 @@ inputs:
     description: 'Secrets passed as toJSON'
     required: true
 
+outputs:
+  json-file:
+    description: 'Absolute path to the Trivy JSON report, the one the pull request comment renders'
+    value: ${{ github.workspace }}/trivy-result.json
+
+  sarif-file:
+    description: 'Absolute path to the same report rendered as SARIF'
+    value: ${{ github.workspace }}/trivy-result.sarif
+
 runs:
   using: composite
   steps:
@@ -42,6 +51,24 @@ runs:
         scan-ref: /tmp/trivy-scan
         format: 'json'
         output: "${{ github.workspace }}/trivy-result.json"
+
+    # The scan above already did the work; `convert` re-renders that report rather than scanning a
+    # second time. SARIF is what report-sarif reads, while the comment below keeps rendering the
+    # JSON — one scan, two outputs. trivy-action installs the binary via setup-trivy, so it is on
+    # PATH here.
+    - name: Trivy - Convert the report to SARIF
+      shell: bash
+      if: ${{ !cancelled() }}
+      continue-on-error: true
+      run: |
+        set -euo pipefail
+        if ! command -v trivy >/dev/null; then
+          echo "::warning::trivy is not on PATH, skipping the SARIF conversion"
+          exit 0
+        fi
+        trivy convert --quiet --format sarif \
+          --output "${{ github.workspace }}/trivy-result.sarif" \
+          "${{ github.workspace }}/trivy-result.json"
 
     - name: Artifacts - Comment pull request
       uses: kestra-io/actions/actions/comment-update@main
