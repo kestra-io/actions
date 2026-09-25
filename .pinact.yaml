@@ -5,11 +5,6 @@ ignore_actions:
   # First-party, consumed from main on purpose.
   - name: kestra-io/actions/.*
     ref: main
-  # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before
-  # merging. Drop this entry together with the branch refs in .github/workflows; find them all with
-  # `git grep -n 'TEMP(sarif-elastic-action)'`.
-  - name: kestra-io/actions/.*
-    ref: sarif-elastic-action
   # Only tagged v0.1.0 (January 2026), far behind the main this repo tracks.
   - name: regclient/actions/.*
     ref: main
