@@ -1,0 +1,95 @@
+name: Report SARIF to Elastic
+description: Ship SARIF scan results (OpenGrep, Trivy, any SARIF 2.1.0 producer) to Elastic as security findings
+
+runs:
+  using: node24
+  main: dist/index.js
+
+inputs:
+  sarif-files:
+    description: >-
+      Newline separated SARIF files to ship. Each entry is a glob, so
+      "**/*.sarif" works. Missing paths are warned about, not failed on: a scan
+      that skipped produces no report, and that must not redden the pipeline
+    required: true
+
+  elastic-endpoint:
+    description: >-
+      The Elastic Cloud managed ingest host, the same one the Managed OTLP
+      Endpoint uses. The action appends /_es/_bulk itself, so both
+      "https://xyz.ingest.eu-west-1.aws.elastic.cloud:443" and a full
+      ".../_es/_bulk" URL are accepted
+    required: true
+
+  elastic-headers:
+    description: >-
+      Comma separated headers, the same format and the same secret the otel actions take for
+      otlp-headers (e.g. "Authorization=ApiKey xyz"). The _bulk input authenticates exactly like
+      the Managed OTLP Endpoint it shares a host with, so OTLP_HEADERS works here unchanged
+    required: false
+    default: ''
+
+  elastic-api-key:
+    description: >-
+      The API key on its own, for a caller that has no headers secret. Sent as
+      "Authorization: ApiKey <key>" and takes precedence over elastic-headers. Either this or
+      elastic-headers must carry an Authorization header; the key needs the apm event:write privilege
+    required: false
+    default: ''
+
+  dataset:
+    description: >-
+      Data stream dataset. The documents land in logs-<dataset>-<namespace>.
+      The managed _bulk endpoint silently drops anything not prefixed logs-,
+      so the prefix is not configurable
+    required: false
+    default: 'security_scan.findings'
+
+  namespace:
+    description: Data stream namespace, matching the one the OTel actions in this repository use
+    required: false
+    default: 'github-actions'
+
+  metadata:
+    description: >-
+      Newline separated key=value pairs added to every document. A dotted key is
+      written at that path (service.name=kestra-ee becomes {"service":{"name":...}}),
+      an undotted one lands under labels (team=security becomes labels.team)
+    required: false
+    default: ''
+
+  tags:
+    description: Comma separated values for the ECS tags field, added to every document
+    required: false
+    default: ''
+
+  batch-size:
+    description: Documents per _bulk request. The endpoint accepts or rejects a batch atomically
+    required: false
+    default: '500'
+
+  fail-on-error:
+    description: >-
+      Fail the step when the findings could not be shipped. Defaults to false,
+      matching the other telemetry actions here: an unreachable ingest endpoint
+      is an infrastructure problem and must not redden an unrelated pull request
+    required: false
+    default: 'false'
+
+  dry-run:
+    description: Build the bulk payload and write it to the output file without sending it
+    required: false
+    default: 'false'
+
+outputs:
+  documents-count:
+    description: Number of finding documents built from the SARIF files
+
+  sent-count:
+    description: Number of documents the endpoint durably accepted
+
+  ndjson-file:
+    description: Absolute path to the _bulk payload that was sent, kept for debugging
+
+  skipped:
+    description: '"true" when nothing was shipped, either because no SARIF file was found or the send failed'

@@ -1,0 +1,186 @@
+import { createHash } from 'node:crypto'
+import * as path from 'node:path'
+import type { GithubMetadata } from './github.js'
+import type { Finding, Severity } from './sarif.js'
+
+/**
+ * Turns a Finding into an ECS document shaped the way Elastic's security views read vulnerability
+ * data: `vulnerability.*` for the finding itself, `package.*` for what it was found in, and
+ * `resource.*` for what owns it. A repository is not a cloud resource, so resource.id is derived
+ * from the repository name — stable across runs, which is what lets a transform collapse the
+ * per-run stream into a latest-state index without the findings fanning out per workflow run.
+ */
+export interface DocumentContext {
+  readonly dataset: string
+  readonly namespace: string
+  readonly github: GithubMetadata
+  readonly scanTime: string
+  readonly tags: string[]
+  readonly metadata: Record<string, string>
+}
+
+function sha256(input: string): string {
+  return createHash('sha256').update(input).digest('hex')
+}
+
+/**
+ * Set `value` at a dotted path, creating objects on the way. Elasticsearch does expand dotted field
+ * names in a source document, but not when the same document also carries the expanded object — so
+ * everything is written expanded, once.
+ */
+export function setPath(target: Record<string, unknown>, dotted: string, value: unknown): void {
+  const keys = dotted.split('.').filter(Boolean)
+  if (keys.length === 0) return
+  let node = target
+  for (const key of keys.slice(0, -1)) {
+    const next = node[key]
+    if (typeof next !== 'object' || next === null || Array.isArray(next)) node[key] = {}
+    node = node[key] as Record<string, unknown>
+  }
+  node[keys[keys.length - 1]] = value
+}
+
+/**
+ * The 0-100 scale the vulnerability integrations in this cluster already use for `event.severity`
+ * (Critical 99, High 73, ...). These are band constants, not the CVSS score scaled up: most
+ * findings arrive with no score at all, and a sortable severity is wanted regardless.
+ */
+const SEVERITY_SCORE: Record<Severity, number> = { Critical: 99, High: 73, Medium: 47, Low: 21, Unknown: 0 }
+
+/**
+ * Which advisory database the id comes from. Trivy reports GHSA ids for language packages that have
+ * no CVE assigned, and a static analysis rule id belongs to no database at all — so this, and
+ * `vulnerability.cve` with it, is absent more often than not.
+ */
+export function enumerationOf(ruleId: string): 'CVE' | 'GHSA' | undefined {
+  if (/^CVE-/i.test(ruleId)) return 'CVE'
+  if (/^GHSA-/i.test(ruleId)) return 'GHSA'
+  return undefined
+}
+
+/**
+ * Stable across runs: the same finding in the same place reports the same id every scan, so
+ * repeated CI runs are a time series of one finding rather than a new finding each time. The line
+ * number is deliberately in, since two hits of one rule in one file are two findings to fix.
+ */
+export function findingId(finding: Finding, context: DocumentContext): string {
+  return sha256(
+    [
+      context.github.repository,
+      finding.tool,
+      finding.ruleId,
+      finding.file ?? '',
+      finding.startLine ?? '',
+      finding.packageName ?? ''
+    ].join('|')
+  )
+}
+
+/**
+ * Only for findings that point at a tracked file. A package vulnerability's location is the built
+ * artifact it was scanned in (build/libs/plugin.jar), which is not in the tree at that revision, so
+ * linking to it would produce a 404 on every dependency finding.
+ */
+function sourceUrl(finding: Finding, context: DocumentContext): string | undefined {
+  const { repository, sha, serverUrl } = context.github
+  if (!finding.file || finding.packageName || !repository || !sha) return undefined
+  const line = finding.startLine ? `#L${finding.startLine}` : ''
+  return `${serverUrl}/${repository}/blob/${sha}/${finding.file}${line}`
+}
+
+function prune(value: Record<string, unknown>): Record<string, unknown> {
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined || entry === '' || (Array.isArray(entry) && entry.length === 0)) {
+      delete value[key]
+      continue
+    }
+    if (typeof entry === 'object' && entry !== null && !Array.isArray(entry)) {
+      const nested = prune(entry as Record<string, unknown>)
+      if (Object.keys(nested).length === 0) delete value[key]
+    }
+  }
+  return value
+}
+
+export function toDocument(finding: Finding, context: DocumentContext): Record<string, unknown> {
+  const id = findingId(finding, context)
+  const github = context.github
+  const enumeration = enumerationOf(finding.ruleId)
+  const document: Record<string, unknown> = {
+    '@timestamp': context.scanTime,
+    message: finding.title || finding.description,
+    tags: context.tags,
+    data_stream: { type: 'logs', dataset: context.dataset, namespace: context.namespace },
+    ecs: { version: '8.11.0' },
+    event: {
+      // `event` rather than `state`, matching the vulnerability integrations already feeding this
+      // cluster — findings from every source should answer the same `event.kind` filter.
+      kind: 'event',
+      category: ['vulnerability'],
+      type: ['info'],
+      dataset: context.dataset,
+      module: finding.tool.toLowerCase(),
+      provider: 'github-actions',
+      id,
+      created: context.scanTime,
+      severity: SEVERITY_SCORE[finding.severity],
+      // The run this finding was observed in. Two scans of the same commit share the finding id and
+      // differ here, which is how a stale finding is told apart from a current one.
+      sequence: Number(github.runId) || undefined
+    },
+    vulnerability: {
+      id: finding.ruleId,
+      title: finding.title,
+      description: finding.description,
+      severity: finding.severity,
+      reference: finding.helpUri,
+      // Set only for a real CVE. A GHSA-only advisory and a static analysis rule both leave it
+      // empty, which is why nothing downstream should key on it — `vulnerability.id` always exists.
+      cve: enumeration === 'CVE' ? finding.ruleId : undefined,
+      category: finding.packageName ? 'Package Vulnerability' : 'Static Analysis',
+      classification: finding.score !== undefined ? 'CVSS' : undefined,
+      enumeration,
+      cwe: finding.cwes,
+      report_id: `${github.runId}-${github.runAttempt ?? 1}`,
+      scanner: { vendor: finding.tool, version: finding.toolVersion },
+      score: finding.score === undefined ? undefined : { base: finding.score, version: finding.scoreVersion }
+    },
+    package: {
+      name: finding.packageName,
+      version: finding.packageVersion,
+      fixed_version: finding.packageFixedVersion
+    },
+    file: finding.file
+      ? { path: finding.file, name: path.basename(finding.file), directory: path.dirname(finding.file) }
+      : undefined,
+    log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : undefined,
+    url: { full: sourceUrl(finding, context) },
+    observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
+    // The scanned repository is the thing findings are grouped and remediated by, so it stands in
+    // for the cloud resource the security views key on.
+    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: 'github-repository' },
+    // Who to ask about a finding. `github.actor` keeps the raw login; ECS `user.*` is what the
+    // security views and any user-based correlation rule already read.
+    user: { name: github.triggeringActor || github.actor, id: github.actorId },
+    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
+    // Cloned because prune() strips empty fields in place, and the same metadata object is reused
+    // for every finding in the run.
+    github: structuredClone(github) as unknown as Record<string, unknown>,
+    sarif: {
+      level: finding.level,
+      ruleId: finding.ruleId,
+      ruleName: finding.ruleName,
+      fingerprint: finding.fingerprint,
+      snippet: finding.snippet,
+      startLine: finding.startLine,
+      startColumn: finding.startColumn,
+      endLine: finding.endLine
+    }
+  }
+
+  for (const [key, value] of Object.entries(context.metadata)) {
+    setPath(document, key.includes('.') ? key : `labels.${key}`, value)
+  }
+
+  return prune(document)
+}
