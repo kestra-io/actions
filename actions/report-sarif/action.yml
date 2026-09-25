@@ -37,18 +37,28 @@ inputs:
     required: false
     default: ''
 
+  type:
+    description: >-
+      What the report contains: vulnerabilities (CVEs in dependencies, e.g. Trivy) or
+      misconfigurations (rules a scanned file breaks, e.g. OpenGrep). Decides the document shape —
+      vulnerability.* and package.* against event.category vulnerability, or rule.* and result.*
+      against event.category configuration, which is where Elastic's Findings views expect each
+    required: false
+    default: 'vulnerabilities'
+
   dataset:
     description: >-
-      Data stream dataset. The documents land in logs-<dataset>-<namespace>.
-      The managed _bulk endpoint silently drops anything not prefixed logs-,
-      so the prefix is not configurable
+      Data stream dataset. Leave empty for one stream per scanner named after it, so OpenGrep
+      lands in logs-opengrep-<namespace> and Trivy in logs-trivy-<namespace> and neither buries
+      the other. The managed _bulk endpoint silently drops anything not prefixed logs-, so the
+      prefix is not configurable
     required: false
-    default: 'security_scan.findings'
+    default: ''
 
   namespace:
-    description: Data stream namespace, matching the one the OTel actions in this repository use
+    description: Data stream namespace
     required: false
-    default: 'github-actions'
+    default: 'gha'
 
   metadata:
     description: >-

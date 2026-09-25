@@ -21,7 +21,7 @@ That input is deliberately narrow, and the action is built around its limits:
 | Limit | What the action does |
 | :--- | :--- |
 | `create` actions only; `index`/`update`/`delete` are `400` | Emits only `create` |
-| Targets not prefixed `logs-` are accepted and then **silently dropped** | `dataset`/`namespace` inputs compose `logs-<dataset>-<namespace>`, and the prefix is not configurable |
+| Targets not prefixed `logs-` are accepted and then **silently dropped** | One stream per scanner, `logs-<tool>-<namespace>`, and the prefix is not configurable |
 | Log data only | Findings are shipped as log documents, not metrics |
 | A batch is accepted or rejected atomically | Batches of `batch-size` (500 by default), each retried as a unit |
 | No `_id` deduplication, so a retry can duplicate | Every document carries a stable `event.id`, so a transform can collapse duplicates |
@@ -44,10 +44,34 @@ That input is deliberately narrow, and the action is built around its limits:
     sarif-files: ${{ steps.scan.outputs.sarif-file }}
     elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
     elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+    type: misconfigurations
     metadata: |
       service.name=kestra-ee
       component=backend
 ```
+
+## Two kinds of finding
+
+`type` decides the document shape, because Elastic keeps them in different
+views and a scanner only fits one:
+
+| `type` | For | Shape |
+| :--- | :--- | :--- |
+| `vulnerabilities` (default) | Trivy — a CVE in a dependency | `vulnerability.*`, `package.*`, `event.category: vulnerability` |
+| `misconfigurations` | OpenGrep — a rule a file breaks | `rule.*`, `result.evaluation`, `event.category: configuration`, `event.outcome: failure` |
+
+Static analysis has no CVE, no package and no CVSS, so shipping it as a
+vulnerability leaves most of that shape empty and files it in the wrong view.
+A misconfiguration still carries `vulnerability.cwe` and `vulnerability.severity`,
+so a weakness class is filterable across both.
+
+## One data stream per scanner
+
+`logs-<tool>-<namespace>`, the tool being the first word of the SARIF driver
+name lowercased — so `logs-opengrep-gha` and `logs-trivy-gha`. Findings from
+several tools in one call are grouped and shipped to their own streams, so one
+scanner's volume never buries another's. Set `dataset` to pin everything to a
+single stream instead.
 
 No new secret: the `_bulk` input shares its host and its authentication with the
 Managed OTLP Endpoint, so the `OTLP_ENDPOINT` / `OTLP_HEADERS` pair these
@@ -131,7 +155,7 @@ One document per SARIF result, in ECS:
 
 | Field | Source |
 | :--- | :--- |
-| `vulnerability.id` | the SARIF `ruleId` — a CVE or GHSA for Trivy, a rule path for OpenGrep |
+| `vulnerability.id` / `rule.id` | the SARIF `ruleId` — a CVE or GHSA for Trivy, a rule path for OpenGrep |
 | `vulnerability.cve` / `.enumeration` | only when the id is an advisory: `CVE-…` or `GHSA-…` |
 | `vulnerability.severity` | a severity tag if the producer set one, else the CVSS band of `security-severity`, else the SARIF `level` |
 | `vulnerability.score.base` / `.version` / `.classification` | `properties["security-severity"]`, when the producer reported one |
@@ -154,9 +178,27 @@ finding rather than a new finding each time; `event.sequence` carries the run
 id that observed it, which is how a current finding is told apart from a stale
 one.
 
+### Readable names
+
+OpenGrep and Semgrep both set the SARIF `shortDescription` to
+`"<Tool> Finding: <rule id>"` — and for a rule loaded off disk the id in there
+is a runner temp path, so the finding arrived as
+`Opengrep Finding: home.runner.work._temp.kestra-mutable-action-tag`. That
+boilerplate is dropped in favour of, in order: whatever the producer actually
+wrote, the opening sentence of the description if it is short enough to read as
+a title, or the rule id made readable
+(`dockerfile.security.missing-user-entrypoint.missing-user-entrypoint` →
+`Missing user entrypoint`).
+
+The message then reads like the posture findings already in the cluster:
+
+```
+Rule "By not specifying a USER, a program in the container may run as 'root'.": failed at Dockerfile:12
+```
+
 `vulnerability.severity` is title case (`High`, not `HIGH`) and `event.kind` is
-`event`, both matching the vulnerability integrations already feeding this
-cluster — a finding shipped as `HIGH` would sit in its own bucket beside theirs
+`event` for vulnerabilities and `state` for misconfigurations, matching the
+integrations already feeding this cluster — a finding shipped as `HIGH` would sit in its own bucket beside theirs
 in the same Findings view instead of aggregating with them.
 
 ### Fields that will be missing

@@ -5,8 +5,9 @@ import { githubMetadata } from './github.js'
 import type { Finding } from './finding.js'
 
 const context: DocumentContext = {
-  dataset: 'security_scan.findings',
-  namespace: 'github-actions',
+  dataset: '',
+  namespace: 'gha',
+  type: 'vulnerabilities',
   github: githubMetadata({
     GITHUB_REPOSITORY: 'kestra-io/kestra',
     GITHUB_REPOSITORY_OWNER: 'kestra-io',
@@ -57,7 +58,7 @@ test('maps a vulnerability onto ECS fields', () => {
   assert.deepEqual(document.package, { name: 'openssl', version: '1.1.1', fixed_version: '1.1.1n' })
   assert.equal(document.event.kind, 'event')
   assert.deepEqual(document.event.category, ['vulnerability'])
-  assert.deepEqual(document.data_stream, { type: 'logs', dataset: 'security_scan.findings', namespace: 'github-actions' })
+  assert.deepEqual(document.data_stream, { type: 'logs', dataset: 'trivy', namespace: 'gha' })
   assert.equal(document.resource.name, 'kestra-io/kestra')
   assert.deepEqual(document.user, { name: 'tchiotludo', id: '2064609' })
   assert.equal(document.url, undefined, 'a package vulnerability points at a build artifact, not a tracked file')
@@ -196,4 +197,75 @@ test('event.severity is a sortable band, set even when no CVSS score arrived', (
 test('the github owner is mirrored into ECS organization', () => {
   const document = toDocument(finding, context) as Record<string, Record<string, unknown>>
   assert.deepEqual(document.organization, { name: 'kestra-io' })
+})
+
+test('a misconfiguration is shaped like a posture finding, not a vulnerability', () => {
+  const rule: Finding = {
+    tool: 'Opengrep OSS',
+    toolVersion: '1.30.0',
+    ruleId: 'kestra-mutable-action-tag',
+    ruleName: 'Opengrep Finding: home.runner.work._temp.kestra-mutable-action-tag',
+    level: 'warning',
+    severity: 'Medium',
+    title: 'Pin this action to a full 40-character commit SHA.',
+    description: 'Pin this action to a full 40-character commit SHA. A tag can be repointed.',
+    helpUri: 'https://example.invalid/rule',
+    tags: ['security'],
+    cwes: ['CWE-1357'],
+    file: '.github/workflows/publish.yml',
+    startLine: 22
+  }
+  const document = toDocument(rule, { ...context, type: 'misconfigurations' }) as Record<
+    string,
+    Record<string, unknown>
+  >
+
+  assert.deepEqual(document.event.category, ['configuration'])
+  assert.equal(document.event.kind, 'state')
+  assert.equal(document.event.outcome, 'failure')
+  assert.deepEqual(document.result, { evaluation: 'failed' })
+  assert.equal(document.rule.id, 'kestra-mutable-action-tag')
+  assert.equal(document.rule.name, 'Pin this action to a full 40-character commit SHA.')
+  assert.deepEqual(document.rule.benchmark, { id: 'opengrep', name: 'Opengrep OSS' })
+  assert.equal(document.package, undefined, 'static analysis has no package')
+  assert.equal(document.vulnerability.id, undefined, 'nor a CVE')
+  assert.deepEqual(document.vulnerability.cwe, ['CWE-1357'], 'but the weakness class is still filterable')
+  assert.deepEqual(document.data_stream, { type: 'logs', dataset: 'opengrep', namespace: 'gha' })
+})
+
+test('the misconfiguration message reads like a sentence, not a rule id', () => {
+  const rule = {
+    ...finding,
+    tool: 'Opengrep OSS',
+    title: 'Missing user entrypoint',
+    file: 'Dockerfile',
+    startLine: 12,
+    packageName: undefined
+  } as Finding
+  const document = toDocument(rule, { ...context, type: 'misconfigurations' }) as Record<string, unknown>
+  assert.equal(document.message, 'Rule "Missing user entrypoint": failed at Dockerfile:12')
+
+  const noLocation = toDocument({ ...rule, file: undefined, startLine: undefined }, {
+    ...context,
+    type: 'misconfigurations'
+  }) as Record<string, unknown>
+  assert.equal(noLocation.message, 'Rule "Missing user entrypoint": failed')
+})
+
+test('each scanner gets its own dataset, and an explicit one overrides', () => {
+  const trivy = toDocument(finding, context) as Record<string, Record<string, unknown>>
+  assert.equal(trivy.data_stream.dataset, 'trivy')
+  assert.equal(trivy.event.module, 'trivy')
+
+  const opengrep = toDocument({ ...finding, tool: 'Opengrep OSS' }, context) as Record<
+    string,
+    Record<string, unknown>
+  >
+  assert.equal(opengrep.data_stream.dataset, 'opengrep')
+
+  const pinned = toDocument(finding, { ...context, dataset: 'security_scan.findings' }) as Record<
+    string,
+    Record<string, unknown>
+  >
+  assert.equal(pinned.data_stream.dataset, 'security_scan.findings')
 })

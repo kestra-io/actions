@@ -3,7 +3,7 @@ import * as glob from '@actions/glob'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { authHeaders, bulkUrl, chunk, dataStreamName, sendBulk, toNdjson, validateDataStream } from './bulk.js'
-import { toDocument, type DocumentContext } from './documents.js'
+import { datasetOf, toDocument, type DocumentContext, type FindingType } from './documents.js'
 import { githubMetadata } from './github.js'
 import { parseBoolean, parseList, parsePairs } from './inputs.js'
 import type { Finding } from './finding.js'
@@ -37,15 +37,15 @@ async function run(): Promise<void> {
   // Not getInput({ required: true }): the usual wiring passes a scan step's sarif-file output, and
   // that is empty whenever the scan itself skipped — a warning, not a failed step.
   const patterns = core.getInput('sarif-files')
-  const dataset = core.getInput('dataset') || 'security_scan.findings'
-  const namespace = core.getInput('namespace') || 'github-actions'
-  const dataStream = dataStreamName(dataset, namespace)
-  const invalid = validateDataStream(dataStream)
-  // A config error, not an infrastructure one: silently dropped documents are worse than a red step.
-  if (invalid) {
-    core.setFailed(invalid)
+  // Empty means one data stream per scanner, named after it: logs-opengrep-gha, logs-trivy-gha.
+  const dataset = core.getInput('dataset')
+  const namespace = core.getInput('namespace') || 'gha'
+  const rawType = (core.getInput('type') || 'vulnerabilities').trim().toLowerCase()
+  if (rawType !== 'vulnerabilities' && rawType !== 'misconfigurations') {
+    core.setFailed(`type must be vulnerabilities or misconfigurations, got '${rawType}'`)
     return
   }
+  const type = rawType as FindingType
 
   const temp = process.env.RUNNER_TEMP ?? process.cwd()
   const ndjsonFile = path.join(temp, 'elastic-bulk.ndjson')
@@ -64,6 +64,7 @@ async function run(): Promise<void> {
   const context: DocumentContext = {
     dataset,
     namespace,
+    type,
     github: githubMetadata(process.env),
     scanTime: new Date().toISOString(),
     tags: parseList(core.getInput('tags')),
@@ -71,20 +72,42 @@ async function run(): Promise<void> {
   }
 
   const findings = (await Promise.all(files.map(readReport))).flat()
-  const documents = findings.map(finding => toDocument(finding, context))
 
-  const batches = chunk(documents, Math.max(1, Number(core.getInput('batch-size') || '500')))
-  const payload = batches.map(batch => toNdjson(batch, dataStream)).join('')
-  await fs.writeFile(ndjsonFile, payload)
+  // Grouped by target rather than shipped as one stream: each scanner writes its own
+  // logs-<tool>-<namespace>, so one tool's volume never buries another's.
+  const byStream = new Map<string, Record<string, unknown>[]>()
+  for (const finding of findings) {
+    const stream = dataStreamName(datasetOf(finding, context), namespace)
+    const invalid = validateDataStream(stream)
+    // A config error, not an infrastructure one: silently dropped documents are worse than a red step.
+    if (invalid) {
+      core.setFailed(invalid)
+      return
+    }
+    const documents = byStream.get(stream) ?? []
+    documents.push(toDocument(finding, context))
+    byStream.set(stream, documents)
+  }
 
-  const bySeverity = documents.reduce<Record<string, number>>((counts, document) => {
-    const severity = String((document.vulnerability as Record<string, unknown>)?.severity ?? 'Unknown')
-    counts[severity] = (counts[severity] ?? 0) + 1
-    return counts
-  }, {})
-  core.info(`${documents.length} finding(s) for ${dataStream}: ${JSON.stringify(bySeverity)}`)
+  const size = Math.max(1, Number(core.getInput('batch-size') || '500'))
+  const batches = [...byStream].flatMap(([stream, documents]) =>
+    chunk(documents, size).map(batch => ({ stream, batch }))
+  )
+  const documentCount = findings.length
+  await fs.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(''))
 
-  if (documents.length === 0) {
+  for (const [stream, documents] of byStream) {
+    const bySeverity = documents.reduce<Record<string, number>>((counts, document) => {
+      const severity = String(
+        ((document.vulnerability ?? document.rule) as Record<string, unknown>)?.severity ?? 'Unknown'
+      )
+      counts[severity] = (counts[severity] ?? 0) + 1
+      return counts
+    }, {})
+    core.info(`${documents.length} ${type} finding(s) for ${stream}: ${JSON.stringify(bySeverity)}`)
+  }
+
+  if (documentCount === 0) {
     core.info('Nothing to ship.')
     finish(0, 0, ndjsonFile, false)
     return
@@ -92,7 +115,7 @@ async function run(): Promise<void> {
 
   if (parseBoolean(core.getInput('dry-run'))) {
     core.info(`Dry run, payload written to ${ndjsonFile}`)
-    finish(documents.length, 0, ndjsonFile, true)
+    finish(documentCount, 0, ndjsonFile, true)
     return
   }
 
@@ -106,13 +129,13 @@ async function run(): Promise<void> {
 
   let sent = 0
   try {
-    for (const batch of batches) {
-      await sendBulk({ url, headers, body: toNdjson(batch, dataStream), onRetry: message => core.warning(message) })
+    for (const { stream, batch } of batches) {
+      await sendBulk({ url, headers, body: toNdjson(batch, stream), onRetry: message => core.warning(message) })
       sent += batch.length
     }
   } catch (error) {
     const message = `Could not ship findings to Elastic: ${(error as Error).message}`
-    finish(documents.length, sent, ndjsonFile, true)
+    finish(documentCount, sent, ndjsonFile, true)
     // Matches otel-export-trace: an unreachable ingest endpoint is an infrastructure problem and
     // must not redden a pull request whose scan itself succeeded, unless the caller opts in.
     if (failOnError) core.setFailed(message)
@@ -122,8 +145,8 @@ async function run(): Promise<void> {
 
   // A 2xx means the managed input durably accepted the batch, not that Elasticsearch indexed it;
   // indexing errors surface asynchronously in Data Set Quality, never in this response.
-  core.info(`Accepted ${sent} document(s) into ${dataStream}`)
-  finish(documents.length, sent, ndjsonFile, false)
+  core.info(`Accepted ${sent} document(s) into ${[...byStream.keys()].join(', ')}`)
+  finish(documentCount, sent, ndjsonFile, false)
 }
 
 run().catch((error: Error) => core.setFailed(error.message))

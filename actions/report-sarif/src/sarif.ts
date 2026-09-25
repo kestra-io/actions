@@ -10,6 +10,7 @@
 
 import {
   cweIds,
+  ruleTitle,
   scoreVersion,
   severityFromScore,
   severityFromWord,
@@ -120,18 +121,21 @@ function toFinding(run: SarifRun, result: SarifResult): Finding {
   const message = text(result.message)
   const fingerprints = { ...(result.partialFingerprints ?? {}), ...(result.fingerprints ?? {}) }
 
+  const ruleId = result.ruleId ?? rule?.id ?? 'unknown'
+
   return {
     tool: driver.name ?? 'unknown',
     toolVersion: driver.semanticVersion ?? driver.version ?? '',
-    ruleId: result.ruleId ?? rule?.id ?? 'unknown',
+    ruleId,
     ruleName: rule?.name ?? result.ruleId ?? '',
     level,
     severity,
     score,
     scoreVersion: score === undefined ? undefined : (scoreVersion(properties.cvssv3_vector) ?? '3.1'),
-    title: text(rule?.shortDescription) || message.split('\n')[0] || (result.ruleId ?? ''),
     description: text(rule?.fullDescription) || message,
+    title: ruleTitle(text(rule?.shortDescription), text(rule?.fullDescription) || message, ruleId),
     helpUri: rule?.helpUri,
+    remediation: rule?.help?.markdown?.trim() || text(rule?.help),
     tags,
     cwes: cweIds([...tags, ...stringsOf(properties.cwe)]),
     file: location?.artifactLocation?.uri,

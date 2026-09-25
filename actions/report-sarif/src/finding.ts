@@ -52,6 +52,8 @@ export interface Finding {
   /** Native report only: every scoring vendor's CVSS, keyed by vendor. */
   readonly cvss?: Record<string, CvssScore>
   readonly references?: string[]
+  /** How to fix it, when the producer says so — SARIF `help`, Trivy has none. */
+  readonly remediation?: string
   readonly purl?: string
   readonly fixStatus?: string
 }
@@ -92,4 +94,57 @@ export function scoreVersion(vector: unknown): string | undefined {
 export function cweIds(values: string[]): string[] {
   const found = values.flatMap(value => value.toUpperCase().match(/CWE-\d+/g) ?? [])
   return [...new Set(found)]
+}
+
+/**
+ * OpenGrep and Semgrep both set the SARIF `shortDescription` to "<Tool> Finding: <rule id>" — and
+ * for a rule loaded off disk the id in there is a runner temp path. It is never worth showing, so
+ * it is dropped in favour of something a human wrote.
+ */
+export function isBoilerplateTitle(title: string): boolean {
+  return /^[\w.-]+(\s+\w+)*\s+Finding:/i.test(title.trim())
+}
+
+/**
+ * A readable name from a rule id. Takes the most specific segment of a dotted id, since the leading
+ * ones are the language and category the file already records, and drops the repeat OpenGrep leaves
+ * when a rule file is named after its rule:
+ *
+ *   dockerfile.security.missing-user-entrypoint.missing-user-entrypoint -> Missing user entrypoint
+ *   kestra-mutable-action-tag                                           -> Kestra mutable action tag
+ */
+export function humaniseRuleId(ruleId: string): string {
+  const segments = ruleId.split('.').filter(Boolean)
+  const last = segments[segments.length - 1] ?? ruleId
+  const words = last.replace(/[-_]+/g, ' ').trim()
+  if (!words) return ruleId
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** The first sentence of a description, when it is short enough to read as a title. */
+export function firstSentence(text: string, maxLength = 120): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  if (!flat) return ''
+  const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat
+  return sentence.length <= maxLength ? sentence : ''
+}
+
+/**
+ * The name to show for a finding: what the producer wrote if it wrote anything useful, else the
+ * opening sentence of the description, else the rule id made readable.
+ */
+export function ruleTitle(rawTitle: string, description: string, ruleId: string): string {
+  const title = rawTitle.trim()
+  if (title && !isBoilerplateTitle(title) && title !== ruleId) return title
+  return firstSentence(description) || humaniseRuleId(ruleId)
+}
+
+/**
+ * The data stream dataset for a tool: the first word of its name, lowercased. "Opengrep OSS"
+ * becomes `opengrep` and "Trivy" becomes `trivy`, so each scanner gets its own `logs-<tool>-<ns>`
+ * stream. A dataset may not contain a dash, which is why this is not simply the name slugified.
+ */
+export function datasetForTool(tool: string): string {
+  const first = tool.toLowerCase().match(/[a-z0-9_]+/)?.[0]
+  return first || 'unknown'
 }

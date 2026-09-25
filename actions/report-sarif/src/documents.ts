@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import * as path from 'node:path'
 import type { GithubMetadata } from './github.js'
-import type { Finding, Severity } from './finding.js'
+import { datasetForTool, type Finding, type Severity } from './finding.js'
 
 /**
  * Turns a Finding into an ECS document shaped the way Elastic's security views read vulnerability
@@ -10,9 +10,14 @@ import type { Finding, Severity } from './finding.js'
  * from the repository name — stable across runs, which is what lets a transform collapse the
  * per-run stream into a latest-state index without the findings fanning out per workflow run.
  */
+/** What the findings are: CVEs in dependencies, or rules a scanned file breaks. */
+export type FindingType = 'vulnerabilities' | 'misconfigurations'
+
 export interface DocumentContext {
+  /** Overrides the per-tool dataset when set; empty means `logs-<tool>-<namespace>`. */
   readonly dataset: string
   readonly namespace: string
+  readonly type: FindingType
   readonly github: GithubMetadata
   readonly scanTime: string
   readonly tags: string[]
@@ -102,24 +107,111 @@ function prune(value: Record<string, unknown>): Record<string, unknown> {
   return value
 }
 
+/** Each scanner lands in its own data stream, so one tool's volume never buries another's. */
+export function datasetOf(finding: Finding, context: DocumentContext): string {
+  return context.dataset || datasetForTool(finding.tool)
+}
+
+function location(finding: Finding): string {
+  if (!finding.file) return ''
+  return finding.startLine ? `${finding.file}:${finding.startLine}` : finding.file
+}
+
+/**
+ * Shared by both document shapes: everything about where the finding was seen rather than what it
+ * is.
+ */
+function common(finding: Finding, context: DocumentContext): Record<string, unknown> {
+  const github = context.github
+  return {
+    '@timestamp': context.scanTime,
+    tags: context.tags,
+    data_stream: { type: 'logs', dataset: datasetOf(finding, context), namespace: context.namespace },
+    ecs: { version: '8.11.0' },
+    file: finding.file
+      ? { path: finding.file, name: path.basename(finding.file), directory: path.dirname(finding.file) }
+      : undefined,
+    log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : undefined,
+    url: { full: sourceUrl(finding, context) },
+    observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
+    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: 'github-repository' },
+    user: { name: github.triggeringActor || github.actor, id: github.actorId },
+    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
+    github: structuredClone(github) as unknown as Record<string, unknown>,
+    sarif: {
+      level: finding.level,
+      ruleId: finding.ruleId,
+      ruleName: finding.ruleName,
+      fingerprint: finding.fingerprint,
+      snippet: finding.snippet,
+      startLine: finding.startLine,
+      startColumn: finding.startColumn,
+      endLine: finding.endLine
+    }
+  }
+}
+
+/**
+ * A rule a scanned file breaks, shaped like the cloud posture findings already in this cluster:
+ * `event.category: configuration`, a `result.evaluation`, and the rule itself under `rule.*` rather
+ * than `vulnerability.*`. Static analysis has no CVE and no package, so forcing it into the
+ * vulnerability shape would leave most of that shape empty and put it in the wrong Findings view.
+ */
+function misconfiguration(finding: Finding, context: DocumentContext, id: string): Record<string, unknown> {
+  const github = context.github
+  const where = location(finding)
+  return {
+    ...common(finding, context),
+    // Matches the posture findings' own phrasing, so both read the same way in a results list.
+    message: `Rule "${finding.title}": failed${where ? ` at ${where}` : ''}`,
+    event: {
+      kind: 'state',
+      category: ['configuration'],
+      type: ['info'],
+      // A reported finding is a rule that did not hold; a passing rule is never shipped.
+      outcome: 'failure',
+      dataset: datasetOf(finding, context),
+      module: datasetForTool(finding.tool),
+      provider: 'github-actions',
+      id,
+      created: context.scanTime,
+      severity: SEVERITY_SCORE[finding.severity],
+      sequence: Number(github.runId) || undefined
+    },
+    result: { evaluation: 'failed' },
+    rule: {
+      id: finding.ruleId,
+      name: finding.title,
+      description: finding.description,
+      references: finding.helpUri,
+      remediation: finding.remediation,
+      tags: finding.tags,
+      version: finding.toolVersion,
+      // Synthesised: a ruleset is the closest thing static analysis has to a benchmark, and the
+      // Findings view groups by it.
+      benchmark: { id: datasetForTool(finding.tool), name: finding.tool }
+    },
+    // Kept so a misconfiguration can still be filtered by weakness class alongside a CVE.
+    vulnerability: { cwe: finding.cwes, severity: finding.severity }
+  }
+}
+
 export function toDocument(finding: Finding, context: DocumentContext): Record<string, unknown> {
   const id = findingId(finding, context)
+  if (context.type === 'misconfigurations') return prune(misconfiguration(finding, context, id))
   const github = context.github
   const enumeration = enumerationOf(finding.ruleId)
   const document: Record<string, unknown> = {
-    '@timestamp': context.scanTime,
+    ...common(finding, context),
     message: finding.title || finding.description,
-    tags: context.tags,
-    data_stream: { type: 'logs', dataset: context.dataset, namespace: context.namespace },
-    ecs: { version: '8.11.0' },
     event: {
       // `event` rather than `state`, matching the vulnerability integrations already feeding this
       // cluster — findings from every source should answer the same `event.kind` filter.
       kind: 'event',
       category: ['vulnerability'],
       type: ['info'],
-      dataset: context.dataset,
-      module: finding.tool.toLowerCase(),
+      dataset: datasetOf(finding, context),
+      module: datasetForTool(finding.tool),
       provider: 'github-actions',
       id,
       created: context.scanTime,
@@ -160,34 +252,8 @@ export function toDocument(finding: Finding, context: DocumentContext): Record<s
       // "fixed", "affected", "will_not_fix" — whether a fixed_version exists says less than this.
       fix_status: finding.fixStatus
     },
-    file: finding.file
-      ? { path: finding.file, name: path.basename(finding.file), directory: path.dirname(finding.file) }
-      : undefined,
-    log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : undefined,
-    url: { full: sourceUrl(finding, context) },
-    observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
-    // The scanned repository is the thing findings are grouped and remediated by, so it stands in
-    // for the cloud resource the security views key on.
-    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: 'github-repository' },
-    // Who to ask about a finding. `github.actor` keeps the raw login; ECS `user.*` is what the
-    // security views and any user-based correlation rule already read.
-    user: { name: github.triggeringActor || github.actor, id: github.actorId },
-    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
-    // Cloned because prune() strips empty fields in place, and the same metadata object is reused
-    // for every finding in the run.
-    github: structuredClone(github) as unknown as Record<string, unknown>,
     // Every reference the advisory lists, not just the primary one in vulnerability.reference.
-    related: { references: finding.references },
-    sarif: {
-      level: finding.level,
-      ruleId: finding.ruleId,
-      ruleName: finding.ruleName,
-      fingerprint: finding.fingerprint,
-      snippet: finding.snippet,
-      startLine: finding.startLine,
-      startColumn: finding.startColumn,
-      endLine: finding.endLine
-    }
+    related: { references: finding.references }
   }
 
   for (const [key, value] of Object.entries(context.metadata)) {

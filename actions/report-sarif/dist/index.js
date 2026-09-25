@@ -32060,6 +32060,58 @@ function authHeaders(rawHeaders, apiKey) {
   return headers;
 }
 
+const SEVERITY_WORDS = {
+  CRITICAL: "Critical",
+  HIGH: "High",
+  MEDIUM: "Medium",
+  MODERATE: "Medium",
+  LOW: "Low",
+  UNKNOWN: "Unknown",
+  NONE: "Unknown"
+};
+function severityFromWord(word) {
+  return SEVERITY_WORDS[String(word ?? "").toUpperCase()];
+}
+function severityFromScore(score) {
+  if (score >= 9) return "Critical";
+  if (score >= 7) return "High";
+  if (score >= 4) return "Medium";
+  if (score > 0) return "Low";
+  return "Unknown";
+}
+function scoreVersion(vector) {
+  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ""))?.[1];
+}
+function cweIds(values) {
+  const found = values.flatMap((value) => value.toUpperCase().match(/CWE-\d+/g) ?? []);
+  return [...new Set(found)];
+}
+function isBoilerplateTitle(title) {
+  return /^[\w.-]+(\s+\w+)*\s+Finding:/i.test(title.trim());
+}
+function humaniseRuleId(ruleId) {
+  const segments = ruleId.split(".").filter(Boolean);
+  const last = segments[segments.length - 1] ?? ruleId;
+  const words = last.replace(/[-_]+/g, " ").trim();
+  if (!words) return ruleId;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+function firstSentence(text, maxLength = 120) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (!flat) return "";
+  const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;
+  return sentence.length <= maxLength ? sentence : "";
+}
+function ruleTitle(rawTitle, description, ruleId) {
+  const title = rawTitle.trim();
+  if (title && !isBoilerplateTitle(title) && title !== ruleId) return title;
+  return firstSentence(description) || humaniseRuleId(ruleId);
+}
+function datasetForTool(tool) {
+  const first = tool.toLowerCase().match(/[a-z0-9_]+/)?.[0];
+  return first || "unknown";
+}
+
 function sha256(input) {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -32111,24 +32163,94 @@ function prune(value) {
   }
   return value;
 }
+function datasetOf(finding, context) {
+  return context.dataset || datasetForTool(finding.tool);
+}
+function location(finding) {
+  if (!finding.file) return "";
+  return finding.startLine ? `${finding.file}:${finding.startLine}` : finding.file;
+}
+function common(finding, context) {
+  const github = context.github;
+  return {
+    "@timestamp": context.scanTime,
+    tags: context.tags,
+    data_stream: { type: "logs", dataset: datasetOf(finding, context), namespace: context.namespace },
+    ecs: { version: "8.11.0" },
+    file: finding.file ? { path: finding.file, name: path$2.basename(finding.file), directory: path$2.dirname(finding.file) } : void 0,
+    log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : void 0,
+    url: { full: sourceUrl(finding, context) },
+    observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
+    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: "github-repository" },
+    user: { name: github.triggeringActor || github.actor, id: github.actorId },
+    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
+    github: structuredClone(github),
+    sarif: {
+      level: finding.level,
+      ruleId: finding.ruleId,
+      ruleName: finding.ruleName,
+      fingerprint: finding.fingerprint,
+      snippet: finding.snippet,
+      startLine: finding.startLine,
+      startColumn: finding.startColumn,
+      endLine: finding.endLine
+    }
+  };
+}
+function misconfiguration(finding, context, id) {
+  const github = context.github;
+  const where = location(finding);
+  return {
+    ...common(finding, context),
+    // Matches the posture findings' own phrasing, so both read the same way in a results list.
+    message: `Rule "${finding.title}": failed${where ? ` at ${where}` : ""}`,
+    event: {
+      kind: "state",
+      category: ["configuration"],
+      type: ["info"],
+      // A reported finding is a rule that did not hold; a passing rule is never shipped.
+      outcome: "failure",
+      dataset: datasetOf(finding, context),
+      module: datasetForTool(finding.tool),
+      provider: "github-actions",
+      id,
+      created: context.scanTime,
+      severity: SEVERITY_SCORE[finding.severity],
+      sequence: Number(github.runId) || void 0
+    },
+    result: { evaluation: "failed" },
+    rule: {
+      id: finding.ruleId,
+      name: finding.title,
+      description: finding.description,
+      references: finding.helpUri,
+      remediation: finding.remediation,
+      tags: finding.tags,
+      version: finding.toolVersion,
+      // Synthesised: a ruleset is the closest thing static analysis has to a benchmark, and the
+      // Findings view groups by it.
+      benchmark: { id: datasetForTool(finding.tool), name: finding.tool }
+    },
+    // Kept so a misconfiguration can still be filtered by weakness class alongside a CVE.
+    vulnerability: { cwe: finding.cwes, severity: finding.severity }
+  };
+}
 function toDocument(finding, context) {
   const id = findingId(finding, context);
+  if (context.type === "misconfigurations") return prune(misconfiguration(finding, context, id));
   const github = context.github;
   const enumeration = enumerationOf(finding.ruleId);
   const document = {
-    "@timestamp": context.scanTime,
+    ...common(finding, context),
     message: finding.title || finding.description,
-    tags: context.tags,
-    data_stream: { type: "logs", dataset: context.dataset, namespace: context.namespace },
-    ecs: { version: "8.11.0" },
     event: {
       // `event` rather than `state`, matching the vulnerability integrations already feeding this
       // cluster — findings from every source should answer the same `event.kind` filter.
       kind: "event",
       category: ["vulnerability"],
       type: ["info"],
-      dataset: context.dataset,
-      module: finding.tool.toLowerCase(),
+      dataset: datasetOf(finding, context),
+      module: datasetForTool(finding.tool),
       provider: "github-actions",
       id,
       created: context.scanTime,
@@ -32169,32 +32291,8 @@ function toDocument(finding, context) {
       // "fixed", "affected", "will_not_fix" — whether a fixed_version exists says less than this.
       fix_status: finding.fixStatus
     },
-    file: finding.file ? { path: finding.file, name: path$2.basename(finding.file), directory: path$2.dirname(finding.file) } : void 0,
-    log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : void 0,
-    url: { full: sourceUrl(finding, context) },
-    observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
-    // The scanned repository is the thing findings are grouped and remediated by, so it stands in
-    // for the cloud resource the security views key on.
-    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: "github-repository" },
-    // Who to ask about a finding. `github.actor` keeps the raw login; ECS `user.*` is what the
-    // security views and any user-based correlation rule already read.
-    user: { name: github.triggeringActor || github.actor, id: github.actorId },
-    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
-    // Cloned because prune() strips empty fields in place, and the same metadata object is reused
-    // for every finding in the run.
-    github: structuredClone(github),
     // Every reference the advisory lists, not just the primary one in vulnerability.reference.
-    related: { references: finding.references },
-    sarif: {
-      level: finding.level,
-      ruleId: finding.ruleId,
-      ruleName: finding.ruleName,
-      fingerprint: finding.fingerprint,
-      snippet: finding.snippet,
-      startLine: finding.startLine,
-      startColumn: finding.startColumn,
-      endLine: finding.endLine
-    }
+    related: { references: finding.references }
   };
   for (const [key, value] of Object.entries(context.metadata)) {
     setPath(document, key.includes(".") ? key : `labels.${key}`, value);
@@ -32256,33 +32354,6 @@ function githubMetadata(env) {
   };
 }
 
-const SEVERITY_WORDS = {
-  CRITICAL: "Critical",
-  HIGH: "High",
-  MEDIUM: "Medium",
-  MODERATE: "Medium",
-  LOW: "Low",
-  UNKNOWN: "Unknown",
-  NONE: "Unknown"
-};
-function severityFromWord(word) {
-  return SEVERITY_WORDS[String(word ?? "").toUpperCase()];
-}
-function severityFromScore(score) {
-  if (score >= 9) return "Critical";
-  if (score >= 7) return "High";
-  if (score >= 4) return "Medium";
-  if (score > 0) return "Low";
-  return "Unknown";
-}
-function scoreVersion(vector) {
-  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ""))?.[1];
-}
-function cweIds(values) {
-  const found = values.flatMap((value) => value.toUpperCase().match(/CWE-\d+/g) ?? []);
-  return [...new Set(found)];
-}
-
 const LEVEL_SEVERITY = {
   error: "High",
   warning: "Medium",
@@ -32325,18 +32396,20 @@ function toFinding$1(run, result) {
   const location = result.locations?.[0]?.physicalLocation;
   const message = text(result.message);
   const fingerprints = { ...result.partialFingerprints ?? {}, ...result.fingerprints ?? {} };
+  const ruleId = result.ruleId ?? rule?.id ?? "unknown";
   return {
     tool: driver.name ?? "unknown",
     toolVersion: driver.semanticVersion ?? driver.version ?? "",
-    ruleId: result.ruleId ?? rule?.id ?? "unknown",
+    ruleId,
     ruleName: rule?.name ?? result.ruleId ?? "",
     level,
     severity,
     score,
     scoreVersion: score === void 0 ? void 0 : scoreVersion(properties.cvssv3_vector) ?? "3.1",
-    title: text(rule?.shortDescription) || message.split("\n")[0] || (result.ruleId ?? ""),
     description: text(rule?.fullDescription) || message,
+    title: ruleTitle(text(rule?.shortDescription), text(rule?.fullDescription) || message, ruleId),
     helpUri: rule?.helpUri,
+    remediation: rule?.help?.markdown?.trim() || text(rule?.help),
     tags,
     cwes: cweIds([...tags, ...stringsOf(properties.cwe)]),
     file: location?.artifactLocation?.uri,
@@ -32422,14 +32495,14 @@ function finish(documents, sent, ndjsonFile, skipped) {
 }
 async function run() {
   const patterns = getInput("sarif-files");
-  const dataset = getInput("dataset") || "security_scan.findings";
-  const namespace = getInput("namespace") || "github-actions";
-  const dataStream = dataStreamName(dataset, namespace);
-  const invalid = validateDataStream(dataStream);
-  if (invalid) {
-    setFailed(invalid);
+  const dataset = getInput("dataset");
+  const namespace = getInput("namespace") || "gha";
+  const rawType = (getInput("type") || "vulnerabilities").trim().toLowerCase();
+  if (rawType !== "vulnerabilities" && rawType !== "misconfigurations") {
+    setFailed(`type must be vulnerabilities or misconfigurations, got '${rawType}'`);
     return;
   }
+  const type = rawType;
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const ndjsonFile = path$2.join(temp, "elastic-bulk.ndjson");
   const failOnError = parseBoolean(getInput("fail-on-error"));
@@ -32443,30 +32516,49 @@ async function run() {
   const context = {
     dataset,
     namespace,
+    type,
     github: githubMetadata(process.env),
     scanTime: (/* @__PURE__ */ new Date()).toISOString(),
     tags: parseList(getInput("tags")),
     metadata: parsePairs(getInput("metadata"))
   };
   const findings = (await Promise.all(files.map(readReport))).flat();
-  const documents = findings.map((finding) => toDocument(finding, context));
-  const batches = chunk(documents, Math.max(1, Number(getInput("batch-size") || "500")));
-  const payload = batches.map((batch) => toNdjson(batch, dataStream)).join("");
-  await fs$1.writeFile(ndjsonFile, payload);
-  const bySeverity = documents.reduce((counts, document) => {
-    const severity = String(document.vulnerability?.severity ?? "Unknown");
-    counts[severity] = (counts[severity] ?? 0) + 1;
-    return counts;
-  }, {});
-  info(`${documents.length} finding(s) for ${dataStream}: ${JSON.stringify(bySeverity)}`);
-  if (documents.length === 0) {
+  const byStream = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    const stream = dataStreamName(datasetOf(finding, context), namespace);
+    const invalid = validateDataStream(stream);
+    if (invalid) {
+      setFailed(invalid);
+      return;
+    }
+    const documents = byStream.get(stream) ?? [];
+    documents.push(toDocument(finding, context));
+    byStream.set(stream, documents);
+  }
+  const size = Math.max(1, Number(getInput("batch-size") || "500"));
+  const batches = [...byStream].flatMap(
+    ([stream, documents]) => chunk(documents, size).map((batch) => ({ stream, batch }))
+  );
+  const documentCount = findings.length;
+  await fs$1.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(""));
+  for (const [stream, documents] of byStream) {
+    const bySeverity = documents.reduce((counts, document) => {
+      const severity = String(
+        (document.vulnerability ?? document.rule)?.severity ?? "Unknown"
+      );
+      counts[severity] = (counts[severity] ?? 0) + 1;
+      return counts;
+    }, {});
+    info(`${documents.length} ${type} finding(s) for ${stream}: ${JSON.stringify(bySeverity)}`);
+  }
+  if (documentCount === 0) {
     info("Nothing to ship.");
     finish(0, 0, ndjsonFile, false);
     return;
   }
   if (parseBoolean(getInput("dry-run"))) {
     info(`Dry run, payload written to ${ndjsonFile}`);
-    finish(documents.length, 0, ndjsonFile, true);
+    finish(documentCount, 0, ndjsonFile, true);
     return;
   }
   const url = bulkUrl(getInput("elastic-endpoint", { required: true }));
@@ -32478,19 +32570,19 @@ async function run() {
   info(`Shipping ${batches.length} batch(es) to ${url}`);
   let sent = 0;
   try {
-    for (const batch of batches) {
-      await sendBulk({ url, headers, body: toNdjson(batch, dataStream), onRetry: (message) => warning(message) });
+    for (const { stream, batch } of batches) {
+      await sendBulk({ url, headers, body: toNdjson(batch, stream), onRetry: (message) => warning(message) });
       sent += batch.length;
     }
   } catch (error) {
     const message = `Could not ship findings to Elastic: ${error.message}`;
-    finish(documents.length, sent, ndjsonFile, true);
+    finish(documentCount, sent, ndjsonFile, true);
     if (failOnError) setFailed(message);
     else warning(message);
     return;
   }
-  info(`Accepted ${sent} document(s) into ${dataStream}`);
-  finish(documents.length, sent, ndjsonFile, false);
+  info(`Accepted ${sent} document(s) into ${[...byStream.keys()].join(", ")}`);
+  finish(documentCount, sent, ndjsonFile, false);
 }
 run().catch((error) => setFailed(error.message));
 //# sourceMappingURL=index.js.map
