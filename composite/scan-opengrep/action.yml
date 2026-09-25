@@ -89,6 +89,8 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "🔎 OpenGrep"
+        result: ${{ steps.scan.outputs.findings-count == '' && 'empty' || (steps.scan.outcome == 'failure' && 'failure' || (steps.scan.outputs.findings-count > 0 && 'warning' || 'success')) }}
+        title-summary: ${{ steps.scan.outputs.findings-count != '' && format('{0} findings', steps.scan.outputs.findings-count) || '' }}
         files: |
           ${{ steps.scan.outputs.comment-file }}
         template: |

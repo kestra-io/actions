@@ -70,12 +70,27 @@ runs:
           --output "${{ github.workspace }}/trivy-result.sarif" \
           "${{ github.workspace }}/trivy-result.json"
 
+    - name: Trivy - Count vulnerabilities
+      id: count
+      shell: bash
+      if: ${{ !cancelled() }}
+      continue-on-error: true
+      run: |
+        set -euo pipefail
+        total=""
+        if [ -f "${{ github.workspace }}/trivy-result.json" ]; then
+          total=$(jq '[.Results[]?.Vulnerabilities[]?] | length' "${{ github.workspace }}/trivy-result.json")
+        fi
+        echo "total=${total}" >> "$GITHUB_OUTPUT"
+
     - name: Artifacts - Comment pull request
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🛡 Trivy"
+        result: ${{ steps.count.outputs.total == '' && 'empty' || (steps.count.outputs.total > 0 && 'warning' || 'success') }}
+        title-summary: ${{ steps.count.outputs.total != '' && format('{0} vulnerabilities', steps.count.outputs.total) || '' }}
         files: |
           ${{ github.workspace }}/trivy-result.json
         template: |

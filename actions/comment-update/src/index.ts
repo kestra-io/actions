@@ -7,10 +7,18 @@ import {GitHub} from "@actions/github/lib/utils";
 
 const MARKER = '<!-- KESTRA-ACTIONS-UPDATES -->'
 
+const RESULT_EMOJIS: Record<string, string> = {
+    success: '✅',
+    failure: '❌',
+    warning: '⚠️',
+    empty: '⚪',
+}
+
 class CommentUpdate {
     private octokit: InstanceType<typeof GitHub>;
     private readonly title: string;
     private readonly titleHash: string;
+    private readonly displayTitle: string;
     private readonly template: string;
     private readonly fetchArtifact: boolean;
     private readonly addSummary: boolean;
@@ -24,7 +32,9 @@ class CommentUpdate {
     constructor() {
         this.octokit = github.getOctokit(core.getInput('github-token'));
         this.title = core.getInput('title');
+        // Hash the raw title only, so the section is still found when result or summary change between runs
         this.titleHash = this._simpleHash(this.title);
+        this.displayTitle = this._displayTitle(core.getInput('result'), core.getInput('title-summary'));
         this.template = core.getInput('template');
         this.fetchArtifact = core.getBooleanInput('fetch-artifact');
         this.addSummary = core.getBooleanInput('add-summary');
@@ -129,8 +139,27 @@ class CommentUpdate {
         return (hash >>> 0).toString(36).padStart(7, '0');
     };
 
+    _displayTitle(result: string, summary: string): string {
+        let title = this.title;
+
+        if (result) {
+            const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
+            if (emoji) {
+                title = `${emoji} ${title}`;
+            } else {
+                core.warning(`Unknown result '${result}', expected one of: ${Object.keys(RESULT_EMOJIS).join(', ')}`);
+            }
+        }
+
+        if (summary.trim()) {
+            title = `${title} (${summary.trim()})`;
+        }
+
+        return title;
+    }
+
     _sectionContent(content: string): string {
-        let section = `## ${this.title}\n\n${content}\n`
+        let section = `<details>\n<summary><h3>${this.displayTitle}</h3></summary>\n\n${content}\n\n</details>\n`
 
         if (content.trim().length == 0) {
             section = "";
@@ -195,7 +224,7 @@ class CommentUpdate {
         await this._addComment(renderer);
 
         if (this.addSummary && renderer.trim() !== '') {
-            let section = `## ${this.title}\n\n${renderer}\n`
+            let section = `## ${this.displayTitle}\n\n${renderer}\n`
             core.summary.addRaw(section, true).write();
         }
     }

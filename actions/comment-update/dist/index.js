@@ -40422,10 +40422,17 @@ function humanReadableDate(d) {
 }
 
 const MARKER = "<!-- KESTRA-ACTIONS-UPDATES -->";
+const RESULT_EMOJIS = {
+  success: "\u2705",
+  failure: "\u274C",
+  warning: "\u26A0\uFE0F",
+  empty: "\u26AA"
+};
 class CommentUpdate {
   octokit;
   title;
   titleHash;
+  displayTitle;
   template;
   fetchArtifact;
   addSummary;
@@ -40439,6 +40446,7 @@ class CommentUpdate {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
     this.titleHash = this._simpleHash(this.title);
+    this.displayTitle = this._displayTitle(getInput("result"), getInput("title-summary"));
     this.template = getInput("template");
     this.fetchArtifact = getBooleanInput("fetch-artifact");
     this.addSummary = getBooleanInput("add-summary");
@@ -40517,10 +40525,28 @@ ${JSON.stringify(data, void 0, 2)}`);
     }
     return (hash >>> 0).toString(36).padStart(7, "0");
   }
+  _displayTitle(result, summary) {
+    let title = this.title;
+    if (result) {
+      const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
+      if (emoji) {
+        title = `${emoji} ${title}`;
+      } else {
+        warning(`Unknown result '${result}', expected one of: ${Object.keys(RESULT_EMOJIS).join(", ")}`);
+      }
+    }
+    if (summary.trim()) {
+      title = `${title} (${summary.trim()})`;
+    }
+    return title;
+  }
   _sectionContent(content) {
-    let section = `## ${this.title}
+    let section = `<details>
+<summary><h3>${this.displayTitle}</h3></summary>
 
 ${content}
+
+</details>
 `;
     if (content.trim().length == 0) {
       section = "";
@@ -40574,7 +40600,7 @@ ${s}`);
     const renderer = await this._renderTemplate(data);
     await this._addComment(renderer);
     if (this.addSummary && renderer.trim() !== "") {
-      let section = `## ${this.title}
+      let section = `## ${this.displayTitle}
 
 ${renderer}
 `;
