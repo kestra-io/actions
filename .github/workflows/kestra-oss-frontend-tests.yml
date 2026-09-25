@@ -165,8 +165,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
           scan-path: ui
-          # TEMP(sarif-elastic-action): full tree instead of the pull request diff, so the scans produce enough findings to test with — restore the default before merging.
-          mode: full
 
       # Ship the findings to Elastic, alongside the pull request comment and the artifact the
       # composite above already produces. Reuses the OTLP secrets: the managed _bulk input lives on
