@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { findingId, setPath, toDocument, type DocumentContext } from './documents.js'
-import { githubMetadata } from './github.js'
+import { githubMetadata } from '../../../shared/elastic-core/src/github.js'
+import { findingId, toDocument, type DocumentContext } from './documents.js'
 import type { Finding } from './finding.js'
 
 const context: DocumentContext = {
@@ -99,12 +99,6 @@ test('the finding id is stable across runs but distinct per location', () => {
   assert.equal(findingId(finding, context), findingId(finding, other))
   assert.notEqual(findingId(finding, context), findingId({ ...finding, startLine: 2 }, context))
   assert.notEqual(findingId(finding, context), findingId({ ...finding, file: 'other.jar' }, context))
-})
-
-test('setPath builds nested objects and overwrites a non-object on the way', () => {
-  const target: Record<string, unknown> = { a: 'scalar' }
-  setPath(target, 'a.b.c', 1)
-  assert.deepEqual(target, { a: { b: { c: 1 } } })
 })
 
 test('empty values are pruned rather than indexed as empty strings', () => {
