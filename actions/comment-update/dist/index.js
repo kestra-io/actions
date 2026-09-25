@@ -40432,7 +40432,10 @@ class CommentUpdate {
   octokit;
   title;
   titleHash;
-  displayTitle;
+  displayTitle = "";
+  boldTitle;
+  summarySuffix = "";
+  titleSummaryTemplate;
   template;
   fetchArtifact;
   addSummary;
@@ -40446,7 +40449,8 @@ class CommentUpdate {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
     this.titleHash = this._simpleHash(this.title);
-    this.displayTitle = this._displayTitle(getInput("result"), getInput("title-summary"));
+    this.boldTitle = this._boldTitle(getInput("result"));
+    this.titleSummaryTemplate = getInput("title-summary");
     this.template = getInput("template");
     this.fetchArtifact = getBooleanInput("fetch-artifact");
     this.addSummary = getBooleanInput("add-summary");
@@ -40525,11 +40529,8 @@ ${JSON.stringify(data, void 0, 2)}`);
     }
     return (hash >>> 0).toString(36).padStart(7, "0");
   }
-  _displayTitle(result, summary) {
+  _boldTitle(result) {
     let title = this.title;
-    if (summary.trim()) {
-      title = `${title} (${summary.trim()})`;
-    }
     if (result) {
       const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
       if (emoji) {
@@ -40540,9 +40541,13 @@ ${JSON.stringify(data, void 0, 2)}`);
     }
     return title;
   }
+  _summarySuffix(summary) {
+    return summary.trim() ? ` (${summary.trim()})` : "";
+  }
   _sectionContent(content) {
     let section = `<details>
-<summary><b>${this.displayTitle}</b></summary>
+<summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>
+<br>
 
 ${content}
 
@@ -40598,6 +40603,10 @@ ${s}`);
   async run() {
     const data = await this._buildData();
     const renderer = await this._renderTemplate(data);
+    this.summarySuffix = this._summarySuffix(
+      this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ""
+    );
+    this.displayTitle = `${this.boldTitle}${this.summarySuffix}`;
     await this._addComment(renderer);
     if (this.addSummary && renderer.trim() !== "") {
       let section = `## ${this.displayTitle}

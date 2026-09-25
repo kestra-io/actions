@@ -19,7 +19,7 @@ inputs:
     required: false
 
   title-summary:
-    description: Short text added after the title between (), e.g. the number of failing tests
+    description: Short text added after the title between (), e.g. the number of failing tests. Rendered as a handlebars template against the same data as `template`
     required: false
 
   template:

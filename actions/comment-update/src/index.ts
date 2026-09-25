@@ -18,7 +18,10 @@ class CommentUpdate {
     private octokit: InstanceType<typeof GitHub>;
     private readonly title: string;
     private readonly titleHash: string;
-    private readonly displayTitle: string;
+    private displayTitle: string = '';
+    private readonly boldTitle: string;
+    private summarySuffix: string = '';
+    private readonly titleSummaryTemplate: string;
     private readonly template: string;
     private readonly fetchArtifact: boolean;
     private readonly addSummary: boolean;
@@ -34,7 +37,10 @@ class CommentUpdate {
         this.title = core.getInput('title');
         // Hash the raw title only, so the section is still found when result or summary change between runs
         this.titleHash = this._simpleHash(this.title);
-        this.displayTitle = this._displayTitle(core.getInput('result'), core.getInput('title-summary'));
+        this.boldTitle = this._boldTitle(core.getInput('result'));
+        // Rendered against the template data once it's built, so it can reference fetched values
+        // (e.g. unreleased commit count) the same way the main template does.
+        this.titleSummaryTemplate = core.getInput('title-summary');
         this.template = core.getInput('template');
         this.fetchArtifact = core.getBooleanInput('fetch-artifact');
         this.addSummary = core.getBooleanInput('add-summary');
@@ -139,12 +145,8 @@ class CommentUpdate {
         return (hash >>> 0).toString(36).padStart(7, '0');
     };
 
-    _displayTitle(result: string, summary: string): string {
+    _boldTitle(result: string): string {
         let title = this.title;
-
-        if (summary.trim()) {
-            title = `${title} (${summary.trim()})`;
-        }
 
         if (result) {
             const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
@@ -158,8 +160,13 @@ class CommentUpdate {
         return title;
     }
 
+    _summarySuffix(summary: string): string {
+        return summary.trim() ? ` (${summary.trim()})` : '';
+    }
+
     _sectionContent(content: string): string {
-        let section = `<details>\n<summary><b>${this.displayTitle}</b></summary>\n\n${content}\n\n</details>\n`
+        // The summary text stays outside <b>, so only the title and result emoji are bold
+        let section = `<details>\n<summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>\n<br>\n\n${content}\n\n</details>\n`
 
         if (content.trim().length == 0) {
             section = "";
@@ -220,6 +227,11 @@ class CommentUpdate {
     async run(): Promise<void> {
         const data = await this._buildData();
         const renderer: string = await this._renderTemplate(data);
+
+        this.summarySuffix = this._summarySuffix(
+            this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ''
+        );
+        this.displayTitle = `${this.boldTitle}${this.summarySuffix}`;
 
         await this._addComment(renderer);
 
