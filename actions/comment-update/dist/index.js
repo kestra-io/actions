@@ -40433,8 +40433,9 @@ class CommentUpdate {
   title;
   titleHash;
   displayTitle = "";
-  boldTitle;
+  boldTitle = "";
   summarySuffix = "";
+  resultTemplate;
   titleSummaryTemplate;
   template;
   fetchArtifact;
@@ -40449,7 +40450,7 @@ class CommentUpdate {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
     this.titleHash = this._simpleHash(this.title);
-    this.boldTitle = this._boldTitle(getInput("result"));
+    this.resultTemplate = getInput("result");
     this.titleSummaryTemplate = getInput("title-summary");
     this.template = getInput("template");
     this.fetchArtifact = getBooleanInput("fetch-artifact");
@@ -40603,6 +40604,8 @@ ${s}`);
   async run() {
     const data = await this._buildData();
     const renderer = await this._renderTemplate(data);
+    const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : "";
+    this.boldTitle = this._boldTitle(result);
     this.summarySuffix = this._summarySuffix(
       this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ""
     );

@@ -19,8 +19,9 @@ class CommentUpdate {
     private readonly title: string;
     private readonly titleHash: string;
     private displayTitle: string = '';
-    private readonly boldTitle: string;
+    private boldTitle: string = '';
     private summarySuffix: string = '';
+    private readonly resultTemplate: string;
     private readonly titleSummaryTemplate: string;
     private readonly template: string;
     private readonly fetchArtifact: boolean;
@@ -37,9 +38,9 @@ class CommentUpdate {
         this.title = core.getInput('title');
         // Hash the raw title only, so the section is still found when result or summary change between runs
         this.titleHash = this._simpleHash(this.title);
-        this.boldTitle = this._boldTitle(core.getInput('result'));
-        // Rendered against the template data once it's built, so it can reference fetched values
-        // (e.g. unreleased commit count) the same way the main template does.
+        // result and title-summary are rendered against the template data once it's built, so they
+        // can reference fetched values (e.g. unreleased commit count) the same way the main template does.
+        this.resultTemplate = core.getInput('result');
         this.titleSummaryTemplate = core.getInput('title-summary');
         this.template = core.getInput('template');
         this.fetchArtifact = core.getBooleanInput('fetch-artifact');
@@ -228,6 +229,8 @@ class CommentUpdate {
         const data = await this._buildData();
         const renderer: string = await this._renderTemplate(data);
 
+        const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : '';
+        this.boldTitle = this._boldTitle(result);
         this.summarySuffix = this._summarySuffix(
             this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ''
         );

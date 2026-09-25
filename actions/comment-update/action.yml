@@ -15,7 +15,7 @@ inputs:
     required: true
 
   result:
-    description: 'Status shown as an emoji before the title: success, failure, warning or empty (no data)'
+    description: 'Status shown as an emoji before the title: success, failure, warning or empty (no data). Rendered as a handlebars template against the same data as `template`'
     required: false
 
   title-summary:

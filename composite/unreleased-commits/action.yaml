@@ -16,6 +16,7 @@ runs:
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
         title: "🔁 Unreleased Commits"
         title-summary: "{% if unreleased %}{{ unreleased.commits | length }} commits{% endif %}"
+        result: "{% if unreleased %}{% if unreleased.commits | length == 0 %}success{% elif unreleased.commits | length > 2 %}warning{% else %}success{% endif %}{% endif %}"
         fetch-unreleased-commits: true
         template: |
           {% if unreleased and unreleased.commits | length > 0 %}
