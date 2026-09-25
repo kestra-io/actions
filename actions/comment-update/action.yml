@@ -14,6 +14,14 @@ inputs:
     description: The sections title
     required: true
 
+  result:
+    description: 'Status shown as an emoji before the title: success, failure, warning or empty (no data). Rendered as a handlebars template against the same data as `template`'
+    required: false
+
+  title-summary:
+    description: Short text added after the title between (), e.g. the number of failing tests. Rendered as a handlebars template against the same data as `template`
+    required: false
+
   template:
     description: The handlebars template to use for the comment
     required: true

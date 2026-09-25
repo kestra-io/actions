@@ -40422,10 +40422,20 @@ function humanReadableDate(d) {
 }
 
 const MARKER = "<!-- KESTRA-ACTIONS-UPDATES -->";
+const RESULT_EMOJIS = {
+  success: "\u2705",
+  failure: "\u274C",
+  warning: "\u26A0\uFE0F",
+  empty: "\u26AA"
+};
 class CommentUpdate {
   octokit;
   title;
   titleHash;
+  boldTitle = "";
+  summarySuffix = "";
+  resultTemplate;
+  titleSummaryTemplate;
   template;
   fetchArtifact;
   addSummary;
@@ -40439,6 +40449,8 @@ class CommentUpdate {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
     this.titleHash = this._simpleHash(this.title);
+    this.resultTemplate = getInput("result");
+    this.titleSummaryTemplate = getInput("title-summary");
     this.template = getInput("template");
     this.fetchArtifact = getBooleanInput("fetch-artifact");
     this.addSummary = getBooleanInput("add-summary");
@@ -40517,10 +40529,29 @@ ${JSON.stringify(data, void 0, 2)}`);
     }
     return (hash >>> 0).toString(36).padStart(7, "0");
   }
+  _boldTitle(result) {
+    let title = this.title;
+    if (result) {
+      const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
+      if (emoji) {
+        title = `${title} ${emoji}`;
+      } else {
+        warning(`Unknown result '${result}', expected one of: ${Object.keys(RESULT_EMOJIS).join(", ")}`);
+      }
+    }
+    return title;
+  }
+  _summarySuffix(summary) {
+    return summary.trim() ? ` (${summary.trim()})` : "";
+  }
   _sectionContent(content) {
-    let section = `## ${this.title}
+    let section = `<details>
+<summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>
+<br>
 
 ${content}
+
+</details>
 `;
     if (content.trim().length == 0) {
       section = "";
@@ -40572,13 +40603,14 @@ ${s}`);
   async run() {
     const data = await this._buildData();
     const renderer = await this._renderTemplate(data);
+    const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : "";
+    this.boldTitle = this._boldTitle(result);
+    this.summarySuffix = this._summarySuffix(
+      this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ""
+    );
     await this._addComment(renderer);
     if (this.addSummary && renderer.trim() !== "") {
-      let section = `## ${this.title}
-
-${renderer}
-`;
-      summary.addRaw(section, true).write();
+      summary.addRaw(this._sectionContent(renderer), true).write();
     }
   }
   async _fetchUnreleasedCommits() {

@@ -89,22 +89,22 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "🔎 OpenGrep"
+        result: ${{ steps.scan.outputs.findings-count == '' && 'empty' || (steps.scan.outcome == 'failure' && 'failure' || (steps.scan.outputs.findings-count > 0 && 'warning' || 'success')) }}
+        title-summary: ${{ steps.scan.outputs.findings-count != '' && format('{0} findings', steps.scan.outputs.findings-count) || '' }}
         files: |
           ${{ steps.scan.outputs.comment-file }}
         template: |
           {% if files[0] and files[0].total > 0 %}
-          Found **{{ files[0].total }}** finding(s).
-
-          | Severity | Rule | Location | Message |
-          | :--- | :--- | :--- | :--- |
           {%- for finding in files[0].shown %}
-          | {{ finding.severity }} | `{{ finding.rule }}` | `{{ finding.location }}` | {{ finding.message }} |
+
+          ##### {{ finding.severity }}: `{{ finding.rule }}` on `{{ finding.location }}`
+          > {{ finding.message }}
           {%- endfor %}
           {% if files[0].overflow > 0 %}
           _… and {{ files[0].overflow }} more, see the `opengrep-report` artifact._
           {% endif %}
           {% else %}
-          No findings.
+          Found **{{ files[0].total }}** finding(s).
           {% endif %}
 
     - name: OpenGrep - Upload report

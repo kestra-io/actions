@@ -38,6 +38,8 @@ runs:
       with:
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🧪 Java Unit Tests"
+        result: ${{ steps.test-report.outputs.total == '' && 'empty' || (steps.test-report.outputs.failed > 0 && 'failure' || 'success') }}
+        title-summary: ${{ steps.test-report.outputs.total != '' && format('{0} failed, {1} passed, {2} skipped', steps.test-report.outputs.failed, steps.test-report.outputs.passed, steps.test-report.outputs.skipped) || '' }}
         template: |
           ${{ steps.test-report.outputs.summary }}
           {% if ${{ steps.test-report.outputs.failed }} > 0 %}

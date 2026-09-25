@@ -7,10 +7,21 @@ import {GitHub} from "@actions/github/lib/utils";
 
 const MARKER = '<!-- KESTRA-ACTIONS-UPDATES -->'
 
+const RESULT_EMOJIS: Record<string, string> = {
+    success: '✅',
+    failure: '❌',
+    warning: '⚠️',
+    empty: '⚪',
+}
+
 class CommentUpdate {
     private octokit: InstanceType<typeof GitHub>;
     private readonly title: string;
     private readonly titleHash: string;
+    private boldTitle: string = '';
+    private summarySuffix: string = '';
+    private readonly resultTemplate: string;
+    private readonly titleSummaryTemplate: string;
     private readonly template: string;
     private readonly fetchArtifact: boolean;
     private readonly addSummary: boolean;
@@ -24,7 +35,12 @@ class CommentUpdate {
     constructor() {
         this.octokit = github.getOctokit(core.getInput('github-token'));
         this.title = core.getInput('title');
+        // Hash the raw title only, so the section is still found when result or summary change between runs
         this.titleHash = this._simpleHash(this.title);
+        // result and title-summary are rendered against the template data once it's built, so they
+        // can reference fetched values (e.g. unreleased commit count) the same way the main template does.
+        this.resultTemplate = core.getInput('result');
+        this.titleSummaryTemplate = core.getInput('title-summary');
         this.template = core.getInput('template');
         this.fetchArtifact = core.getBooleanInput('fetch-artifact');
         this.addSummary = core.getBooleanInput('add-summary');
@@ -129,8 +145,28 @@ class CommentUpdate {
         return (hash >>> 0).toString(36).padStart(7, '0');
     };
 
+    _boldTitle(result: string): string {
+        let title = this.title;
+
+        if (result) {
+            const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
+            if (emoji) {
+                title = `${title} ${emoji}`;
+            } else {
+                core.warning(`Unknown result '${result}', expected one of: ${Object.keys(RESULT_EMOJIS).join(', ')}`);
+            }
+        }
+
+        return title;
+    }
+
+    _summarySuffix(summary: string): string {
+        return summary.trim() ? ` (${summary.trim()})` : '';
+    }
+
     _sectionContent(content: string): string {
-        let section = `## ${this.title}\n\n${content}\n`
+        // The summary text stays outside <b>, so only the title and result emoji are bold
+        let section = `<details>\n<summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>\n<br>\n\n${content}\n\n</details>\n`
 
         if (content.trim().length == 0) {
             section = "";
@@ -192,11 +228,16 @@ class CommentUpdate {
         const data = await this._buildData();
         const renderer: string = await this._renderTemplate(data);
 
+        const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : '';
+        this.boldTitle = this._boldTitle(result);
+        this.summarySuffix = this._summarySuffix(
+            this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ''
+        );
+
         await this._addComment(renderer);
 
         if (this.addSummary && renderer.trim() !== '') {
-            let section = `## ${this.title}\n\n${renderer}\n`
-            core.summary.addRaw(section, true).write();
+            core.summary.addRaw(this._sectionContent(renderer), true).write();
         }
     }
 
