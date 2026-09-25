@@ -17,7 +17,7 @@ inputs:
     default: ''
 
   users-map:
-    description: 'JSON object mapping GitHub login to Slack member ID. When provided, the responsible committer is @-mentioned in the Slack message so the build failure is not silently ignored. Typically passed as `vars.GITHUB_TO_SLACK_MAP` from the kestra-io org variable managed by terraform in kestra-io/infra.'
+    description: 'JSON object mapping GitHub login to Slack member ID. When provided, the responsible committer is @-mentioned in the Slack message so the build failure is not silently ignored. Typically passed as `vars.GH_TO_SLACK_MAP` from the kestra-io org variable managed by terraform in kestra-io/infra.'
     required: false
     default: ''
 
@@ -28,6 +28,11 @@ inputs:
 
   extra-text:
     description: 'Optional extra sentence appended to the Slack message text. Used by callers to add context such as why this failure was triggered.'
+    required: false
+    default: ''
+
+  status:
+    description: 'The status the message reports on, e.g. `needs.<job>.result`. Defaults to `job.status`, which is only correct when the reporting job is the work being reported.'
     required: false
     default: ''
 
@@ -66,9 +71,9 @@ runs:
         username: GitHub Actions
         icon_emoji: ':github-actions:'
         channel: "${{ inputs.channel }}"
-        text: "${{ steps.mention.outputs.mention && format('{0} ', steps.mention.outputs.mention) || '' }}<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}${{ inputs.suffix && format(' ({0})', inputs.suffix) || '' }}* ended with status `${{ job.status }}`${{ inputs.extra-text && format(' — {0}', inputs.extra-text) || '' }}"
+        text: "${{ steps.mention.outputs.mention && format('{0} ', steps.mention.outputs.mention) || '' }}<${{ github.event.repository.html_url }}|[${{ github.event.repository.full_name }}]> *${{ github.workflow }}${{ inputs.suffix && format(' ({0})', inputs.suffix) || '' }}* ended with status `${{ inputs.status || job.status }}`${{ inputs.extra-text && format(' — {0}', inputs.extra-text) || '' }}"
         attachments:
-          - color: "${{ job.status == 'success' && '#388E3C' || '#D32F2F' }}"
+          - color: "${{ (inputs.status || job.status) == 'success' && '#388E3C' || '#D32F2F' }}"
             blocks:
               - type: actions
                 elements:
