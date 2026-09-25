@@ -202,3 +202,18 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           secrets: ${{ toJSON(secrets) }}
+
+      # Coverage
+      - name: Coverage - Report
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
+        continue-on-error: true
+        uses: kestra-io/actions/composite/report-coverage@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          coverage-files: '**/build/reports/jacoco/**/*.xml'
+          component: backend
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=kestra-ee
+            component=backend

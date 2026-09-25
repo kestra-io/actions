@@ -1,0 +1,132 @@
+name: Report Coverage to Elastic
+description: Ship code coverage (JaCoCo, Cobertura, LCOV) to Elastic as one document per file, and build a PR comment comparing it against develop
+
+runs:
+  using: node24
+  main: dist/index.js
+
+inputs:
+  coverage-files:
+    description: >-
+      Newline separated coverage report files to ship. Each entry is a glob, so
+      "**/build/reports/jacoco/**/*.xml" or "**/coverage/lcov.info" work. Format (JaCoCo, Cobertura,
+      LCOV) is detected per file from its content. Missing paths are warned about, not failed on
+    required: true
+
+  component:
+    description: >-
+      What part of a monorepo these reports cover, e.g. "backend" or "frontend". Scopes the develop
+      baseline artifact and titles the PR comment, so a repository with several test suites gets one
+      comparison and one comment per component rather than one file clobbering another's
+    required: true
+
+  elastic-endpoint:
+    description: >-
+      The Elastic Cloud managed ingest host, the same one the Managed OTLP Endpoint uses. The action
+      appends /_es/_bulk itself, so both "https://xyz.ingest.eu-west-1.aws.elastic.cloud:443" and a
+      full ".../_es/_bulk" URL are accepted
+    required: true
+
+  elastic-headers:
+    description: >-
+      Comma separated headers, the same format and the same secret the otel actions and report-sarif
+      take for otlp-headers (e.g. "Authorization=ApiKey xyz")
+    required: false
+    default: ''
+
+  elastic-api-key:
+    description: >-
+      The API key on its own, for a caller that has no headers secret. Sent as
+      "Authorization: ApiKey <key>" and takes precedence over elastic-headers. Either this or
+      elastic-headers must carry an Authorization header; the key needs the apm event:write privilege
+    required: false
+    default: ''
+
+  namespace:
+    description: Data stream namespace. Findings land in logs-coverage-<namespace>
+    required: false
+    default: 'gha'
+
+  modules:
+    description: >-
+      Newline separated "name=path/prefix" overrides for module detection in a monorepo. A file
+      whose repo-relative path starts with the prefix is attributed to that module name. Left
+      unmatched, a file's module is the closest ancestor directory carrying a build file
+      (build.gradle(.kts), pom.xml, package.json, pyproject.toml, go.mod, Cargo.toml, *.csproj), or
+      the repository root when none is found
+    required: false
+    default: ''
+
+  base-branch:
+    description: The branch a pull request's coverage is compared against
+    required: false
+    default: 'develop'
+
+  upload-baseline:
+    description: >-
+      Upload this run's coverage as the develop baseline other runs compare against. Defaults to
+      true when the current run is on base-branch, false otherwise — set explicitly to override
+    required: false
+    default: ''
+
+  github-token:
+    description: >-
+      Token with actions:read, used to find and download the develop baseline artifact. The develop
+      comparison is skipped, with a warning, when this is empty
+    required: false
+    default: ''
+
+  metadata:
+    description: >-
+      Newline separated key=value pairs added to every document. A dotted key is written at that
+      path (service.name=kestra becomes {"service":{"name":...}}), an undotted one lands under labels
+    required: false
+    default: ''
+
+  tags:
+    description: Comma separated values for the ECS tags field, added to every document
+    required: false
+    default: ''
+
+  batch-size:
+    description: Documents per _bulk request. The endpoint accepts or rejects a batch atomically
+    required: false
+    default: '500'
+
+  fail-on-error:
+    description: >-
+      Fail the step when the coverage could not be shipped to Elastic. Defaults to false: an
+      unreachable ingest endpoint is an infrastructure problem and must not redden an unrelated
+      pull request
+    required: false
+    default: 'false'
+
+  dry-run:
+    description: Build the bulk payload and the comment without sending or uploading anything
+    required: false
+    default: 'false'
+
+outputs:
+  documents-count:
+    description: Number of per-file coverage documents built from the reports
+
+  sent-count:
+    description: Number of documents the endpoint durably accepted
+
+  line-rate:
+    description: Overall line coverage percentage for this run
+
+  base-line-rate:
+    description: Overall line coverage percentage of the develop baseline, when one was found
+
+  delta:
+    description: line-rate minus base-line-rate, in percentage points, when a baseline was found
+
+  markdown:
+    description: The coverage comment body, for comment-update's template input
+
+  markdown-file:
+    description: Absolute path to the markdown comment body
+
+  skipped:
+    description: '"true" when nothing was shipped, either because no coverage file was found or the send failed'
