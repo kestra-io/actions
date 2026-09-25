@@ -11,6 +11,20 @@ test('bulkUrl accepts the bare ingest host, the /_es path, or the full URL', () 
   assert.equal(bulkUrl(' https://abc.ingest.eu-west-1.aws.elastic.cloud:443/_es/_bulk '), expected)
 })
 
+test('bulkUrl drops a signal path rather than appending to it', () => {
+  const expected = 'https://abc.ingest.eu-west-1.aws.elastic.cloud:443/_es/_bulk'
+  // The shape that produced a 404: OTLP_ENDPOINT carrying the path the gRPC exporter strips.
+  assert.equal(bulkUrl('https://abc.ingest.eu-west-1.aws.elastic.cloud:443/v1/traces'), expected)
+  assert.equal(bulkUrl('https://abc.ingest.eu-west-1.aws.elastic.cloud:443/v1/logs/'), expected)
+  assert.equal(bulkUrl('abc.ingest.eu-west-1.aws.elastic.cloud:443/v1/metrics'), expected)
+})
+
+test('bulkUrl keeps a plaintext scheme rather than forcing https', () => {
+  assert.equal(bulkUrl('http://localhost:8200'), 'http://localhost:8200/_es/_bulk')
+  assert.equal(bulkUrl('http://localhost:8200/v1/logs'), 'http://localhost:8200/_es/_bulk')
+  assert.equal(bulkUrl('http://localhost:8200/_es/_bulk'), 'http://localhost:8200/_es/_bulk')
+})
+
 test('validateDataStream rejects targets the endpoint would silently drop', () => {
   assert.equal(validateDataStream(dataStreamName('security_scan.findings', 'github-actions')), null)
   assert.match(String(validateDataStream('metrics-foo-default')), /logs- data stream/)

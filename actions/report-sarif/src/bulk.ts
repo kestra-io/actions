@@ -22,13 +22,20 @@ export function validateDataStream(name: string): string | null {
 /**
  * Accepts whatever the Elastic Cloud console hands over: the bare ingest host the OTLP exporters
  * use, that host with /_es already on it, or the full _bulk URL.
+ *
+ * Any signal path is dropped first. The OTLP_ENDPOINT secret these workflows pass may carry one —
+ * otel-core's grpcTarget() strips it for the same reason, since a gRPC target rejects a
+ * `/v1/traces` suffix — and appending to it instead builds `…/v1/traces/_es/_bulk`, which the
+ * ingest host answers with a 404.
  */
 export function bulkUrl(endpoint: string): string {
   const trimmed = endpoint.trim().replace(/\/+$/, '')
-  const absolute = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-  if (absolute.endsWith('/_bulk')) return absolute
-  if (absolute.endsWith('/_es')) return `${absolute}/_bulk`
-  return `${absolute}/_es/_bulk`
+  if (trimmed.endsWith('/_bulk')) {
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  }
+  const secure = !/^http:\/\//i.test(trimmed)
+  const host = trimmed.replace(/^https?:\/\//i, '').replace(/\/.*$/, '')
+  return `${secure ? 'https' : 'http'}://${host}/_es/_bulk`
 }
 
 export function toNdjson(documents: Record<string, unknown>[], index: string): string {

@@ -32001,10 +32001,12 @@ function validateDataStream(name) {
 }
 function bulkUrl(endpoint) {
   const trimmed = endpoint.trim().replace(/\/+$/, "");
-  const absolute = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  if (absolute.endsWith("/_bulk")) return absolute;
-  if (absolute.endsWith("/_es")) return `${absolute}/_bulk`;
-  return `${absolute}/_es/_bulk`;
+  if (trimmed.endsWith("/_bulk")) {
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  }
+  const secure = !/^http:\/\//i.test(trimmed);
+  const host = trimmed.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+  return `${secure ? "https" : "http"}://${host}/_es/_bulk`;
 }
 function toNdjson(documents, index) {
   const action = JSON.stringify({ create: { _index: index } });
