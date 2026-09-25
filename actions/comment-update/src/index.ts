@@ -142,24 +142,24 @@ class CommentUpdate {
     _displayTitle(result: string, summary: string): string {
         let title = this.title;
 
+        if (summary.trim()) {
+            title = `${title} (${summary.trim()})`;
+        }
+
         if (result) {
             const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
             if (emoji) {
-                title = `${emoji} ${title}`;
+                title = `${title} ${emoji}`;
             } else {
                 core.warning(`Unknown result '${result}', expected one of: ${Object.keys(RESULT_EMOJIS).join(', ')}`);
             }
-        }
-
-        if (summary.trim()) {
-            title = `${title} (${summary.trim()})`;
         }
 
         return title;
     }
 
     _sectionContent(content: string): string {
-        let section = `<details>\n<summary><h3>${this.displayTitle}</h3></summary>\n\n${content}\n\n</details>\n`
+        let section = `<details>\n<summary><b>${this.displayTitle}</b></summary>\n\n${content}\n\n</details>\n`
 
         if (content.trim().length == 0) {
             section = "";

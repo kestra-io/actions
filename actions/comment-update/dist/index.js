@@ -40527,22 +40527,22 @@ ${JSON.stringify(data, void 0, 2)}`);
   }
   _displayTitle(result, summary) {
     let title = this.title;
+    if (summary.trim()) {
+      title = `${title} (${summary.trim()})`;
+    }
     if (result) {
       const emoji = RESULT_EMOJIS[result.trim().toLowerCase()];
       if (emoji) {
-        title = `${emoji} ${title}`;
+        title = `${title} ${emoji}`;
       } else {
         warning(`Unknown result '${result}', expected one of: ${Object.keys(RESULT_EMOJIS).join(", ")}`);
       }
-    }
-    if (summary.trim()) {
-      title = `${title} (${summary.trim()})`;
     }
     return title;
   }
   _sectionContent(content) {
     let section = `<details>
-<summary><h3>${this.displayTitle}</h3></summary>
+<summary><b>${this.displayTitle}</b></summary>
 
 ${content}
 
