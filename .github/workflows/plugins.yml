@@ -419,6 +419,22 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
+      # Coverage
+      - name: Coverage - Report
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && inputs.skip-test == false }}
+        continue-on-error: true
+        uses: kestra-io/actions/composite/report-coverage@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          coverage-files: '**/build/reports/jacoco/**/*.xml'
+          component: plugin
+          base-branch: ${{ github.event.repository.default_branch }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=${{ github.event.repository.name }}
+            component=plugin
+
       # Unreleased commits since latest release
       - name: Unreleased Commits - Comment pull request
         uses: kestra-io/actions/composite/unreleased-commits@main

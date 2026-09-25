@@ -1,0 +1,103 @@
+name: 'Report Coverage'
+description: 'Comment every pull request with the coverage change vs develop, and ship it to Elastic on the default branch or a releases/* branch'
+
+# Thin wiring only, matching composite/report-java and composite/scan-opengrep: the parsing, the
+# module detection, the develop baseline lookup and the comment markdown all live in
+# actions/report-coverage, where they are unit tested.
+
+inputs:
+  github-token:
+    description: 'Token used to find/download the develop baseline artifact and to post the pull request comment'
+    required: true
+
+  coverage-files:
+    description: 'Newline separated coverage report globs (JaCoCo, Cobertura or LCOV, detected per file)'
+    required: true
+
+  component:
+    description: 'What part of a monorepo these reports cover, e.g. "backend" or "frontend"'
+    required: true
+
+  elastic-endpoint:
+    description: 'The Elastic Cloud managed ingest host'
+    required: true
+
+  elastic-headers:
+    description: 'Comma separated headers, the same secret otel-instrument and report-sarif take for otlp-headers'
+    required: false
+    default: ''
+
+  namespace:
+    description: 'Data stream namespace'
+    required: false
+    default: 'gha'
+
+  modules:
+    description: 'Newline separated "name=path/prefix" overrides for module detection'
+    required: false
+    default: ''
+
+  base-branch:
+    description: 'The branch a pull request coverage is compared against'
+    required: false
+    default: 'develop'
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every document'
+    required: false
+    default: ''
+
+  dry-run:
+    description: >-
+      Force shipping to Elastic on or off. Left empty (the default), shipping happens only on the
+      default branch or a branch prefixed "releases/" — every pull request and feature branch still
+      gets the coverage comment, just without writing to Elastic
+    required: false
+    default: ''
+
+outputs:
+  documents-count:
+    description: 'Number of per-file coverage documents built from the reports'
+    value: ${{ steps.coverage.outputs.documents-count }}
+
+  line-rate:
+    description: 'Overall line coverage percentage for this run'
+    value: ${{ steps.coverage.outputs.line-rate }}
+
+  delta:
+    description: 'line-rate minus the develop baseline, in percentage points'
+    value: ${{ steps.coverage.outputs.delta }}
+
+runs:
+  using: composite
+  steps:
+    - name: Coverage - Report
+      id: coverage
+      uses: kestra-io/actions/actions/report-coverage@main
+      with:
+        coverage-files: ${{ inputs.coverage-files }}
+        component: ${{ inputs.component }}
+        elastic-endpoint: ${{ inputs.elastic-endpoint }}
+        elastic-headers: ${{ inputs.elastic-headers }}
+        namespace: ${{ inputs.namespace }}
+        modules: ${{ inputs.modules }}
+        base-branch: ${{ inputs.base-branch }}
+        metadata: ${{ inputs.metadata }}
+        github-token: ${{ inputs.github-token }}
+        # A pull request's ref_name is its merge ref ("123/merge"), never the default branch or a
+        # releases/* name, so this is 'true' (comment only, no write) for every PR on its own —
+        # writing dashboard data from a feature branch would pollute it with unmerged coverage.
+        dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || ((github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) && 'false' || 'true') }}
+
+    - name: Coverage - Comment pull request
+      if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        title: "📊 Coverage — ${{ inputs.component }}"
+        # Not `skipped`: that's also 'true' on every dry run, which is now the normal case for a
+        # pull request. documents-count == 0 is the real "no coverage data" signal.
+        result: ${{ steps.coverage.outputs['documents-count'] == '0' && 'empty' || (startsWith(steps.coverage.outputs.delta, '-') && 'warning' || 'success') }}
+        title-summary: ${{ steps.coverage.outputs['documents-count'] == '0' && '' || (steps.coverage.outputs.delta != '' && format('{0}% ({1}pp vs {2})', steps.coverage.outputs.line-rate, steps.coverage.outputs.delta, inputs.base-branch) || format('{0}%', steps.coverage.outputs.line-rate)) }}
+        template: ${{ steps.coverage.outputs.markdown }}
+        add-summary: 'false'
