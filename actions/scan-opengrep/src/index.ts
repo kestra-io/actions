@@ -138,9 +138,6 @@ async function run(): Promise<void> {
   if (scanDidNotRun(summary)) {
     const detail = fatalMessages(report)
     skip(detail.length > 0 ? detail.join('; ') : `it reported an error but no detail`)
-    await core.summary
-      .addRaw(`### 🔎 OpenGrep\n\n⚠️ The scan did not run, so this is **not** a clean result.\n\n${detail.map(d => `- ${d}`).join('\n')}`)
-      .write()
     return
   }
 
@@ -158,7 +155,8 @@ async function run(): Promise<void> {
     artifactName: ARTIFACT_NAME
   })
 
-  await core.summary.addRaw(markdown).write()
+  // No core.summary write here: the pull request comment (comment-update, driven by
+  // opengrep-comment.json) and the check run summary below already carry this markdown.
   await fs.writeFile(path.join(temp, 'opengrep-comment.json'), JSON.stringify(model, null, 2))
 
   const blocking = blockingCount(summary, failOn)
