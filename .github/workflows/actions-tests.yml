@@ -33,12 +33,16 @@ jobs:
         with:
           node-version: '24'
 
-      # The otel actions import shared/otel-core by relative path, so its bare imports resolve
-      # from shared/otel-core/node_modules. Without this install neither tsc nor the bundler can
+      # Actions import shared/* libraries by relative path, so their bare imports resolve from
+      # that library's own node_modules. Without this install neither tsc nor the bundler can
       # resolve them. Mirrors dependabot-rebuild-actions.yml.
-      - name: Node - Install shared library
-        working-directory: shared/otel-core
-        run: npm ci
+      - name: Node - Install shared libraries
+        run: |
+          set -euo pipefail
+          for dir in shared/*/; do
+            [ -f "${dir}package.json" ] || continue
+            (cd "$dir" && npm ci)
+          done
 
       - name: Node - Build and test every action
         run: |

@@ -34,12 +34,16 @@ jobs:
         with:
           node-version: '24'
 
-      # The otel actions import shared/otel-core by relative path, so its bare imports
-      # (@grpc/grpc-js, @opentelemetry/*) resolve from shared/otel-core/node_modules.
-      # Without this install the bundler and tsc cannot resolve them.
-      - name: Node - Install shared library
-        working-directory: shared/otel-core
-        run: npm ci
+      # Actions import shared/* libraries by relative path, so their bare imports
+      # (@grpc/grpc-js, @opentelemetry/*, @actions/core...) resolve from that library's own
+      # node_modules. Without this install the bundler and tsc cannot resolve them.
+      - name: Node - Install shared libraries
+        run: |
+          set -euo pipefail
+          for dir in shared/*/; do
+            [ -f "${dir}package.json" ] || continue
+            (cd "$dir" && npm ci)
+          done
 
       - name: Node - Rebuild and test every action
         run: |

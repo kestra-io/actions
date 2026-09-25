@@ -4,9 +4,8 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": true,
-    "types": ["node"]
+    "noEmit": true
   },
-  "exclude": ["__fixtures__", "__tests__", "coverage", "dist", "node_modules"],
-  "include": ["src", "../../shared/elastic-core/src"]
+  "exclude": ["coverage", "node_modules"],
+  "include": ["src"]
 }

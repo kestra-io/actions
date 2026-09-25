@@ -5,7 +5,6 @@ import {
   firstSentence,
   humaniseRuleId,
   isBoilerplateTitle,
-  languageOf,
   rationaleOf,
   ruleSection,
   ruleTitle
@@ -62,18 +61,6 @@ test('datasetForTool gives each scanner its own dash-free dataset', () => {
   assert.equal(datasetForTool('Opengrep OSS'), 'opengrep')
   assert.equal(datasetForTool('Trivy'), 'trivy')
   assert.equal(datasetForTool(''), 'unknown')
-})
-
-test('languageOf names the kind of file, not just its extension', () => {
-  assert.equal(languageOf('Dockerfile'), 'dockerfile')
-  assert.equal(languageOf('docker/Dockerfile.ci'), 'dockerfile')
-  assert.equal(languageOf('pom.xml'), 'maven')
-  assert.equal(languageOf('.github/workflows/publish.yml'), 'yaml')
-  assert.equal(languageOf('core/src/main/java/Foo.java'), 'java')
-  assert.equal(languageOf('ui/src/App.vue'), 'vue')
-  assert.equal(languageOf('build/libs/plugin.jar'), 'jar')
-  assert.equal(languageOf('README'), undefined)
-  assert.equal(languageOf(undefined), undefined)
 })
 
 test('ruleSection prefers OWASP, then CWE text, then the id namespace', () => {

@@ -1,0 +1,21 @@
+{
+  "name": "@kestra-io/elastic-core",
+  "private": true,
+  "description": "Shared, unpublished library: the Elastic Cloud managed _bulk client, GitHub run metadata, ECS document helpers and multi-line input parsing used by actions/report-sarif and actions/report-coverage. Not a GitHub Action itself (no action.yml, no dist/) — imported by relative path.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/*.test.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "@actions/core": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

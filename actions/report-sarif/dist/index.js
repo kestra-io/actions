@@ -32060,57 +32060,39 @@ function authHeaders(rawHeaders, apiKey) {
   return headers;
 }
 
-const SEVERITY_WORDS = {
-  CRITICAL: "Critical",
-  HIGH: "High",
-  MEDIUM: "Medium",
-  MODERATE: "Medium",
-  LOW: "Low",
-  UNKNOWN: "Unknown",
-  NONE: "Unknown"
-};
-function severityFromWord(word) {
-  return SEVERITY_WORDS[String(word ?? "").toUpperCase()];
+function sha256(input) {
+  return createHash("sha256").update(input).digest("hex");
 }
-function severityFromScore(score) {
-  if (score >= 9) return "Critical";
-  if (score >= 7) return "High";
-  if (score >= 4) return "Medium";
-  if (score > 0) return "Low";
-  return "Unknown";
+function setPath(target, dotted, value) {
+  const keys = dotted.split(".").filter(Boolean);
+  if (keys.length === 0) return;
+  let node = target;
+  for (const key of keys.slice(0, -1)) {
+    const next = node[key];
+    if (typeof next !== "object" || next === null || Array.isArray(next)) node[key] = {};
+    node = node[key];
+  }
+  node[keys[keys.length - 1]] = value;
 }
-function scoreVersion(vector) {
-  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ""))?.[1];
+function applyMetadata(document, metadata) {
+  for (const [key, value] of Object.entries(metadata)) {
+    setPath(document, key.includes(".") ? key : `labels.${key}`, value);
+  }
 }
-function cweIds(values) {
-  const found = values.flatMap((value) => value.toUpperCase().match(/CWE-\d+/g) ?? []);
-  return [...new Set(found)];
+function prune(value) {
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === void 0 || entry === "" || Array.isArray(entry) && entry.length === 0) {
+      delete value[key];
+      continue;
+    }
+    if (typeof entry === "object" && entry !== null && !Array.isArray(entry)) {
+      const nested = prune(entry);
+      if (Object.keys(nested).length === 0) delete value[key];
+    }
+  }
+  return value;
 }
-function isBoilerplateTitle(title) {
-  return /^[\w.-]+(\s+\w+)*\s+Finding:/i.test(title.trim());
-}
-function humaniseRuleId(ruleId) {
-  const segments = ruleId.split(".").filter(Boolean);
-  const last = segments[segments.length - 1] ?? ruleId;
-  const words = last.replace(/[-_]+/g, " ").trim();
-  if (!words) return ruleId;
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-function firstSentence(text, maxLength = 120) {
-  const flat = text.replace(/\s+/g, " ").trim();
-  if (!flat) return "";
-  const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;
-  return sentence.length <= maxLength ? sentence : "";
-}
-function ruleTitle(rawTitle, description, ruleId) {
-  const title = rawTitle.trim();
-  if (title && !isBoilerplateTitle(title) && title !== ruleId) return title;
-  return firstSentence(description) || humaniseRuleId(ruleId);
-}
-function datasetForTool(tool) {
-  const first = tool.toLowerCase().match(/[a-z0-9_]+/)?.[0];
-  return first || "unknown";
-}
+
 const LANGUAGES = {
   java: "java",
   kt: "kotlin",
@@ -32165,6 +32147,58 @@ function languageOf(file) {
   const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : void 0;
   return extension ? LANGUAGES[extension] ?? extension : void 0;
 }
+
+const SEVERITY_WORDS = {
+  CRITICAL: "Critical",
+  HIGH: "High",
+  MEDIUM: "Medium",
+  MODERATE: "Medium",
+  LOW: "Low",
+  UNKNOWN: "Unknown",
+  NONE: "Unknown"
+};
+function severityFromWord(word) {
+  return SEVERITY_WORDS[String(word ?? "").toUpperCase()];
+}
+function severityFromScore(score) {
+  if (score >= 9) return "Critical";
+  if (score >= 7) return "High";
+  if (score >= 4) return "Medium";
+  if (score > 0) return "Low";
+  return "Unknown";
+}
+function scoreVersion(vector) {
+  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ""))?.[1];
+}
+function cweIds(values) {
+  const found = values.flatMap((value) => value.toUpperCase().match(/CWE-\d+/g) ?? []);
+  return [...new Set(found)];
+}
+function isBoilerplateTitle(title) {
+  return /^[\w.-]+(\s+\w+)*\s+Finding:/i.test(title.trim());
+}
+function humaniseRuleId(ruleId) {
+  const segments = ruleId.split(".").filter(Boolean);
+  const last = segments[segments.length - 1] ?? ruleId;
+  const words = last.replace(/[-_]+/g, " ").trim();
+  if (!words) return ruleId;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+function firstSentence(text, maxLength = 120) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (!flat) return "";
+  const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;
+  return sentence.length <= maxLength ? sentence : "";
+}
+function ruleTitle(rawTitle, description, ruleId) {
+  const title = rawTitle.trim();
+  if (title && !isBoilerplateTitle(title) && title !== ruleId) return title;
+  return firstSentence(description) || humaniseRuleId(ruleId);
+}
+function datasetForTool(tool) {
+  const first = tool.toLowerCase().match(/[a-z0-9_]+/)?.[0];
+  return first || "unknown";
+}
 function ruleSection(tags, ruleId) {
   const owasp = tags.find((tag) => /^OWASP/i.test(tag.trim()));
   if (owasp) return owasp.replace(/^OWASP[\s:-]*/i, "OWASP ").trim();
@@ -32181,20 +32215,6 @@ function rationaleOf(description) {
   return opening?.[3]?.trim() || void 0;
 }
 
-function sha256(input) {
-  return createHash("sha256").update(input).digest("hex");
-}
-function setPath(target, dotted, value) {
-  const keys = dotted.split(".").filter(Boolean);
-  if (keys.length === 0) return;
-  let node = target;
-  for (const key of keys.slice(0, -1)) {
-    const next = node[key];
-    if (typeof next !== "object" || next === null || Array.isArray(next)) node[key] = {};
-    node = node[key];
-  }
-  node[keys[keys.length - 1]] = value;
-}
 const SEVERITY_SCORE = { Critical: 99, High: 73, Medium: 47, Low: 21, Unknown: 0 };
 function enumerationOf(ruleId) {
   if (/^CVE-/i.test(ruleId)) return "CVE";
@@ -32218,19 +32238,6 @@ function sourceUrl(finding, context) {
   if (!finding.file || finding.packageName || !repository || !sha) return void 0;
   const line = finding.startLine ? `#L${finding.startLine}` : "";
   return `${serverUrl}/${repository}/blob/${sha}/${finding.file}${line}`;
-}
-function prune(value) {
-  for (const [key, entry] of Object.entries(value)) {
-    if (entry === void 0 || entry === "" || Array.isArray(entry) && entry.length === 0) {
-      delete value[key];
-      continue;
-    }
-    if (typeof entry === "object" && entry !== null && !Array.isArray(entry)) {
-      const nested = prune(entry);
-      if (Object.keys(nested).length === 0) delete value[key];
-    }
-  }
-  return value;
 }
 function datasetOf(finding, context) {
   return context.dataset || datasetForTool(finding.tool);
@@ -32417,9 +32424,7 @@ function toDocument(finding, context) {
     // Every reference the advisory lists, not just the primary one in vulnerability.reference.
     related: { references: finding.references }
   };
-  for (const [key, value] of Object.entries(context.metadata)) {
-    setPath(document, key.includes(".") ? key : `labels.${key}`, value);
-  }
+  applyMetadata(document, context.metadata);
   return prune(document);
 }
 
