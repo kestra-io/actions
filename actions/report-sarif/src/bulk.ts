@@ -85,6 +85,15 @@ export async function sendBulk(options: SendOptions): Promise<void> {
       lastError = (error as Error).message
     }
 
+    // A 404 means the host answered but does not route /_es — the wrong endpoint, not a transient
+    // fault, and the one failure worth naming the fix for.
+    if (status === 404) {
+      throw new Error(
+        `${lastError}. The endpoint does not serve /_es/_bulk. Copy the _bulk endpoint from the ` +
+          'Cloud console under "Application endpoints, cluster and component IDs" > Elasticsearch, ' +
+          'and pass it as elastic-endpoint; it is not always the Managed OTLP Endpoint host.'
+      )
+    }
     // A 400 is a malformed payload or an unsupported action: retrying sends the same bytes again.
     if (status !== 0 && !RETRYABLE.has(status)) break
     if (attempt < attempts) {

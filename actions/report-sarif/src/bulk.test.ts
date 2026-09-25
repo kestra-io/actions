@@ -110,3 +110,16 @@ test('sendBulk gives up after the last attempt', async () => {
   )
   assert.equal(calls, 2)
 })
+
+test('a 404 says which endpoint value to use instead of just the status', async () => {
+  await assert.rejects(
+    sendBulk({
+      url: 'https://example.invalid/_es/_bulk',
+      headers: { Authorization: 'ApiKey key' },
+      body: 'payload',
+      sleep: async () => {},
+      fetchImpl: (async () => new Response('404 page not found', { status: 404 })) as unknown as typeof fetch
+    }),
+    /does not serve \/_es\/_bulk.*Application endpoints/s
+  )
+})

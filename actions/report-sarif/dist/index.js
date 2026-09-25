@@ -32039,6 +32039,11 @@ async function sendBulk(options) {
     } catch (error) {
       lastError = error.message;
     }
+    if (status === 404) {
+      throw new Error(
+        `${lastError}. The endpoint does not serve /_es/_bulk. Copy the _bulk endpoint from the Cloud console under "Application endpoints, cluster and component IDs" > Elasticsearch, and pass it as elastic-endpoint; it is not always the Managed OTLP Endpoint host.`
+      );
+    }
     if (status !== 0 && !RETRYABLE.has(status)) break;
     if (attempt < attempts) {
       options.onRetry?.(`attempt ${attempt}/${attempts} failed (${lastError}), retrying`);
