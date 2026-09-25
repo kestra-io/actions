@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto'
 import * as path from 'node:path'
 import type { GithubMetadata } from './github.js'
-import { datasetForTool, type Finding, type Severity } from './finding.js'
+import {
+  datasetForTool,
+  languageOf,
+  rationaleOf,
+  ruleSection,
+  type Finding,
+  type Severity
+} from './finding.js'
 
 /**
  * Turns a Finding into an ECS document shaped the way Elastic's security views read vulnerability
@@ -134,7 +141,32 @@ function common(finding: Finding, context: DocumentContext): Record<string, unkn
     log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : undefined,
     url: { full: sourceUrl(finding, context) },
     observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
-    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: 'github-repository' },
+    // The file, not the repository. A repository-level resource makes every finding in a scan
+    // share one id, which collapses the Findings list into one row repeated — and the file is what
+    // someone actually opens to fix it. Falls back to the repository when a finding has no
+    // location. The repository stays filterable through github.* and organization.*.
+    resource: finding.file
+      ? {
+          id: sha256(`${github.repository}|${finding.file}`).slice(0, 32),
+          name: finding.file,
+          type: 'file',
+          // Rendered as "Resource Type" in the list.
+          sub_type: languageOf(finding.file),
+          path: finding.file,
+          directory: path.dirname(finding.file),
+          file: path.basename(finding.file),
+          line: finding.startLine,
+          language: languageOf(finding.file),
+          repository: github.repository,
+          url: sourceUrl(finding, context)
+        }
+      : {
+          id: sha256(github.repository).slice(0, 32),
+          name: github.repository,
+          type: 'github-repository',
+          sub_type: 'repository',
+          repository: github.repository
+        },
     user: { name: github.triggeringActor || github.actor, id: github.actorId },
     organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
     github: structuredClone(github) as unknown as Record<string, unknown>,
@@ -183,13 +215,23 @@ function misconfiguration(finding: Finding, context: DocumentContext, id: string
       id: finding.ruleId,
       name: finding.title,
       description: finding.description,
+      // The sentences after the opening one: the rule states itself first, then explains itself.
+      rationale: rationaleOf(finding.description),
       references: finding.helpUri,
       remediation: finding.remediation,
       tags: finding.tags,
       version: finding.toolVersion,
+      // Rendered as "Framework Section".
+      section: ruleSection(finding.tags, finding.ruleId),
       // Synthesised: a ruleset is the closest thing static analysis has to a benchmark, and the
-      // Findings view groups by it.
-      benchmark: { id: datasetForTool(finding.tool), name: finding.tool }
+      // Findings view groups by it. `rule_number` is the list's "Rule Number" column, and a rule
+      // id is the only number a scanner rule has.
+      benchmark: {
+        id: datasetForTool(finding.tool),
+        name: finding.tool,
+        version: finding.toolVersion,
+        rule_number: finding.ruleId
+      }
     },
     // Kept so a misconfiguration can still be filtered by weakness class alongside a CVE.
     vulnerability: { cwe: finding.cwes, severity: finding.severity }

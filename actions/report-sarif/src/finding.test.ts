@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { datasetForTool, firstSentence, humaniseRuleId, isBoilerplateTitle, ruleTitle } from './finding.js'
+import {
+  datasetForTool,
+  firstSentence,
+  humaniseRuleId,
+  isBoilerplateTitle,
+  languageOf,
+  rationaleOf,
+  ruleSection,
+  ruleTitle
+} from './finding.js'
 
 test('the "<Tool> Finding:" boilerplate is recognised', () => {
   // What OpenGrep actually wrote into the cluster: the id in it is a runner temp path.
@@ -53,4 +62,32 @@ test('datasetForTool gives each scanner its own dash-free dataset', () => {
   assert.equal(datasetForTool('Opengrep OSS'), 'opengrep')
   assert.equal(datasetForTool('Trivy'), 'trivy')
   assert.equal(datasetForTool(''), 'unknown')
+})
+
+test('languageOf names the kind of file, not just its extension', () => {
+  assert.equal(languageOf('Dockerfile'), 'dockerfile')
+  assert.equal(languageOf('docker/Dockerfile.ci'), 'dockerfile')
+  assert.equal(languageOf('pom.xml'), 'maven')
+  assert.equal(languageOf('.github/workflows/publish.yml'), 'yaml')
+  assert.equal(languageOf('core/src/main/java/Foo.java'), 'java')
+  assert.equal(languageOf('ui/src/App.vue'), 'vue')
+  assert.equal(languageOf('build/libs/plugin.jar'), 'jar')
+  assert.equal(languageOf('README'), undefined)
+  assert.equal(languageOf(undefined), undefined)
+})
+
+test('ruleSection prefers OWASP, then CWE text, then the id namespace', () => {
+  assert.equal(ruleSection(['OWASP-A01:2017 - Injection', 'security'], 'x.y'), 'OWASP A01:2017 - Injection')
+  assert.equal(ruleSection(['CWE-269: Improper Privilege Management'], 'x.y'), 'Improper Privilege Management')
+  assert.equal(ruleSection(['security'], 'dockerfile.security.missing-user'), 'Dockerfile')
+  assert.equal(ruleSection([], 'kestra-mutable-action-tag'), undefined, 'an id with no namespace has no section')
+})
+
+test('rationaleOf is the explanation after the opening statement', () => {
+  assert.equal(
+    rationaleOf('Pin this action to a SHA. A tag can be repointed by its owner, so the code differs.'),
+    'A tag can be repointed by its owner, so the code differs.'
+  )
+  assert.equal(rationaleOf('Only one sentence here.'), undefined)
+  assert.equal(rationaleOf(''), undefined)
 })

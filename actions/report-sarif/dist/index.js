@@ -32111,6 +32111,75 @@ function datasetForTool(tool) {
   const first = tool.toLowerCase().match(/[a-z0-9_]+/)?.[0];
   return first || "unknown";
 }
+const LANGUAGES = {
+  java: "java",
+  kt: "kotlin",
+  kts: "kotlin",
+  scala: "scala",
+  groovy: "groovy",
+  gradle: "gradle",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  ts: "typescript",
+  tsx: "typescript",
+  vue: "vue",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  php: "php",
+  cs: "csharp",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cc: "cpp",
+  hpp: "cpp",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  yml: "yaml",
+  yaml: "yaml",
+  json: "json",
+  xml: "xml",
+  toml: "toml",
+  tf: "terraform",
+  hcl: "terraform",
+  sql: "sql",
+  md: "markdown",
+  html: "html",
+  css: "css",
+  jar: "jar",
+  war: "jar",
+  lock: "lockfile"
+};
+function languageOf(file) {
+  if (!file) return void 0;
+  const name = file.split("/").pop() ?? file;
+  if (/^Dockerfile/i.test(name)) return "dockerfile";
+  if (/^Makefile$/i.test(name)) return "make";
+  if (name === "pom.xml") return "maven";
+  if (name === "go.mod" || name === "go.sum") return "go";
+  if (name === "package.json" || name === "package-lock.json") return "npm";
+  const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : void 0;
+  return extension ? LANGUAGES[extension] ?? extension : void 0;
+}
+function ruleSection(tags, ruleId) {
+  const owasp = tags.find((tag) => /^OWASP/i.test(tag.trim()));
+  if (owasp) return owasp.replace(/^OWASP[\s:-]*/i, "OWASP ").trim();
+  const cwe = tags.map((tag) => /^CWE-\d+:\s*(.+)$/i.exec(tag.trim())?.[1]).find(Boolean);
+  if (cwe) return cwe.trim();
+  const segments = ruleId.split(".").filter(Boolean);
+  if (segments.length < 2) return void 0;
+  const first = segments[0];
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+function rationaleOf(description) {
+  const flat = description.replace(/\s+/g, " ").trim();
+  const opening = /^(.+?[.!?])(\s+)(.+)$/.exec(flat);
+  return opening?.[3]?.trim() || void 0;
+}
 
 function sha256(input) {
   return createHash("sha256").update(input).digest("hex");
@@ -32181,7 +32250,30 @@ function common(finding, context) {
     log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : void 0,
     url: { full: sourceUrl(finding, context) },
     observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
-    resource: { id: sha256(github.repository).slice(0, 32), name: github.repository, type: "github-repository" },
+    // The file, not the repository. A repository-level resource makes every finding in a scan
+    // share one id, which collapses the Findings list into one row repeated — and the file is what
+    // someone actually opens to fix it. Falls back to the repository when a finding has no
+    // location. The repository stays filterable through github.* and organization.*.
+    resource: finding.file ? {
+      id: sha256(`${github.repository}|${finding.file}`).slice(0, 32),
+      name: finding.file,
+      type: "file",
+      // Rendered as "Resource Type" in the list.
+      sub_type: languageOf(finding.file),
+      path: finding.file,
+      directory: path$2.dirname(finding.file),
+      file: path$2.basename(finding.file),
+      line: finding.startLine,
+      language: languageOf(finding.file),
+      repository: github.repository,
+      url: sourceUrl(finding, context)
+    } : {
+      id: sha256(github.repository).slice(0, 32),
+      name: github.repository,
+      type: "github-repository",
+      sub_type: "repository",
+      repository: github.repository
+    },
     user: { name: github.triggeringActor || github.actor, id: github.actorId },
     organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
     github: structuredClone(github),
@@ -32223,13 +32315,23 @@ function misconfiguration(finding, context, id) {
       id: finding.ruleId,
       name: finding.title,
       description: finding.description,
+      // The sentences after the opening one: the rule states itself first, then explains itself.
+      rationale: rationaleOf(finding.description),
       references: finding.helpUri,
       remediation: finding.remediation,
       tags: finding.tags,
       version: finding.toolVersion,
+      // Rendered as "Framework Section".
+      section: ruleSection(finding.tags, finding.ruleId),
       // Synthesised: a ruleset is the closest thing static analysis has to a benchmark, and the
-      // Findings view groups by it.
-      benchmark: { id: datasetForTool(finding.tool), name: finding.tool }
+      // Findings view groups by it. `rule_number` is the list's "Rule Number" column, and a rule
+      // id is the only number a scanner rule has.
+      benchmark: {
+        id: datasetForTool(finding.tool),
+        name: finding.tool,
+        version: finding.toolVersion,
+        rule_number: finding.ruleId
+      }
     },
     // Kept so a misconfiguration can still be filtered by weakness class alongside a CVE.
     vulnerability: { cwe: finding.cwes, severity: finding.severity }

@@ -65,6 +65,20 @@ vulnerability leaves most of that shape empty and files it in the wrong view.
 A misconfiguration still carries `vulnerability.cwe` and `vulnerability.severity`,
 so a weakness class is filterable across both.
 
+The Findings list reads columns that have no natural equivalent in a scanner
+report, so they are derived:
+
+| Column | Field | Derived from |
+| :--- | :--- | :--- |
+| Resource Type | `resource.sub_type` | the file's language — `yaml`, `dockerfile`, `java`, `maven` |
+| Rule Number | `rule.benchmark.rule_number` | the rule id, the only number a scanner rule has |
+| Framework Section | `rule.section` | the rule's OWASP tag, else its CWE description, else the id's leading namespace |
+| Framework | `rule.benchmark.name` | the tool. Kibana draws an icon only for benchmarks it knows (`cis_gcp`, `cis_aws`, …), so OpenGrep gets a name without one |
+
+`rule.rationale` is the description after its opening sentence — a rule states
+itself first and explains itself second — and `rule.remediation` is the SARIF
+`help` text.
+
 ## One data stream per scanner
 
 `logs-<tool>-<namespace>`, the tool being the first word of the SARIF driver
@@ -166,7 +180,8 @@ One document per SARIF result, in ECS:
 | `vulnerability.data_source.*`, `.published_date`, `.cvss` | Trivy's JSON only — see below |
 | `related.references` | every reference the advisory lists, beyond the primary one |
 | `file.*`, `log.origin.file.line`, `url.full` | the first physical location; `url.full` is omitted for package findings, whose location is a build artifact rather than a tracked file |
-| `resource.id` / `.name` | the repository — findings are grouped and remediated per repository |
+| `resource.*` | the scanned file: `name` (path), `sub_type` (language), `directory`, `file`, `line`, `url`, plus `repository`. Falls back to the repository when a finding has no location |
+| `rule.section`, `rule.benchmark.rule_number` | the Findings list's "Framework Section" and "Rule Number" columns |
 | `user.name` / `.id` | the triggering actor, falling back to the actor |
 | `organization.name` / `.id` | the repository owner |
 | `event.id` | `sha256(repository, tool, rule, file, line, package)` |
