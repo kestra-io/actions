@@ -32239,6 +32239,50 @@ function location(finding) {
   if (!finding.file) return "";
   return finding.startLine ? `${finding.file}:${finding.startLine}` : finding.file;
 }
+function resourceFor(finding, context) {
+  const repository = context.github.repository;
+  const target = finding.file;
+  const repositoryUrl = repository ? `${context.github.serverUrl}/${repository}` : void 0;
+  if (context.type === "misconfigurations" && target) {
+    return {
+      id: sha256(`${repository}|${target}`).slice(0, 32),
+      name: target,
+      type: "file",
+      // Rendered as "Resource Type" in the list.
+      sub_type: languageOf(target),
+      path: target,
+      directory: path$2.dirname(target),
+      file: path$2.basename(target),
+      line: finding.startLine,
+      language: languageOf(target),
+      repository,
+      repository_url: repositoryUrl,
+      url: sourceUrl(finding, context)
+    };
+  }
+  if (!target) {
+    return {
+      id: sha256(repository).slice(0, 32),
+      name: repository,
+      type: "github-repository",
+      sub_type: "repository",
+      repository,
+      repository_url: repositoryUrl,
+      url: repositoryUrl
+    };
+  }
+  return {
+    id: sha256(`${repository}|${target}`).slice(0, 32),
+    name: repository ? `${repository} / ${target}` : target,
+    type: "github-repository",
+    sub_type: languageOf(target) ?? target.toLowerCase(),
+    target,
+    language: languageOf(target) ?? target.toLowerCase(),
+    repository,
+    repository_url: repositoryUrl,
+    url: repositoryUrl
+  };
+}
 function common(finding, context) {
   const github = context.github;
   return {
@@ -32250,30 +32294,7 @@ function common(finding, context) {
     log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : void 0,
     url: { full: sourceUrl(finding, context) },
     observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
-    // The file, not the repository. A repository-level resource makes every finding in a scan
-    // share one id, which collapses the Findings list into one row repeated — and the file is what
-    // someone actually opens to fix it. Falls back to the repository when a finding has no
-    // location. The repository stays filterable through github.* and organization.*.
-    resource: finding.file ? {
-      id: sha256(`${github.repository}|${finding.file}`).slice(0, 32),
-      name: finding.file,
-      type: "file",
-      // Rendered as "Resource Type" in the list.
-      sub_type: languageOf(finding.file),
-      path: finding.file,
-      directory: path$2.dirname(finding.file),
-      file: path$2.basename(finding.file),
-      line: finding.startLine,
-      language: languageOf(finding.file),
-      repository: github.repository,
-      url: sourceUrl(finding, context)
-    } : {
-      id: sha256(github.repository).slice(0, 32),
-      name: github.repository,
-      type: "github-repository",
-      sub_type: "repository",
-      repository: github.repository
-    },
+    resource: resourceFor(finding, context),
     user: { name: github.triggeringActor || github.actor, id: github.actorId },
     organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
     github: structuredClone(github),

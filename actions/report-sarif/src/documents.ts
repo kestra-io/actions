@@ -125,6 +125,66 @@ function location(finding: Finding): string {
 }
 
 /**
+ * What the finding is *on*, which differs by kind.
+ *
+ * A misconfiguration is on a file: a repository-level resource makes every finding in a scan share
+ * one id, which collapses the Findings list into one row repeated, and the file is what someone
+ * opens to fix it.
+ *
+ * A vulnerability is on a dependency, and Trivy reports its target as the ecosystem rather than a
+ * path — "Java" for a jar scan. "Java" alone says nothing about which repository is affected, so
+ * the name is scoped to it. The repository stays filterable through github.* and organization.*
+ * either way.
+ */
+function resourceFor(finding: Finding, context: DocumentContext): Record<string, unknown> {
+  const repository = context.github.repository
+  const target = finding.file
+  const repositoryUrl = repository ? `${context.github.serverUrl}/${repository}` : undefined
+
+  if (context.type === 'misconfigurations' && target) {
+    return {
+      id: sha256(`${repository}|${target}`).slice(0, 32),
+      name: target,
+      type: 'file',
+      // Rendered as "Resource Type" in the list.
+      sub_type: languageOf(target),
+      path: target,
+      directory: path.dirname(target),
+      file: path.basename(target),
+      line: finding.startLine,
+      language: languageOf(target),
+      repository,
+      repository_url: repositoryUrl,
+      url: sourceUrl(finding, context)
+    }
+  }
+
+  if (!target) {
+    return {
+      id: sha256(repository).slice(0, 32),
+      name: repository,
+      type: 'github-repository',
+      sub_type: 'repository',
+      repository,
+      repository_url: repositoryUrl,
+      url: repositoryUrl
+    }
+  }
+
+  return {
+    id: sha256(`${repository}|${target}`).slice(0, 32),
+    name: repository ? `${repository} / ${target}` : target,
+    type: 'github-repository',
+    sub_type: languageOf(target) ?? target.toLowerCase(),
+    target,
+    language: languageOf(target) ?? target.toLowerCase(),
+    repository,
+    repository_url: repositoryUrl,
+    url: repositoryUrl
+  }
+}
+
+/**
  * Shared by both document shapes: everything about where the finding was seen rather than what it
  * is.
  */
@@ -141,32 +201,7 @@ function common(finding: Finding, context: DocumentContext): Record<string, unkn
     log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : undefined,
     url: { full: sourceUrl(finding, context) },
     observer: { vendor: finding.tool, product: finding.tool, version: finding.toolVersion },
-    // The file, not the repository. A repository-level resource makes every finding in a scan
-    // share one id, which collapses the Findings list into one row repeated — and the file is what
-    // someone actually opens to fix it. Falls back to the repository when a finding has no
-    // location. The repository stays filterable through github.* and organization.*.
-    resource: finding.file
-      ? {
-          id: sha256(`${github.repository}|${finding.file}`).slice(0, 32),
-          name: finding.file,
-          type: 'file',
-          // Rendered as "Resource Type" in the list.
-          sub_type: languageOf(finding.file),
-          path: finding.file,
-          directory: path.dirname(finding.file),
-          file: path.basename(finding.file),
-          line: finding.startLine,
-          language: languageOf(finding.file),
-          repository: github.repository,
-          url: sourceUrl(finding, context)
-        }
-      : {
-          id: sha256(github.repository).slice(0, 32),
-          name: github.repository,
-          type: 'github-repository',
-          sub_type: 'repository',
-          repository: github.repository
-        },
+    resource: resourceFor(finding, context),
     user: { name: github.triggeringActor || github.actor, id: github.actorId },
     organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
     github: structuredClone(github) as unknown as Record<string, unknown>,

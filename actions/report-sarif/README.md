@@ -79,6 +79,18 @@ report, so they are derived:
 itself first and explains itself second — and `rule.remediation` is the SARIF
 `help` text.
 
+### What the resource is
+
+| `type` | `resource.name` | Why |
+| :--- | :--- | :--- |
+| `misconfigurations` | the file path, e.g. `.github/workflows/publish.yml` | the file is what someone opens to fix it, and a repository-level resource makes every finding in a scan share one id — which collapses the list into one row repeated |
+| `vulnerabilities` | `<repository> / <target>`, e.g. `kestra-io/plugin-databricks / Java` | Trivy reports the target of a jar scan as the ecosystem rather than a path, and `Java` on its own says nothing about which repository is affected |
+
+Both carry `resource.repository` and `resource.repository_url`; a
+misconfiguration adds `directory`, `file`, `line`, `language` and a permalink to
+the line, and a vulnerability adds `target`. `resource.id` is
+`sha256(repository, target)` either way, so it is stable across runs.
+
 ## One data stream per scanner
 
 `logs-<tool>-<namespace>`, the tool being the first word of the SARIF driver
@@ -180,7 +192,7 @@ One document per SARIF result, in ECS:
 | `vulnerability.data_source.*`, `.published_date`, `.cvss` | Trivy's JSON only — see below |
 | `related.references` | every reference the advisory lists, beyond the primary one |
 | `file.*`, `log.origin.file.line`, `url.full` | the first physical location; `url.full` is omitted for package findings, whose location is a build artifact rather than a tracked file |
-| `resource.*` | the scanned file: `name` (path), `sub_type` (language), `directory`, `file`, `line`, `url`, plus `repository`. Falls back to the repository when a finding has no location |
+| `resource.*` | what the finding is on, which differs by `type` — see below |
 | `rule.section`, `rule.benchmark.rule_number` | the Findings list's "Framework Section" and "Rule Number" columns |
 | `user.name` / `.id` | the triggering actor, falling back to the actor |
 | `organization.name` / `.id` | the repository owner |

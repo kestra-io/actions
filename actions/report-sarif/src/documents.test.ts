@@ -59,8 +59,8 @@ test('maps a vulnerability onto ECS fields', () => {
   assert.equal(document.event.kind, 'event')
   assert.deepEqual(document.event.category, ['vulnerability'])
   assert.deepEqual(document.data_stream, { type: 'logs', dataset: 'trivy', namespace: 'gha' })
-  assert.equal(document.resource.name, 'build/libs/plugin.jar', 'the scanned file, not the repository')
-  assert.equal(document.resource.type, 'file')
+  assert.equal(document.resource.name, 'kestra-io/kestra / build/libs/plugin.jar')
+  assert.equal(document.resource.type, 'github-repository')
   assert.equal(document.resource.sub_type, 'jar')
   assert.equal(document.resource.repository, 'kestra-io/kestra')
   assert.deepEqual(document.user, { name: 'tchiotludo', id: '2064609' })
@@ -280,4 +280,33 @@ test('each scanner gets its own dataset, and an explicit one overrides', () => {
     Record<string, unknown>
   >
   assert.equal(pinned.data_stream.dataset, 'security_scan.findings')
+})
+
+test('a vulnerability resource names the repository, since Trivy targets an ecosystem', () => {
+  // Trivy reports "Java" as the target of a jar scan, which on its own says nothing about where.
+  const jar = toDocument({ ...finding, file: 'Java' }, context) as Record<string, Record<string, unknown>>
+  assert.equal(jar.resource.name, 'kestra-io/kestra / Java')
+  assert.equal(jar.resource.sub_type, 'java')
+  assert.equal(jar.resource.repository, 'kestra-io/kestra')
+  assert.equal(jar.resource.repository_url, 'https://github.com/kestra-io/kestra')
+  assert.equal(jar.resource.target, 'Java')
+
+  const manifest = toDocument({ ...finding, file: 'pom.xml' }, context) as Record<string, Record<string, unknown>>
+  assert.equal(manifest.resource.name, 'kestra-io/kestra / pom.xml')
+  assert.equal(manifest.resource.sub_type, 'maven')
+
+  // Two targets in one repository stay distinct; the same target in two repositories does too.
+  assert.notEqual(jar.resource.id, manifest.resource.id)
+  const other = toDocument({ ...finding, file: 'Java' }, {
+    ...context,
+    github: { ...context.github, repository: 'kestra-io/plugin-aws' }
+  }) as Record<string, Record<string, unknown>>
+  assert.notEqual(jar.resource.id, other.resource.id)
+})
+
+test('a finding with no target falls back to the repository itself', () => {
+  const document = toDocument({ ...finding, file: undefined }, context) as Record<string, Record<string, unknown>>
+  assert.equal(document.resource.name, 'kestra-io/kestra')
+  assert.equal(document.resource.type, 'github-repository')
+  assert.equal(document.resource.sub_type, 'repository')
 })
