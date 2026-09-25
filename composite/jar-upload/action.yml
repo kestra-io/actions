@@ -22,6 +22,7 @@ runs:
       with:
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
         title: "📦 Artifacts"
+        title-summary: "1 jar"
         fetch-artifact: 'true'
         add-summary: 'false'
         template: |
