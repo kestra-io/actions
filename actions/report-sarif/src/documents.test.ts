@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { findingId, setPath, toDocument, type DocumentContext } from './documents.js'
 import { githubMetadata } from './github.js'
-import type { Finding } from './sarif.js'
+import type { Finding } from './finding.js'
 
 const context: DocumentContext = {
   dataset: 'security_scan.findings',

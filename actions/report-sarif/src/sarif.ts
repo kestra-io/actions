@@ -8,14 +8,16 @@
  * know which tool wrote the file.
  */
 
-export type SarifLevel = 'error' | 'warning' | 'note' | 'none'
+import {
+  cweIds,
+  scoreVersion,
+  severityFromScore,
+  severityFromWord,
+  type Finding,
+  type Severity
+} from './finding.js'
 
-/**
- * Title case, matching what the third-party vulnerability integrations already write into this
- * cluster (`Critical`, `High`, ...). A finding shipped as `HIGH` would sit in its own bucket beside
- * theirs in the same Findings view rather than aggregating with them.
- */
-export type Severity = 'Critical' | 'High' | 'Medium' | 'Low' | 'Unknown'
+export type SarifLevel = 'error' | 'warning' | 'note' | 'none'
 
 interface SarifText {
   text?: string
@@ -58,42 +60,6 @@ export interface SarifLog {
   runs?: SarifRun[]
 }
 
-export interface Finding {
-  readonly tool: string
-  readonly toolVersion: string
-  readonly ruleId: string
-  readonly ruleName: string
-  readonly level: SarifLevel
-  readonly severity: Severity
-  readonly score?: number
-  readonly scoreVersion?: string
-  readonly title: string
-  readonly description: string
-  readonly helpUri?: string
-  readonly tags: string[]
-  readonly cwes: string[]
-  readonly file?: string
-  readonly startLine?: number
-  readonly startColumn?: number
-  readonly endLine?: number
-  readonly snippet?: string
-  readonly fingerprint?: string
-  readonly packageName?: string
-  readonly packageVersion?: string
-  readonly packageFixedVersion?: string
-}
-
-/** Producers spell the severity word however they like, so match on the upper cased form. */
-const SEVERITY_WORDS: Record<string, Severity> = {
-  CRITICAL: 'Critical',
-  HIGH: 'High',
-  MEDIUM: 'Medium',
-  MODERATE: 'Medium',
-  LOW: 'Low',
-  UNKNOWN: 'Unknown',
-  NONE: 'Unknown'
-}
-
 const LEVEL_SEVERITY: Record<SarifLevel, Severity> = {
   error: 'High',
   warning: 'Medium',
@@ -108,15 +74,6 @@ function text(value: SarifText | undefined): string {
 function stringsOf(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === 'string')
   return typeof value === 'string' ? [value] : []
-}
-
-/** CVSS v3 qualitative bands, the scale `security-severity` is defined against. */
-export function severityFromScore(score: number): Severity {
-  if (score >= 9) return 'Critical'
-  if (score >= 7) return 'High'
-  if (score >= 4) return 'Medium'
-  if (score > 0) return 'Low'
-  return 'Unknown'
 }
 
 function numberOf(value: unknown): number | undefined {
@@ -139,21 +96,6 @@ export function parseTrivyPackage(message: string): Pick<Finding, 'packageName' 
   }
 }
 
-/** CWE identifiers arrive as free text: a bare "CWE-79", or a tag like "cwe:CWE-79: XSS". */
-export function cweIds(values: string[]): string[] {
-  const found = values.flatMap(value => value.toUpperCase().match(/CWE-\d+/g) ?? [])
-  return [...new Set(found)]
-}
-
-/**
- * Trivy carries the CVSS vector alongside the score, and its prefix names the version the score is
- * on (`CVSS:3.1/AV:L/...`). Reading it beats assuming 3.1 for a score that turns out to be a v4 or
- * a v2 one.
- */
-export function scoreVersion(vector: unknown): string | undefined {
-  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ''))?.[1]
-}
-
 function resolveRule(run: SarifRun, result: SarifResult): SarifRule | undefined {
   const rules = run.tool?.driver?.rules ?? []
   if (typeof result.ruleIndex === 'number' && rules[result.ruleIndex]) return rules[result.ruleIndex]
@@ -171,7 +113,7 @@ function toFinding(run: SarifRun, result: SarifResult): Finding {
   // Order matters. A tag is the producer stating the severity outright (Trivy), a score is the
   // producer stating CVSS and letting the reader band it, and `level` is the SARIF default that
   // every producer sets whether or not it means anything.
-  const tagged = tags.map(tag => SEVERITY_WORDS[tag.toUpperCase()]).find(Boolean)
+  const tagged = tags.map(severityFromWord).find(Boolean)
   const severity = tagged ?? (score !== undefined ? severityFromScore(score) : LEVEL_SEVERITY[level])
 
   const location = result.locations?.[0]?.physicalLocation

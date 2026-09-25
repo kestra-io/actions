@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import * as path from 'node:path'
 import type { GithubMetadata } from './github.js'
-import type { Finding, Severity } from './sarif.js'
+import type { Finding, Severity } from './finding.js'
 
 /**
  * Turns a Finding into an ECS document shaped the way Elastic's security views read vulnerability
@@ -141,6 +141,13 @@ export function toDocument(finding: Finding, context: DocumentContext): Record<s
       classification: finding.score !== undefined ? 'CVSS' : undefined,
       enumeration,
       cwe: finding.cwes,
+      // Native-report only. The flyout has a panel for each: the advisory database behind the
+      // finding, when it was published, and every scoring vendor's CVSS rather than just the one
+      // that won. SARIF carries none of them, so a SARIF-sourced finding leaves them empty.
+      data_source: finding.dataSource,
+      published_date: finding.publishedDate,
+      last_modified_date: finding.lastModifiedDate,
+      cvss: finding.cvss,
       report_id: `${github.runId}-${github.runAttempt ?? 1}`,
       scanner: { vendor: finding.tool, version: finding.toolVersion },
       score: finding.score === undefined ? undefined : { base: finding.score, version: finding.scoreVersion }
@@ -148,7 +155,10 @@ export function toDocument(finding: Finding, context: DocumentContext): Record<s
     package: {
       name: finding.packageName,
       version: finding.packageVersion,
-      fixed_version: finding.packageFixedVersion
+      fixed_version: finding.packageFixedVersion,
+      reference: finding.purl,
+      // "fixed", "affected", "will_not_fix" — whether a fixed_version exists says less than this.
+      fix_status: finding.fixStatus
     },
     file: finding.file
       ? { path: finding.file, name: path.basename(finding.file), directory: path.dirname(finding.file) }
@@ -166,6 +176,8 @@ export function toDocument(finding: Finding, context: DocumentContext): Record<s
     // Cloned because prune() strips empty fields in place, and the same metadata object is reused
     // for every finding in the run.
     github: structuredClone(github) as unknown as Record<string, unknown>,
+    // Every reference the advisory lists, not just the primary one in vulnerability.reference.
+    related: { references: finding.references },
     sarif: {
       level: finding.level,
       ruleId: finding.ruleId,

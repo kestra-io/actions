@@ -2,7 +2,7 @@
 
 Ship SARIF scan results to Elastic Cloud as security findings.
 
-Any SARIF 2.1.0 producer works. The two in this repository are
+Any SARIF 2.1.0 producer works, and Trivy's own JSON report is read natively. The two in this repository are
 [`scan-opengrep`](../scan-opengrep) (static analysis of the source tree) and
 [`scan-trivy`](../../composite/scan-trivy) (CVEs in built artifacts), and the
 document builder normalises both onto the same ECS `vulnerability.*` shape, so
@@ -71,6 +71,25 @@ An empty `sarif-files` is a warning rather than a failure, because the usual
 wiring passes a scan step's output and that output is empty whenever the scan
 itself skipped.
 
+### Trivy: pass the JSON, not the SARIF
+
+The format is detected by shape, so `sarif-files` takes Trivy's native report
+too — and for Trivy that is the one to pass. SARIF drops three things the
+Elastic vulnerability flyout has panels for, and they render as `-` without it:
+
+| Panel | Field | Only in |
+| :--- | :--- | :--- |
+| Data source | `vulnerability.data_source.ID` / `.Name` / `.URL` | Trivy JSON |
+| Published | `vulnerability.published_date` | Trivy JSON |
+| Vulnerability Score | `vulnerability.cvss` — every scoring vendor's score and vector | Trivy JSON |
+
+The JSON also carries proper `CweIDs` rather than CWEs smuggled through
+free-text rule tags, plus the package PURL, the fix status and the full
+reference list. `composite/scan-trivy` exposes it as `json-file`.
+
+OpenGrep has no advisory behind it, so its findings leave those fields empty
+whichever format they arrive in.
+
 `sarif-files` is a newline separated list of globs, so one step can ship every
 report a job produced:
 
@@ -119,7 +138,9 @@ One document per SARIF result, in ECS:
 | `vulnerability.cwe` | CWE ids parsed out of the rule tags |
 | `vulnerability.scanner.vendor` / `.version` | `tool.driver` |
 | `event.severity` | the severity as a sortable 0-100 band — `Critical` 99, `High` 73, `Medium` 47, `Low` 21 |
-| `package.*` | parsed back out of Trivy's result message, which is where it puts the package instead of in structured fields |
+| `package.*` | structured fields from Trivy's JSON; parsed back out of the result message when only SARIF is available, which is where it puts the package instead |
+| `vulnerability.data_source.*`, `.published_date`, `.cvss` | Trivy's JSON only — see below |
+| `related.references` | every reference the advisory lists, beyond the primary one |
 | `file.*`, `log.origin.file.line`, `url.full` | the first physical location; `url.full` is omitted for package findings, whose location is a build artifact rather than a tracked file |
 | `resource.id` / `.name` | the repository — findings are grouped and remediated per repository |
 | `user.name` / `.id` | the triggering actor, falling back to the actor |

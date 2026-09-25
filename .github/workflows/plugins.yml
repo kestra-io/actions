@@ -369,7 +369,9 @@ jobs:
         # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
         uses: kestra-io/actions/actions/report-sarif@sarif-elastic-action
         with:
-          sarif-files: ${{ steps.trivy.outputs.sarif-file }}
+          # The native JSON, not the SARIF the composite also produces: SARIF drops the advisory
+          # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
+          sarif-files: ${{ steps.trivy.outputs.json-file }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |

@@ -32150,6 +32150,13 @@ function toDocument(finding, context) {
       classification: finding.score !== void 0 ? "CVSS" : void 0,
       enumeration,
       cwe: finding.cwes,
+      // Native-report only. The flyout has a panel for each: the advisory database behind the
+      // finding, when it was published, and every scoring vendor's CVSS rather than just the one
+      // that won. SARIF carries none of them, so a SARIF-sourced finding leaves them empty.
+      data_source: finding.dataSource,
+      published_date: finding.publishedDate,
+      last_modified_date: finding.lastModifiedDate,
+      cvss: finding.cvss,
       report_id: `${github.runId}-${github.runAttempt ?? 1}`,
       scanner: { vendor: finding.tool, version: finding.toolVersion },
       score: finding.score === void 0 ? void 0 : { base: finding.score, version: finding.scoreVersion }
@@ -32157,7 +32164,10 @@ function toDocument(finding, context) {
     package: {
       name: finding.packageName,
       version: finding.packageVersion,
-      fixed_version: finding.packageFixedVersion
+      fixed_version: finding.packageFixedVersion,
+      reference: finding.purl,
+      // "fixed", "affected", "will_not_fix" — whether a fixed_version exists says less than this.
+      fix_status: finding.fixStatus
     },
     file: finding.file ? { path: finding.file, name: path$2.basename(finding.file), directory: path$2.dirname(finding.file) } : void 0,
     log: finding.startLine ? { origin: { file: { name: finding.file, line: finding.startLine } } } : void 0,
@@ -32173,6 +32183,8 @@ function toDocument(finding, context) {
     // Cloned because prune() strips empty fields in place, and the same metadata object is reused
     // for every finding in the run.
     github: structuredClone(github),
+    // Every reference the advisory lists, not just the primary one in vulnerability.reference.
+    related: { references: finding.references },
     sarif: {
       level: finding.level,
       ruleId: finding.ruleId,
@@ -32253,6 +32265,24 @@ const SEVERITY_WORDS = {
   UNKNOWN: "Unknown",
   NONE: "Unknown"
 };
+function severityFromWord(word) {
+  return SEVERITY_WORDS[String(word ?? "").toUpperCase()];
+}
+function severityFromScore(score) {
+  if (score >= 9) return "Critical";
+  if (score >= 7) return "High";
+  if (score >= 4) return "Medium";
+  if (score > 0) return "Low";
+  return "Unknown";
+}
+function scoreVersion(vector) {
+  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ""))?.[1];
+}
+function cweIds(values) {
+  const found = values.flatMap((value) => value.toUpperCase().match(/CWE-\d+/g) ?? []);
+  return [...new Set(found)];
+}
+
 const LEVEL_SEVERITY = {
   error: "High",
   warning: "Medium",
@@ -32266,13 +32296,6 @@ function stringsOf(value) {
   if (Array.isArray(value)) return value.filter((entry) => typeof entry === "string");
   return typeof value === "string" ? [value] : [];
 }
-function severityFromScore(score) {
-  if (score >= 9) return "Critical";
-  if (score >= 7) return "High";
-  if (score >= 4) return "Medium";
-  if (score > 0) return "Low";
-  return "Unknown";
-}
 function numberOf(value) {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
   return Number.isFinite(parsed) ? parsed : void 0;
@@ -32285,26 +32308,19 @@ function parseTrivyPackage(message) {
     packageFixedVersion: field("Fixed Version")
   };
 }
-function cweIds(values) {
-  const found = values.flatMap((value) => value.toUpperCase().match(/CWE-\d+/g) ?? []);
-  return [...new Set(found)];
-}
-function scoreVersion(vector) {
-  return /^CVSS:(\d+\.\d+)\//.exec(String(vector ?? ""))?.[1];
-}
 function resolveRule(run, result) {
   const rules = run.tool?.driver?.rules ?? [];
   if (typeof result.ruleIndex === "number" && rules[result.ruleIndex]) return rules[result.ruleIndex];
   return rules.find((rule) => rule.id === result.ruleId);
 }
-function toFinding(run, result) {
+function toFinding$1(run, result) {
   const driver = run.tool?.driver ?? {};
   const rule = resolveRule(run, result);
   const properties = { ...rule?.properties ?? {}, ...result.properties ?? {} };
   const tags = stringsOf(properties.tags);
   const level = result.level ?? rule?.defaultConfiguration?.level ?? "warning";
   const score = numberOf(properties["security-severity"]);
-  const tagged = tags.map((tag) => SEVERITY_WORDS[tag.toUpperCase()]).find(Boolean);
+  const tagged = tags.map(severityFromWord).find(Boolean);
   const severity = tagged ?? (score !== void 0 ? severityFromScore(score) : LEVEL_SEVERITY[level]);
   const location = result.locations?.[0]?.physicalLocation;
   const message = text(result.message);
@@ -32333,14 +32349,68 @@ function toFinding(run, result) {
   };
 }
 function flatten(log) {
-  return (log.runs ?? []).flatMap((run) => (run.results ?? []).map((result) => toFinding(run, result)));
+  return (log.runs ?? []).flatMap((run) => (run.results ?? []).map((result) => toFinding$1(run, result)));
 }
 
-async function readSarif(file) {
+function isTrivyReport(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const report = value;
+  return Array.isArray(report.Results) && typeof report.SchemaVersion === "number";
+}
+function primaryScore(cvss, severitySource) {
+  if (!cvss) return {};
+  const order = [severitySource, "nvd", ...Object.keys(cvss)].filter((vendor) => Boolean(vendor));
+  for (const vendor of order) {
+    const entry = cvss[vendor];
+    if (!entry) continue;
+    if (typeof entry.V3Score === "number") return { score: entry.V3Score, version: scoreVersion(entry.V3Vector) ?? "3.1" };
+    if (typeof entry.V2Score === "number") return { score: entry.V2Score, version: "2.0" };
+  }
+  return {};
+}
+function toFinding(report, result, vulnerability) {
+  const { score, version } = primaryScore(vulnerability.CVSS, vulnerability.SeveritySource);
+  const severity = severityFromWord(vulnerability.Severity) ?? (score === void 0 ? "Unknown" : severityFromScore(score));
+  return {
+    tool: "Trivy",
+    toolVersion: report.Trivy?.Version ?? "",
+    ruleId: vulnerability.VulnerabilityID ?? "unknown",
+    ruleName: result.Class ?? "",
+    // Trivy's JSON has no SARIF level; derive one so the field means the same thing either way.
+    level: severity === "Critical" || severity === "High" ? "error" : severity === "Unknown" ? "none" : "warning",
+    severity,
+    score,
+    scoreVersion: score === void 0 ? void 0 : version,
+    title: vulnerability.Title ?? vulnerability.VulnerabilityID ?? "",
+    description: vulnerability.Description ?? "",
+    helpUri: vulnerability.PrimaryURL,
+    tags: [result.Type, result.Class].filter((tag) => Boolean(tag)),
+    cwes: cweIds(vulnerability.CweIDs ?? []),
+    file: result.Target,
+    packageName: vulnerability.PkgName,
+    packageVersion: vulnerability.InstalledVersion,
+    packageFixedVersion: vulnerability.FixedVersion,
+    dataSource: vulnerability.DataSource,
+    publishedDate: vulnerability.PublishedDate,
+    lastModifiedDate: vulnerability.LastModifiedDate,
+    cvss: vulnerability.CVSS,
+    references: vulnerability.References,
+    purl: vulnerability.PkgIdentifier?.PURL,
+    fixStatus: vulnerability.Status
+  };
+}
+function flattenTrivy(report) {
+  return (report.Results ?? []).flatMap(
+    (result) => (result.Vulnerabilities ?? []).map((vulnerability) => toFinding(report, result, vulnerability))
+  );
+}
+
+async function readReport(file) {
   try {
-    return flatten(JSON.parse(await fs$1.readFile(file, "utf8")));
+    const parsed = JSON.parse(await fs$1.readFile(file, "utf8"));
+    return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed);
   } catch (error) {
-    warning(`Could not read ${file} as SARIF: ${error.message}`);
+    warning(`Could not read ${file} as SARIF or a Trivy report: ${error.message}`);
     return [];
   }
 }
@@ -32378,7 +32448,7 @@ async function run() {
     tags: parseList(getInput("tags")),
     metadata: parsePairs(getInput("metadata"))
   };
-  const findings = (await Promise.all(files.map(readSarif))).flat();
+  const findings = (await Promise.all(files.map(readReport))).flat();
   const documents = findings.map((finding) => toDocument(finding, context));
   const batches = chunk(documents, Math.max(1, Number(getInput("batch-size") || "500")));
   const payload = batches.map((batch) => toNdjson(batch, dataStream)).join("");

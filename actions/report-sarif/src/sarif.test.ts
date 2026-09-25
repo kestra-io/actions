@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cweIds, flatten, parseTrivyPackage, severityFromScore, scoreVersion, type SarifLog } from './sarif.js'
+import { cweIds, severityFromScore, scoreVersion } from './finding.js'
+import { flatten, parseTrivyPackage, type SarifLog } from './sarif.js'
 
 const trivy: SarifLog = {
   version: '2.1.0',

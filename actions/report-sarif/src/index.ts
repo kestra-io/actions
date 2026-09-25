@@ -6,13 +6,22 @@ import { authHeaders, bulkUrl, chunk, dataStreamName, sendBulk, toNdjson, valida
 import { toDocument, type DocumentContext } from './documents.js'
 import { githubMetadata } from './github.js'
 import { parseBoolean, parseList, parsePairs } from './inputs.js'
-import { flatten, type Finding, type SarifLog } from './sarif.js'
+import type { Finding } from './finding.js'
+import { flatten, type SarifLog } from './sarif.js'
+import { flattenTrivy, isTrivyReport } from './trivy.js'
 
-async function readSarif(file: string): Promise<Finding[]> {
+/**
+ * SARIF, or Trivy's own JSON when that is what was handed over. Detected by shape rather than by
+ * file extension, since both formats are .json as often as not — and Trivy's native report is worth
+ * preferring where it exists, because SARIF drops its advisory, publication and per-vendor CVSS
+ * fields.
+ */
+async function readReport(file: string): Promise<Finding[]> {
   try {
-    return flatten(JSON.parse(await fs.readFile(file, 'utf8')) as SarifLog)
+    const parsed: unknown = JSON.parse(await fs.readFile(file, 'utf8'))
+    return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed as SarifLog)
   } catch (error) {
-    core.warning(`Could not read ${file} as SARIF: ${(error as Error).message}`)
+    core.warning(`Could not read ${file} as SARIF or a Trivy report: ${(error as Error).message}`)
     return []
   }
 }
@@ -61,7 +70,7 @@ async function run(): Promise<void> {
     metadata: parsePairs(core.getInput('metadata'))
   }
 
-  const findings = (await Promise.all(files.map(readSarif))).flat()
+  const findings = (await Promise.all(files.map(readReport))).flat()
   const documents = findings.map(finding => toDocument(finding, context))
 
   const batches = chunk(documents, Math.max(1, Number(core.getInput('batch-size') || '500')))
