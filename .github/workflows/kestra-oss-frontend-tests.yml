@@ -160,7 +160,8 @@ jobs:
       - name: OpenGrep - Static analysis
         id: opengrep
         if: ${{ !cancelled() }}
-        uses: kestra-io/actions/composite/scan-opengrep@main
+        # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
+        uses: kestra-io/actions/composite/scan-opengrep@sarif-elastic-action
         with:
           github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
           scan-path: ui
@@ -171,7 +172,8 @@ jobs:
       - name: OpenGrep - Report findings to Elastic
         if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
         continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
+        # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
+        uses: kestra-io/actions/actions/report-sarif@sarif-elastic-action
         with:
           sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}

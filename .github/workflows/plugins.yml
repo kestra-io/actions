@@ -355,7 +355,8 @@ jobs:
       - name: Trivy - Scan jar for PR only
         id: trivy
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-trivy@main
+        # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
+        uses: kestra-io/actions/composite/scan-trivy@sarif-elastic-action
         with:
           secrets: ${{ toJSON(secrets) }}
 
@@ -365,7 +366,8 @@ jobs:
       - name: Trivy - Report findings to Elastic
         if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy.outcome == 'success' }}
         continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
+        # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
+        uses: kestra-io/actions/actions/report-sarif@sarif-elastic-action
         with:
           sarif-files: ${{ steps.trivy.outputs.sarif-file }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
@@ -378,7 +380,8 @@ jobs:
       - name: OpenGrep - Static analysis
         id: opengrep
         if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-opengrep@main
+        # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
+        uses: kestra-io/actions/composite/scan-opengrep@sarif-elastic-action
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -388,7 +391,8 @@ jobs:
       - name: OpenGrep - Report findings to Elastic
         if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && startsWith(github.repository, 'kestra-io/') }}
         continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
+        # TEMP(sarif-elastic-action): branch ref so other repositories can test this PR — restore @main before merging.
+        uses: kestra-io/actions/actions/report-sarif@sarif-elastic-action
         with:
           sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
