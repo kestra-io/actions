@@ -465,7 +465,7 @@ jobs:
   otel-export-trace:
     if: always()
     name: OpenTelemetry Export Trace
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     needs: [main]
     steps:
       # Reconstruct and export the whole workflow -> job -> step trace. The live
