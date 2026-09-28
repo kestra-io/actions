@@ -257370,14 +257370,33 @@ function findModuleRoot(reportFile, workspace, exists = existsSync$1) {
   }
   return root;
 }
-function resolveJacocoPath(moduleRoot, packageName, fileName, workspace, exists = existsSync$1) {
+function trySourceRoots(moduleRoot, packageName, fileName, workspace, exists) {
   for (const sourceRoot of SOURCE_ROOTS) {
     const candidate = path$3.join(moduleRoot, sourceRoot, packageName, fileName);
     if (exists(candidate)) return toRepoPath(candidate, workspace);
   }
+  return void 0;
+}
+function siblingModules(workspace, exists, list) {
+  let entries;
+  try {
+    entries = list(workspace);
+  } catch {
+    return [];
+  }
+  return entries.map((name) => path$3.join(workspace, name)).filter((dir) => BUILD_MARKERS.some((marker) => exists(path$3.join(dir, marker))));
+}
+function resolveJacocoPath(moduleRoot, packageName, fileName, workspace, exists = existsSync$1, list = readdirSync) {
+  const direct = trySourceRoots(moduleRoot, packageName, fileName, workspace, exists);
+  if (direct) return direct;
+  for (const candidate of siblingModules(workspace, exists, list)) {
+    if (candidate === moduleRoot) continue;
+    const found = trySourceRoots(candidate, packageName, fileName, workspace, exists);
+    if (found) return found;
+  }
   return toRepoPath(path$3.join(moduleRoot, packageName, fileName), workspace);
 }
-function parseJacoco(content, reportFile, workspace, exists = existsSync$1) {
+function parseJacoco(content, reportFile, workspace, exists = existsSync$1, list = readdirSync) {
   const doc = parser.parse(content);
   const packages = doc.report?.package ?? [];
   if (packages.length === 0) return [];
@@ -257388,7 +257407,7 @@ function parseJacoco(content, reportFile, workspace, exists = existsSync$1) {
     for (const source of pkg.sourcefile ?? []) {
       const fileName = source["@_name"];
       if (!fileName) continue;
-      const path_ = resolveJacocoPath(moduleRoot, packageName, fileName, workspace, exists);
+      const path_ = resolveJacocoPath(moduleRoot, packageName, fileName, workspace, exists, list);
       if (!path_) continue;
       const counters = source.counter ?? [];
       const lines = counterOf(counters, "LINE");
