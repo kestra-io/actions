@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { detectModule, type ModuleDetector } from './modules.js'
+import { detectModule, ROOT_MODULE, type ModuleDetector } from './modules.js'
 
 function detector(buildFiles: string[]): ModuleDetector {
   return { exists: file => buildFiles.includes(file), list: () => [] }
@@ -17,7 +17,7 @@ test('detectModule climbs to the nearest ancestor with a build file', () => {
 })
 
 test('detectModule falls back to the repository root when no build file is found', () => {
-  assert.equal(detectModule('src/Foo.ts', '/repo', {}, detector([])), '.')
+  assert.equal(detectModule('src/Foo.ts', '/repo', {}, detector([])), ROOT_MODULE)
 })
 
 test('detectModule finds a .csproj via directory listing', () => {

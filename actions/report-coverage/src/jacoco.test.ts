@@ -90,7 +90,7 @@ test('parseJacoco resolves the right module from a root-level aggregate report',
   const exists = (file: string) => files.has(file)
   const list = (dir: string) => (dir === '/repo' ? ['core'] : [])
   // The aggregate lives at the repo root, not under core/ — findModuleRoot alone would attribute
-  // this package to the root ('.'), which is exactly the bug this fixes.
+  // this package to the repository root module, which is exactly the bug this fixes.
   const parsed = parseJacoco(FIXTURE, '/repo/build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml', '/repo', exists, list)
   assert.equal(parsed[0]?.path, 'core/src/main/java/io/kestra/core/Foo.java')
 })
