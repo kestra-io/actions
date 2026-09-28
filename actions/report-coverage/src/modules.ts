@@ -3,6 +3,9 @@ import * as path from 'node:path'
 
 const FILE_MARKERS = ['build.gradle', 'build.gradle.kts', 'pom.xml', 'package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml']
 
+/** What a file with no build-marker ancestor is attributed to: the repository itself. */
+export const ROOT_MODULE = 'root'
+
 export interface ModuleDetector {
   readonly exists: (file: string) => boolean
   readonly list: (dir: string) => string[]
@@ -29,7 +32,8 @@ function hasBuildFile(absoluteDir: string, detector: ModuleDetector): boolean {
  * `overrides` — the `modules` input — wins when its prefix matches, since a caller who set one knows
  * their own layout better than a heuristic. Otherwise the closest ancestor directory carrying a build
  * file wins: the root of a Gradle module, a Maven module, an npm workspace package, a Python project,
- * a Go module or a Cargo crate. A file with no such ancestor belongs to the repository root, `.`.
+ * a Go module or a Cargo crate. A file with no such ancestor belongs to the repository root,
+ * `ROOT_MODULE` — a single-module repository (most plugins) reports every file under that name.
  */
 export function detectModule(
   repoPath: string,
@@ -49,5 +53,5 @@ export function detectModule(
     if (parent === dir) break
     dir = parent
   }
-  return '.'
+  return ROOT_MODULE
 }

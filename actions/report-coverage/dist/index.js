@@ -257472,6 +257472,7 @@ function parseLcov(content, workspace) {
 }
 
 const FILE_MARKERS = ["build.gradle", "build.gradle.kts", "pom.xml", "package.json", "pyproject.toml", "go.mod", "Cargo.toml"];
+const ROOT_MODULE = "root";
 const DEFAULT_DETECTOR = {
   exists: existsSync$1,
   list: (dir) => {
@@ -257498,7 +257499,7 @@ function detectModule(repoPath, workspace, overrides, detector = DEFAULT_DETECTO
     if (parent === dir) break;
     dir = parent;
   }
-  return ".";
+  return ROOT_MODULE;
 }
 
 function add(a, file) {
