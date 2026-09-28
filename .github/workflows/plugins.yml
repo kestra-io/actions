@@ -357,6 +357,7 @@ jobs:
         if: ${{ inputs.generate-shadowjar == true && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
+          title: "🛡 Trivy (backend)"
           secrets: ${{ toJSON(secrets) }}
 
       # Dependency CVEs, shipped to the same data stream as the OpenGrep findings below — one view
@@ -401,6 +402,33 @@ jobs:
           metadata: |
             service.name=${{ github.event.repository.name }}
             component=plugin
+
+      # Trivy scan for the plugin's optional Vue micro-frontend (ui/package-lock.json). No-op for
+      # plugins with no UI — same guard as "Test - UI unit tests" above.
+      - name: Trivy - Scan UI npm dependencies
+        id: trivy-ui
+        if: ${{ hashFiles('ui/package-lock.json') != '' && !cancelled() && startsWith(github.repository, 'kestra-io/') }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-path: ./ui/package-lock.json
+          title: "🛡 Trivy (frontend)"
+          secrets: ${{ toJSON(secrets) }}
+
+      # Dependency CVEs for the UI micro-frontend, tagged apart from the jar scan above (both
+      # carry component=plugin) via target=ui-dependencies.
+      - name: Trivy - Report UI dependency findings to Elastic
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy-ui.outcome == 'success' }}
+        continue-on-error: true
+        uses: kestra-io/actions/actions/report-sarif@main
+        with:
+          sarif-files: ${{ steps.trivy-ui.outputs.json-file }}
+          type: vulnerabilities
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=${{ github.event.repository.name }}
+            component=plugin
+            target=ui-dependencies
 
       # GitHub Release
       - name: GitHub - Create release

@@ -227,6 +227,27 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           coverage-files: 'kestra-ee/ui-ee/coverage/lcov.info'
           component: frontend
+
+      # Trivy dependency-CVE scan of the EE frontend's npm lockfile.
+      - name: Trivy - Scan npm dependencies
+        id: trivy
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-path: ./kestra-ee/ui-ee/package-lock.json
+          title: "🛡 Trivy (frontend)"
+          secrets: ${{ toJSON(secrets) }}
+
+      # Dependency CVEs, shipped to the same data stream as the OpenGrep findings above.
+      - name: Trivy - Report findings to Elastic
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy.outcome == 'success' }}
+        continue-on-error: true
+        uses: kestra-io/actions/actions/report-sarif@main
+        with:
+          # The native JSON, not the SARIF the composite also produces: SARIF drops the advisory
+          # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
+          sarif-files: ${{ steps.trivy.outputs.json-file }}
+          type: vulnerabilities
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |

@@ -108,7 +108,10 @@ itself can pass `elastic-api-key` instead; it takes precedence.
 This is already wired after the OpenGrep scan in the five reusable workflows
 that run one — `kestra-oss-backend-tests`, `kestra-oss-frontend-tests`,
 `kestra-ee-backend-tests`, `kestra-ee-frontend-tests` and `plugins` — and after
-the Trivy scan in `plugins`, each tagging its findings with a `service.name` and
+the Trivy scan in `kestra-oss-frontend-tests`, `kestra-ee-frontend-tests` and
+`plugins` (twice in `plugins`: once for the shadow jar, once for the plugin's
+optional UI micro-frontend's npm lockfile, tagged apart with
+`target=ui-dependencies`), each tagging its findings with a `service.name` and
 a `component` of `backend`, `frontend` or `plugin`. Static analysis and
 dependency CVEs land in the same data stream, which is the point: one view over
 both, split by `vulnerability.scanner.vendor` when you want them apart.
