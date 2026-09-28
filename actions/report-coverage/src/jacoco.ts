@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import * as path from 'node:path'
 import { XMLParser } from 'fast-xml-parser'
 import { toRepoPath } from './paths.js'
@@ -57,23 +57,68 @@ export function findModuleRoot(reportFile: string, workspace: string, exists: (f
   return root
 }
 
+function trySourceRoots(
+  moduleRoot: string,
+  packageName: string,
+  fileName: string,
+  workspace: string,
+  exists: (file: string) => boolean
+): string | undefined {
+  for (const sourceRoot of SOURCE_ROOTS) {
+    const candidate = path.join(moduleRoot, sourceRoot, packageName, fileName)
+    if (exists(candidate)) return toRepoPath(candidate, workspace)
+  }
+  return undefined
+}
+
+/**
+ * Direct children of the workspace root that look like a Gradle/Maven module — a candidate list for
+ * when the report itself does not sit under the module it describes (see below).
+ */
+function siblingModules(workspace: string, exists: (file: string) => boolean, list: (dir: string) => string[]): string[] {
+  let entries: string[]
+  try {
+    entries = list(workspace)
+  } catch {
+    return []
+  }
+  return entries.map(name => path.join(workspace, name)).filter(dir => BUILD_MARKERS.some(marker => exists(path.join(dir, marker))))
+}
+
 /**
  * Resolves a JaCoCo package + file name to an actual repo path by checking every conventional Gradle
- * source root under the module. Falls back to `<module>/<package>/<file>` when none exists on disk —
- * a best guess that still carries the right module and language even though the exact path may be a
- * generated source directory this does not know about.
+ * source root, first under the report's own module and then, if that finds nothing, under every
+ * other module in the workspace.
+ *
+ * The second pass exists because of Gradle's `jacoco-report-aggregation` plugin: it writes one
+ * combined `testCodeCoverageReport.xml` at the *repository* root covering every subproject, so
+ * `findModuleRoot` — which only looks at where the report file itself sits — resolves that report's
+ * "module" to the root, not to whichever subproject each package actually belongs to. Searching every
+ * sibling module's source roots for the same package + file name is what recovers the real module in
+ * that case. Only sibling directories directly under the workspace are tried, not nested ones — every
+ * repository this actions/report-coverage runs against keeps its modules one level deep.
+ *
+ * Falls back to `<module>/<package>/<file>` when nothing exists on disk anywhere — a best guess that
+ * still carries a module and a language even though the exact path may be a generated source
+ * directory this does not know about.
  */
 export function resolveJacocoPath(
   moduleRoot: string,
   packageName: string,
   fileName: string,
   workspace: string,
-  exists: (file: string) => boolean = existsSync
+  exists: (file: string) => boolean = existsSync,
+  list: (dir: string) => string[] = readdirSync
 ): string | undefined {
-  for (const sourceRoot of SOURCE_ROOTS) {
-    const candidate = path.join(moduleRoot, sourceRoot, packageName, fileName)
-    if (exists(candidate)) return toRepoPath(candidate, workspace)
+  const direct = trySourceRoots(moduleRoot, packageName, fileName, workspace, exists)
+  if (direct) return direct
+
+  for (const candidate of siblingModules(workspace, exists, list)) {
+    if (candidate === moduleRoot) continue
+    const found = trySourceRoots(candidate, packageName, fileName, workspace, exists)
+    if (found) return found
   }
+
   return toRepoPath(path.join(moduleRoot, packageName, fileName), workspace)
 }
 
@@ -86,7 +131,8 @@ export function parseJacoco(
   content: string,
   reportFile: string,
   workspace: string,
-  exists: (file: string) => boolean = existsSync
+  exists: (file: string) => boolean = existsSync,
+  list: (dir: string) => string[] = readdirSync
 ): FileCoverage[] {
   const doc = parser.parse(content) as JacocoDoc
   const packages = doc.report?.package ?? []
@@ -100,7 +146,7 @@ export function parseJacoco(
     for (const source of pkg.sourcefile ?? []) {
       const fileName = source['@_name']
       if (!fileName) continue
-      const path_ = resolveJacocoPath(moduleRoot, packageName, fileName, workspace, exists)
+      const path_ = resolveJacocoPath(moduleRoot, packageName, fileName, workspace, exists, list)
       if (!path_) continue
 
       const counters = source.counter ?? []
