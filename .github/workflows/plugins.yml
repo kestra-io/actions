@@ -358,7 +358,7 @@ jobs:
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           title: "🛡 Trivy (backend)"
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Dependency CVEs, shipped to the same data stream as the OpenGrep findings below — one view
       # over both. Gated on the scan's outcome because that step only runs for a pull request with a
@@ -412,7 +412,7 @@ jobs:
         with:
           scan-path: ./ui/package-lock.json
           title: "🛡 Trivy (frontend)"
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Dependency CVEs for the UI micro-frontend, tagged apart from the jar scan above (both
       # carry component=plugin) via target=ui-dependencies.
