@@ -112,7 +112,7 @@ jobs:
 
           - name: Run front-end unit tests
             working-directory: ui
-            run: npm run test:unit
+            run: npm run test:unit -- --coverage
 
           - name: Npm - check types
             working-directory: ui
@@ -176,6 +176,21 @@ jobs:
           sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
           # Static analysis, not a vulnerability scanner: no CVE, no package, a rule a file breaks.
           type: misconfigurations
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=kestra
+            component=frontend
+
+      # Coverage
+      - name: Coverage - Report
+        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
+        continue-on-error: true
+        uses: kestra-io/actions/composite/report-coverage@main
+        with:
+          github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
+          coverage-files: '**/coverage/lcov.info'
+          component: frontend
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
