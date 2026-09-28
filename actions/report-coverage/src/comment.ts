@@ -42,6 +42,24 @@ function rowLine(row: ModuleRow): string {
 const COLLAPSE_THRESHOLD = 15
 
 /**
+ * The `(...)` comment-update prints after the collapsed section's title — comment-update adds the
+ * parentheses itself, so this string must not add its own. Reuses the same arrow/sign the body
+ * table's deltas use, but in % rather than pp (pp is precise for a reviewer reading the table; the
+ * title is a glance, and "%" is what most people expect from a percentage in flowing text) and with
+ * "no changes" in place of a "0.00%" that would otherwise read as more informative than it is.
+ */
+export function titleSummary(current: CoverageSummary, base: CoverageSummary | undefined): string {
+  const linePct = pct(current.totals.lines)
+  if (!base) return `${linePct.toFixed(2)}%`
+
+  const delta = Math.round((linePct - pct(base.totals.lines)) * 100) / 100
+  if (Math.abs(delta) <= 0.005) return `${linePct.toFixed(2)}%, no changes`
+
+  const sign = delta > 0 ? '+' : ''
+  return `${linePct.toFixed(2)}%, ${arrow(delta)} ${sign}${delta.toFixed(2)}%`
+}
+
+/**
  * Markdown for `comment-update`'s template input. Kept free of `{{`/`{%` so its nunjucks pass
  * leaves the table alone. Modules are sorted by the biggest coverage drop first, so a regression is
  * the first thing a reviewer sees rather than buried in an alphabetical list.
