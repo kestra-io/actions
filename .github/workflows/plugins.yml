@@ -351,10 +351,10 @@ jobs:
 
           echo "✅ Disk space cleanup complete."
 
-      # Trivy scan for PR
-      - name: Trivy - Scan jar for PR only
+      # Trivy scan for PR and main branch
+      - name: Trivy - Scan jar
         id: trivy
-        if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ inputs.generate-shadowjar == true && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           secrets: ${{ toJSON(secrets) }}

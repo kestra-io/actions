@@ -84,6 +84,7 @@ runs:
         echo "total=${total}" >> "$GITHUB_OUTPUT"
 
     - name: Artifacts - Comment pull request
+      if: ${{ github.event_name == 'pull_request' }}
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
