@@ -12,8 +12,8 @@ inputs:
     required: false
     default: "*/build/libs/*.jar"
 
-  secrets:
-    description: 'Secrets passed as toJSON'
+  github-token:
+    description: 'GitHub token used to update the pull request comment'
     required: true
 
   title:
@@ -92,7 +92,7 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
-        github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: ${{ inputs.title }}
         result: ${{ steps.count.outputs.total == '' && 'empty' || (steps.count.outputs.total > 0 && 'warning' || 'success') }}
         title-summary: ${{ steps.count.outputs.total != '' && format('{0} vulnerabilities', steps.count.outputs.total) || '' }}

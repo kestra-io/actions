@@ -238,7 +238,7 @@ jobs:
         with:
           scan-path: ./kestra-ee/ui-ee/package-lock.json
           title: "🛡 Trivy (frontend)"
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Dependency CVEs, shipped to the same data stream as the OpenGrep findings above.
       - name: Trivy - Report findings to Elastic
