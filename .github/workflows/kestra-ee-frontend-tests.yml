@@ -225,6 +225,8 @@ jobs:
         uses: kestra-io/actions/composite/report-coverage@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           coverage-files: 'kestra-ee/ui-ee/coverage/lcov.info'
           component: frontend
 
