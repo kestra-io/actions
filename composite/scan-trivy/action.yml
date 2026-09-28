@@ -16,6 +16,10 @@ inputs:
     description: 'Secrets passed as toJSON'
     required: true
 
+  title:
+    description: 'PR-comment section title. Callers scanning more than one target in the same job must each pass a distinct title, so one call does not overwrite another section.'
+    required: true
+
 outputs:
   json-file:
     description: 'Absolute path to the Trivy JSON report, the one the pull request comment renders'
@@ -89,7 +93,7 @@ runs:
       continue-on-error: true
       with:
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
-        title: "🛡 Trivy"
+        title: ${{ inputs.title }}
         result: ${{ steps.count.outputs.total == '' && 'empty' || (steps.count.outputs.total > 0 && 'warning' || 'success') }}
         title-summary: ${{ steps.count.outputs.total != '' && format('{0} vulnerabilities', steps.count.outputs.total) || '' }}
         files: |
