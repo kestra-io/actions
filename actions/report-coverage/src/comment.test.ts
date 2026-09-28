@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildComment } from './comment.js'
+import { buildComment, titleSummary } from './comment.js'
 import type { CoverageSummary } from './summary.js'
 
 const context = { repository: 'kestra-io/kestra', component: 'backend', sha: 'abc', runId: '1' }
@@ -41,4 +41,28 @@ test('buildComment collapses the module table above the threshold', () => {
   for (let i = 0; i < 20; i++) modules[`m${i}`] = { lines: { covered: 1, missed: 0 } }
   const markdown = buildComment(summary(modules), undefined)
   assert.match(markdown, /<details>/)
+})
+
+test('titleSummary is just the percentage when there is no baseline', () => {
+  const current = summary({ core: { lines: { covered: 8, missed: 2 } } })
+  assert.equal(titleSummary(current, undefined), '80.00%')
+})
+
+test('titleSummary says "no changes" rather than "0.00%" when the rate is unchanged', () => {
+  const current = summary({ core: { lines: { covered: 8, missed: 2 } } })
+  const base = summary({ core: { lines: { covered: 8, missed: 2 } } })
+  assert.equal(titleSummary(current, base), '80.00%, no changes')
+})
+
+test('titleSummary shows the arrow, sign and %, comma separated, no nested parentheses', () => {
+  const current = summary({ core: { lines: { covered: 9, missed: 1 } } })
+  const base = summary({ core: { lines: { covered: 8, missed: 2 } } })
+  assert.equal(titleSummary(current, base), '90.00%, ▲ +10.00%')
+  assert.doesNotMatch(titleSummary(current, base), /[()]/)
+})
+
+test('titleSummary shows a drop with a minus sign and the down arrow', () => {
+  const current = summary({ core: { lines: { covered: 8, missed: 2 } } })
+  const base = summary({ core: { lines: { covered: 9, missed: 1 } } })
+  assert.equal(titleSummary(current, base), '80.00%, ▼ -10.00%')
 })

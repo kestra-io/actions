@@ -7,7 +7,7 @@ import { authHeaders, bulkUrl, chunk, dataStreamName, sendBulk, toNdjson, valida
 import { githubMetadata } from '../../../shared/elastic-core/src/github.js'
 import { parseBoolean, parseList, parsePairs } from '../../../shared/elastic-core/src/inputs.js'
 import { downloadBaseline, findBaselineRun, uploadBaseline } from './baseline.js'
-import { buildComment } from './comment.js'
+import { buildComment, titleSummary } from './comment.js'
 import { parseCobertura } from './cobertura.js'
 import { detectFormat } from './detect.js'
 import { toDocument, type DocumentContext } from './documents.js'
@@ -124,6 +124,7 @@ async function run(): Promise<void> {
   core.info(markdown)
 
   core.setOutput('line-rate', String(pct(summary.totals.lines)))
+  core.setOutput('title-summary', titleSummary(summary, baseline))
   if (baseline) {
     const delta = pct(summary.totals.lines) - pct(baseline.totals.lines)
     core.setOutput('base-line-rate', String(pct(baseline.totals.lines)))
