@@ -34,6 +34,10 @@ export async function uploadBaseline(
  * `base-branch`, newest first, until one carries the artifact. The Elastic `_bulk` input
  * `report-coverage` ships to is write-only, so this is the only place develop's coverage can be read
  * back from.
+ *
+ * Not filtered by event: uploadBaseline runs on any trigger that lands on base-branch — a plain
+ * push, but also a manual `workflow_dispatch` release build or a scheduled run — so restricting the
+ * lookup to `event: push` would miss a baseline that a workflow_dispatch run genuinely uploaded.
  */
 export async function findBaselineRun(
   octokit: Octokit,
@@ -46,7 +50,7 @@ export async function findBaselineRun(
 ): Promise<number | undefined> {
   const name = artifactName(component)
   const runs = await octokit.rest.actions.listWorkflowRuns({
-    owner, repo, workflow_id: workflowFile, branch: baseBranch, event: 'push', status: 'success', per_page: maxRuns
+    owner, repo, workflow_id: workflowFile, branch: baseBranch, status: 'success', per_page: maxRuns
   })
   for (const run of runs.data.workflow_runs) {
     const artifacts = await octokit.rest.actions.listWorkflowRunArtifacts({ owner, repo, run_id: run.id })

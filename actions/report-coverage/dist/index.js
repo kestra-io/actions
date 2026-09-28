@@ -251420,7 +251420,6 @@ async function findBaselineRun(octokit, owner, repo, workflowFile, baseBranch, c
     repo,
     workflow_id: workflowFile,
     branch: baseBranch,
-    event: "push",
     status: "success",
     per_page: maxRuns
   });
