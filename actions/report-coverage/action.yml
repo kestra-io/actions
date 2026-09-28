@@ -122,6 +122,12 @@ outputs:
   delta:
     description: line-rate minus base-line-rate, in percentage points, when a baseline was found
 
+  title-summary:
+    description: >-
+      "X.XX%" or, with a baseline, "X.XX%, ▲/▼ +Y.YY%" or "X.XX%, no changes" — for
+      comment-update's title-summary input, which wraps it in its own parentheses
+    required: false
+
   markdown:
     description: The coverage comment body, for comment-update's template input
 

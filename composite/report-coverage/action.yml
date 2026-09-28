@@ -98,6 +98,6 @@ runs:
         # Not `skipped`: that's also 'true' on every dry run, which is now the normal case for a
         # pull request. documents-count == 0 is the real "no coverage data" signal.
         result: ${{ steps.coverage.outputs['documents-count'] == '0' && 'empty' || (startsWith(steps.coverage.outputs.delta, '-') && 'warning' || 'success') }}
-        title-summary: ${{ steps.coverage.outputs['documents-count'] == '0' && '' || (steps.coverage.outputs.delta != '' && format('{0}% ({1}pp vs {2})', steps.coverage.outputs.line-rate, steps.coverage.outputs.delta, inputs.base-branch) || format('{0}%', steps.coverage.outputs.line-rate)) }}
+        title-summary: ${{ steps.coverage.outputs['documents-count'] == '0' && '' || steps.coverage.outputs['title-summary'] }}
         template: ${{ steps.coverage.outputs.markdown }}
         add-summary: 'false'

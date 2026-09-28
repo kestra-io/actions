@@ -251475,6 +251475,14 @@ function rowLine(row) {
   return `| ${row.name}${status} | ${row.current.lines.covered}/${row.current.lines.covered + row.current.lines.missed} | ${linePct.toFixed(2)}%${formatDelta(linePct, base)} |`;
 }
 const COLLAPSE_THRESHOLD = 15;
+function titleSummary(current, base) {
+  const linePct = pct(current.totals.lines);
+  if (!base) return `${linePct.toFixed(2)}%`;
+  const delta = Math.round((linePct - pct(base.totals.lines)) * 100) / 100;
+  if (Math.abs(delta) <= 5e-3) return `${linePct.toFixed(2)}%, no changes`;
+  const sign = delta > 0 ? "+" : "";
+  return `${linePct.toFixed(2)}%, ${arrow(delta)} ${sign}${delta.toFixed(2)}%`;
+}
 function buildComment(current, base) {
   const linePct = pct(current.totals.lines);
   const baseLinePct = base ? pct(base.totals.lines) : void 0;
@@ -257580,6 +257588,7 @@ async function run() {
   await fs$1.writeFile(markdownFile, markdown);
   info(markdown);
   setOutput("line-rate", String(pct(summary.totals.lines)));
+  setOutput("title-summary", titleSummary(summary, baseline));
   if (baseline) {
     const delta = pct(summary.totals.lines) - pct(baseline.totals.lines);
     setOutput("base-line-rate", String(pct(baseline.totals.lines)));
