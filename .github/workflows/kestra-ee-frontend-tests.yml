@@ -186,7 +186,7 @@ jobs:
           # on 2026-09-14. Keep it where it reports, skip it where it cannot.
           - name: Npm - Lint (eslint)
             if: ${{ github.event_name == 'pull_request' }}
-            uses: reviewdog/action-eslint@5eb89b1e6e94ca33e91c3814c34b25a8370bba46 # v1.35.0
+            uses: reviewdog/action-eslint@b6303df522851d0e9abaea654da0222037d97e75 # v1.36.0
             with:
               github_token: ${{ secrets.GITHUB_TOKEN }}
               reporter: github-pr-review
