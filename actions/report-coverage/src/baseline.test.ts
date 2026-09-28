@@ -57,6 +57,25 @@ test('findBaselineRun walks runs newest first and returns the one carrying the a
   assert.equal(runId, 1)
 })
 
+test('findBaselineRun does not filter by event, so a workflow_dispatch or scheduled run on the base branch still counts', async () => {
+  let listedOptions: Record<string, unknown> | undefined
+  const octokit = {
+    rest: {
+      actions: {
+        listWorkflowRuns: async (options: Record<string, unknown>) => {
+          listedOptions = options
+          return { data: { workflow_runs: [{ id: 1 }] } }
+        },
+        listWorkflowRunArtifacts: async () => ({ data: { artifacts: [{ name: 'coverage-baseline-backend', expired: false }] } })
+      }
+    }
+  } as any
+
+  const runId = await findBaselineRun(octokit, 'kestra-io', 'kestra', 'tests.yml', 'main', 'backend')
+  assert.equal(runId, 1)
+  assert.equal(listedOptions?.event, undefined)
+})
+
 test('findBaselineRun returns undefined when no run carries the artifact', async () => {
   const octokit = {
     rest: { actions: { listWorkflowRuns: async () => ({ data: { workflow_runs: [{ id: 1 }] } }), listWorkflowRunArtifacts: async () => ({ data: { artifacts: [] } }) } }
