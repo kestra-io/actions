@@ -34,6 +34,10 @@ on:
         required: false
         type: boolean
         default: false
+      release-tag:
+        description: 'Release tag to use for Docker images'
+        required: false
+        type: string
       retag-lts:
         description: 'Retag LTS Docker images'
         required: false

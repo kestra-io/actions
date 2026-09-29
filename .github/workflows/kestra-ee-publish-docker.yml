@@ -13,6 +13,9 @@ on:
       DOCKERHUB_TOKEN:
         description: "The DockerHub token"
         required: true
+      CODECOV_TOKEN:
+        description: "The Codecov token."
+        required: true
       SLACK_RELEASES_WEBHOOK_URL:
         required: false
       OTLP_ENDPOINT:
