@@ -2,8 +2,8 @@ name: 'Unreleased Commits'
 description: 'Comment unreleased commits since latest tag'
 
 inputs:
-  secrets:
-    description: 'Secrets passed as toJSON'
+  github-token:
+    description: 'GitHub token used to comment the pull request'
     required: true
 
 runs:
@@ -13,7 +13,7 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
-        github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
+        github-token: ${{ inputs.github-token }}
         title: "🔁 Unreleased Commits"
         title-summary: "{% if unreleased %}{{ unreleased.commits | length }} commits{% endif %}"
         result: "{% if unreleased %}{% if unreleased.commits | length == 0 %}success{% elif unreleased.commits | length > 2 %}warning{% else %}success{% endif %}{% endif %}"

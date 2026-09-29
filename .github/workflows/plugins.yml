@@ -313,7 +313,11 @@ jobs:
         uses: kestra-io/actions/composite/publish-java@main
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          sonatype-user: ${{ secrets.SONATYPE_USER }}
+          sonatype-password: ${{ secrets.SONATYPE_PASSWORD }}
+          sonatype-gpg-keyid: ${{ secrets.SONATYPE_GPG_KEYID }}
+          sonatype-gpg-password: ${{ secrets.SONATYPE_GPG_PASSWORD }}
+          sonatype-gpg-file: ${{ secrets.SONATYPE_GPG_FILE }}
           is-private: ${{ inputs.sonatype-publish == false }}
 
       # Upload JAR for PR
@@ -321,7 +325,7 @@ jobs:
         uses: kestra-io/actions/composite/jar-upload@main
         if: ${{ inputs.generate-shadowjar == true && github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Cleanup disk space to avoid "no space left on device" errors during Trivy scan (needed for plugin-jdbc only, which installs many docker images)
       - name: Cleanup - Free up disk space
@@ -445,7 +449,9 @@ jobs:
         uses: kestra-io/actions/composite/report-java@main
         if: ${{ !cancelled() && inputs.skip-test == false }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
       # Coverage
       - name: Coverage - Report
@@ -468,7 +474,7 @@ jobs:
         uses: kestra-io/actions/composite/unreleased-commits@main
         if: ${{ github.event_name == 'pull_request' }}
         with:
-          secrets: ${{ toJSON(secrets) }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Slack on error
       - name: Slack - Notify on failure

@@ -6,37 +6,32 @@ inputs:
     description: 'Does we push to private maven registry'
     required: true
 
-  # Prefer the individual sonatype-* inputs below. Passing the whole `secrets` context to an action
-  # in another repository is a secret-exfiltration shape GitHub's heuristics flag, and a flagged
-  # workflow does not run until someone with write access approves it — it held kestra-io/kotlp's
-  # v0.1.1 release with zero jobs started.
-  secrets:
-    description: 'Every secret passed as toJSON. Legacy fallback, only read for keys the individual inputs below do not supply.'
-    required: false
-    default: '{}'
-
+  # Passing the whole `secrets` context to an action in another repository is a secret-exfiltration
+  # shape GitHub's heuristics flag, and a flagged workflow does not run until someone with write
+  # access approves it — it held kestra-io/kotlp's v0.1.1 release with zero jobs started. Callers
+  # must pass each secret explicitly.
   sonatype-user:
-    description: 'Sonatype username. Takes precedence over secrets.SONATYPE_USER.'
+    description: 'Sonatype username'
     required: false
     default: ''
 
   sonatype-password:
-    description: 'Sonatype password. Takes precedence over secrets.SONATYPE_PASSWORD.'
+    description: 'Sonatype password'
     required: false
     default: ''
 
   sonatype-gpg-keyid:
-    description: 'Sonatype GPG key id. Takes precedence over secrets.SONATYPE_GPG_KEYID.'
+    description: 'Sonatype GPG key id'
     required: false
     default: ''
 
   sonatype-gpg-password:
-    description: 'Sonatype GPG password. Takes precedence over secrets.SONATYPE_GPG_PASSWORD.'
+    description: 'Sonatype GPG password'
     required: false
     default: ''
 
   sonatype-gpg-file:
-    description: 'Base64-encoded Sonatype GPG secret keyring. Takes precedence over secrets.SONATYPE_GPG_FILE.'
+    description: 'Base64-encoded Sonatype GPG secret keyring'
     required: false
     default: ''
 
@@ -99,16 +94,16 @@ runs:
     - name: Publish - Release package to Maven Central
       if: ${{ inputs.is-private == 'false' }}
       env:
-        ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ inputs.sonatype-user || fromJson(inputs.secrets).SONATYPE_USER }}
-        ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ inputs.sonatype-password || fromJson(inputs.secrets).SONATYPE_PASSWORD }}
-        SONATYPE_GPG_KEYID: ${{ inputs.sonatype-gpg-keyid || fromJson(inputs.secrets).SONATYPE_GPG_KEYID }}
-        SONATYPE_GPG_PASSWORD: ${{ inputs.sonatype-gpg-password || fromJson(inputs.secrets).SONATYPE_GPG_PASSWORD }}
-        SONATYPE_GPG_FILE: ${{ inputs.sonatype-gpg-file || fromJson(inputs.secrets).SONATYPE_GPG_FILE }}
+        ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ inputs.sonatype-user }}
+        ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ inputs.sonatype-password }}
+        SONATYPE_GPG_KEYID: ${{ inputs.sonatype-gpg-keyid }}
+        SONATYPE_GPG_PASSWORD: ${{ inputs.sonatype-gpg-password }}
+        SONATYPE_GPG_FILE: ${{ inputs.sonatype-gpg-file }}
       shell: bash
       run: |
         # Neither source supplied credentials: fail here rather than let Gradle report an opaque 401.
         if [ -z "${ORG_GRADLE_PROJECT_mavenCentralUsername}" ] || [ -z "${SONATYPE_GPG_FILE}" ]; then
-          echo "::error::No Sonatype credentials. Pass the sonatype-* inputs, or a 'secrets' JSON carrying SONATYPE_USER/SONATYPE_PASSWORD/SONATYPE_GPG_KEYID/SONATYPE_GPG_PASSWORD/SONATYPE_GPG_FILE."
+          echo "::error::No Sonatype credentials. Pass the sonatype-user/sonatype-password/sonatype-gpg-keyid/sonatype-gpg-password/sonatype-gpg-file inputs."
           exit 1
         fi
 
