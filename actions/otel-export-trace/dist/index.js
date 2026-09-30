@@ -103512,6 +103512,7 @@ async function buildWorkflowLogs(octokit, owner, repo, jobs, runId, runAttempt, 
   for (const job of jobs) {
     if (job.status !== "completed") continue;
     if (job.conclusion === "skipped") continue;
+    if (job.runner_name === null && (job.steps ?? []).length === 0) continue;
     const text = await downloadJobLog(octokit, owner, repo, job.id);
     if (!text) continue;
     all.push(...parseJobLog(text, job, traceId$1, serviceName));

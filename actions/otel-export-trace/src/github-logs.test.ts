@@ -166,3 +166,27 @@ test('buildWorkflowLogs skips in-progress and skipped jobs without downloading',
   await buildWorkflowLogs(octokit, 'owner', 'repo', jobs, '123', '1', serviceName)
   assert.deepEqual(requestedJobIds, [1])
 })
+
+test('buildWorkflowLogs skips check-run-only entries (no runner, no steps) without downloading', async () => {
+  const requestedJobIds: number[] = []
+  const octokit = {
+    rest: {
+      actions: {
+        downloadJobLogsForWorkflowRun: async ({ job_id }: { job_id: number }) => {
+          requestedJobIds.push(job_id)
+          return { data: '2026-06-20T10:02:00.0000000Z done' }
+        }
+      }
+    }
+  } as unknown as Parameters<typeof buildWorkflowLogs>[0]
+
+  const jobs: WorkflowJob[] = [
+    { ...job, id: 1, status: 'completed', conclusion: 'success' },
+    // e.g. "OpenGrep" / "Java Tests Report" / "Frontend Tests Report": check runs a
+    // step posts via the Checks API, never picked up by a runner and never ran steps.
+    { ...job, id: 4, status: 'completed', conclusion: 'success', runner_name: null, steps: [] }
+  ]
+
+  await buildWorkflowLogs(octokit, 'owner', 'repo', jobs, '123', '1', serviceName)
+  assert.deepEqual(requestedJobIds, [1])
+})
