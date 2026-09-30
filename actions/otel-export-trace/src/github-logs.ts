@@ -161,6 +161,10 @@ export async function buildWorkflowLogs(
     // Skipped jobs never ran a step, so GitHub never recorded any logs for them —
     // downloading always fails, so don't bother trying.
     if (job.conclusion === 'skipped') continue
+    // Some "jobs" in this list are actually Checks-API check runs created by a step
+    // (e.g. mikepenz/action-junit-report, scan-opengrep) rather than real job executions —
+    // no runner ever picked them up and they have no steps, so there is no log to fetch.
+    if (job.runner_name === null && (job.steps ?? []).length === 0) continue
     const text = await downloadJobLog(octokit, owner, repo, job.id)
     if (!text) continue
     all.push(...parseJobLog(text, job, traceId, serviceName))
