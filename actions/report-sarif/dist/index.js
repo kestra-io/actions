@@ -32367,7 +32367,11 @@ function misconfiguration(finding, context, id) {
 }
 function toDocument(finding, context) {
   const id = findingId(finding, context);
-  if (context.type === "misconfigurations") return prune(misconfiguration(finding, context, id));
+  if (context.type === "misconfigurations") {
+    const document2 = misconfiguration(finding, context, id);
+    applyMetadata(document2, context.metadata);
+    return prune(document2);
+  }
   const github = context.github;
   const enumeration = enumerationOf(finding.ruleId);
   const document = {
@@ -32606,9 +32610,59 @@ function flattenTrivy(report) {
   );
 }
 
+function isTrufflehogLine(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const line = value;
+  return typeof line.DetectorName === "string" && typeof line.SourceMetadata === "object";
+}
+function parseTrufflehog(content) {
+  return content.split("\n").map((line) => line.trim()).filter(Boolean).flatMap((line) => {
+    try {
+      const parsed = JSON.parse(line);
+      return isTrufflehogLine(parsed) ? [parsed] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+function severityOf(line) {
+  if (line.Verified) return "Critical";
+  return line.VerificationError ? "High" : "Medium";
+}
+function flattenTrufflehog(lines) {
+  return lines.map((line) => {
+    const source = line.SourceMetadata?.Data?.Filesystem ?? line.SourceMetadata?.Data?.Git;
+    const severity = severityOf(line);
+    const detector = line.DetectorName ?? "unknown";
+    const state = line.Verified ? "verified" : line.VerificationError ? "unverifiable" : "unverified";
+    return {
+      tool: "TruffleHog",
+      toolVersion: "",
+      ruleId: detector,
+      ruleName: detector,
+      level: severity === "Critical" || severity === "High" ? "error" : "warning",
+      severity,
+      title: `${detector} secret (${state})`,
+      description: line.DetectorDescription ?? "",
+      tags: ["secret", state],
+      cwes: ["CWE-798"],
+      file: source?.file,
+      startLine: source?.line || void 0,
+      remediation: "Rotate the credential, then remove it from the repository."
+    };
+  });
+}
+
 async function readReport(file) {
+  const content = await fs$1.readFile(file, "utf8");
   try {
-    const parsed = JSON.parse(await fs$1.readFile(file, "utf8"));
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return flattenTrufflehog(parseTrufflehog(content));
+    }
+    if (isTrufflehogLine(parsed)) return flattenTrufflehog([parsed]);
     return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed);
   } catch (error) {
     warning(`Could not read ${file} as SARIF or a Trivy report: ${error.message}`);
