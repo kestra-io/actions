@@ -1,0 +1,152 @@
+name: 'TruffleHog Scan'
+description: 'Secret scan of the checked out tree with TruffleHog, shipped to Elastic'
+
+# Expects the repository to be checked out already. The binary is cached and verified against the
+# release checksums. The report holds the raw secrets, so it is never uploaded and is deleted at the end.
+#
+# Why not trufflesecurity/trufflehog, the official action: it scans the commits of a push as well as
+# of a pull request, where we want the whole tree on a push; it runs the CLI in a Docker image with
+# no binary cache; it fails the job on any finding (`--fail`); and it prints `--github-actions` log
+# annotations only, writing no report file for report-sarif to ship to Elastic.
+
+inputs:
+  version:
+    description: 'TruffleHog release to run, without the leading v'
+    required: false
+    default: '3.97.9'
+
+  results:
+    description: 'Comma separated result types to report: verified, unknown, unverified, filtered_unverified'
+    required: false
+    default: 'verified,unknown'
+
+  github-token:
+    description: 'Token used to publish the pull request comment'
+    required: false
+    default: ${{ github.token }}
+
+  elastic-endpoint:
+    description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
+    required: false
+    default: ''
+
+  elastic-headers:
+    description: 'Elastic ingest headers, the OTLP_HEADERS secret'
+    required: false
+    default: ''
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every finding, e.g. component=plugin. A dotted key is written at that path, an undotted one lands under labels.'
+    required: false
+    default: |
+      service.name=${{ github.event.repository.name }}
+
+  dry-run:
+    description: 'Build the Elastic payload without sending it'
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: TruffleHog - Cache binary
+      id: bin
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/security-tools/trufflehog
+        key: trufflehog-bin-${{ runner.os }}-${{ inputs.version }}
+
+    - name: TruffleHog - Install
+      if: steps.bin.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        base="https://github.com/trufflesecurity/trufflehog/releases/download/v${VERSION}"
+        asset="trufflehog_${VERSION}_linux_amd64.tar.gz"
+        tmp="$(mktemp -d)"
+        curl -fsSL --retry 3 -o "${tmp}/${asset}" "${base}/${asset}"
+        curl -fsSL --retry 3 -o "${tmp}/checksums.txt" "${base}/trufflehog_${VERSION}_checksums.txt"
+        (cd "${tmp}" && grep " ${asset}\$" checksums.txt | sha256sum -c -)
+        mkdir -p ~/.cache/security-tools/trufflehog
+        tar -xzf "${tmp}/${asset}" -C ~/.cache/security-tools/trufflehog trufflehog
+
+    # A pull request scans the commits it adds (`git --since-commit`), anything else scans the whole
+    # tree. The commits rather than the final files: a secret added and removed inside the pull
+    # request was still published, and is worth rotating. Needs the base commit locally, so the
+    # caller checks out with fetch-depth: 0.
+    - name: TruffleHog - Scan
+      shell: bash
+      env:
+        RESULTS: ${{ inputs.results }}
+        EVENT: ${{ github.event_name }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [ "${EVENT}" = "pull_request" ]; then
+          source=(git "file://${PWD}" --since-commit "${PR_BASE}" --branch "${PR_HEAD}")
+        else
+          source=(filesystem .)
+        fi
+        ~/.cache/security-tools/trufflehog/trufflehog "${source[@]}" \
+          --json --no-update --no-color \
+          --results="${RESULTS}" \
+          --exclude-paths="${ACTION_PATH}/trufflehog-exclude.txt" \
+          > "${RUNNER_TEMP}/trufflehog.ndjson"
+
+    # Detector, file and line only: the report holds the raw secret and must not reach the log or the
+    # comment, so the comment reads a copy stripped down to those.
+    - name: TruffleHog - Prepare comment
+      id: findings
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        report="${RUNNER_TEMP}/trufflehog.ndjson"
+        [ -f "${report}" ] || exit 0
+        jq -sR '[split("\n")[] | fromjson? | select(.DetectorName != null)
+            | (.SourceMetadata.Data.Filesystem // .SourceMetadata.Data.Git // {}) as $at
+            | {detector: .DetectorName, verified: (.Verified // false), file: ($at.file // ""), line: ($at.line // 0)}]
+          | {total: length, findings: .}' "${report}" > "${RUNNER_TEMP}/trufflehog-comment.json"
+        echo "total=$(jq .total "${RUNNER_TEMP}/trufflehog-comment.json")" >> "$GITHUB_OUTPUT"
+
+    - name: TruffleHog - Comment pull request
+      if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.findings.outputs.total != '' }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        title: "🐷 TruffleHog"
+        result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
+        title-summary: ${{ format('{0} secrets', steps.findings.outputs.total) }}
+        files: |
+          ${{ runner.temp }}/trufflehog-comment.json
+        template: |
+          {% if files[0] and files[0].total > 0 %}
+          | Detector | Verified | File | Line |
+          | :--- | :--- | :--- | :--- |
+          {%- for finding in files[0].findings %}
+          | {{ finding.detector }} | {{ finding.verified }} | `{{ finding.file }}` | {{ finding.line }} |
+          {%- endfor %}
+          {% else %}
+          No secret found.
+          {% endif %}
+
+    - name: TruffleHog - Report findings to Elastic
+      if: ${{ !cancelled() && inputs.elastic-endpoint != '' }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/report-sarif@main
+      with:
+        sarif-files: ${{ runner.temp }}/trufflehog.ndjson
+        type: misconfigurations
+        elastic-endpoint: ${{ inputs.elastic-endpoint }}
+        elastic-headers: ${{ inputs.elastic-headers }}
+        dry-run: ${{ inputs.dry-run }}
+        metadata: ${{ inputs.metadata }}
+
+    - name: TruffleHog - Remove the report
+      if: always()
+      shell: bash
+      run: rm -f "${RUNNER_TEMP}/trufflehog.ndjson" "${RUNNER_TEMP}/trufflehog-comment.json"

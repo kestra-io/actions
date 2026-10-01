@@ -9,16 +9,26 @@ import { parseBoolean, parseList, parsePairs } from '../../../shared/elastic-cor
 import type { Finding } from './finding.js'
 import { flatten, type SarifLog } from './sarif.js'
 import { flattenTrivy, isTrivyReport } from './trivy.js'
+import { flattenTrufflehog, isTrufflehogLine, parseTrufflehog } from './trufflehog.js'
 
 /**
- * SARIF, or Trivy's own JSON when that is what was handed over. Detected by shape rather than by
+ * SARIF, Trivy's own JSON or TruffleHog's NDJSON, whichever was handed over. Detected by shape rather than by
  * file extension, since both formats are .json as often as not — and Trivy's native report is worth
  * preferring where it exists, because SARIF drops its advisory, publication and per-vendor CVSS
  * fields.
  */
 async function readReport(file: string): Promise<Finding[]> {
+  const content = await fs.readFile(file, 'utf8')
   try {
-    const parsed: unknown = JSON.parse(await fs.readFile(file, 'utf8'))
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(content)
+    } catch {
+      // Not one JSON document: TruffleHog writes one object per line, and an empty file is a clean scan.
+      return flattenTrufflehog(parseTrufflehog(content))
+    }
+    // A report with a single finding is one line, so it parses as one JSON document too.
+    if (isTrufflehogLine(parsed)) return flattenTrufflehog([parsed])
     return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed as SarifLog)
   } catch (error) {
     core.warning(`Could not read ${file} as SARIF or a Trivy report: ${(error as Error).message}`)

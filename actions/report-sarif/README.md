@@ -156,6 +156,12 @@ The key needs the `event:write` privilege on the `apm` application — the same
 privilege the Managed OTLP Endpoint uses, which is why the same secret serves
 both.
 
+## TruffleHog
+
+TruffleHog's `--json` output (one object per line) is read natively, and lands in `logs-trufflehog-<namespace>`. Ship
+it as `type: misconfigurations`. A verified secret is `Critical`, one that could not be verified `High`, an unverified
+one `Medium`. The secret itself (`Raw`, `RawV2`, `Redacted`, `ExtraData`) is never copied into a document.
+
 ## Failure behaviour
 
 `fail-on-error` defaults to `false`, matching `otel-export-trace`: an
