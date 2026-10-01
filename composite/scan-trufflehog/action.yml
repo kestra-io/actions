@@ -18,7 +18,7 @@ inputs:
   results:
     description: 'Comma separated result types to report: verified, unknown, unverified, filtered_unverified'
     required: false
-    default: 'verified,unknown'
+    default: 'verified,unknown,unverified'
 
   github-token:
     description: 'Token used to publish the pull request comment'
