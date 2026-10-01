@@ -72,10 +72,12 @@ runs:
         mkdir -p ~/.cache/security-tools/trufflehog
         tar -xzf "${tmp}/${asset}" -C ~/.cache/security-tools/trufflehog trufflehog
 
-    # A pull request scans the commits it adds (`git --since-commit`), anything else scans the whole
-    # tree. The commits rather than the final files: a secret added and removed inside the pull
-    # request was still published, and is worth rotating. Needs the base commit locally, so the
-    # caller checks out with fetch-depth: 0.
+    # A pull request runs two scans. `git --since-commit` reads the commits it adds, so a secret added
+    # then removed inside the pull request, which was still published and is worth rotating, is found.
+    # But it only reads the added lines of each diff, so a multi-line secret edited into an existing
+    # file (a PEM key between unchanged BEGIN/END lines) is missed. `filesystem` on the files the pull
+    # request changes reads them whole and finds it. Anything else scans the whole tree. Needs the base
+    # commit locally, so the caller checks out with fetch-depth: 0.
     - name: TruffleHog - Scan
       shell: bash
       env:
@@ -86,16 +88,22 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
+        trufflehog=~/.cache/security-tools/trufflehog/trufflehog
+        report="${RUNNER_TEMP}/trufflehog.ndjson"
+        flags=(--json --no-update --no-color --results="${RESULTS}" --exclude-paths="${ACTION_PATH}/trufflehog-exclude.txt")
         if [ "${EVENT}" = "pull_request" ]; then
-          source=(git "file://${PWD}" --since-commit "${PR_BASE}" --branch "${PR_HEAD}")
+          "${trufflehog}" git "file://${PWD}" --since-commit "${PR_BASE}" --branch "${PR_HEAD}" "${flags[@]}" > "${report}.git"
+          mapfile -t changed < <(git diff --name-only --diff-filter=d "${PR_BASE}...${PR_HEAD}")
+          : > "${report}.fs"
+          if [ "${#changed[@]}" -gt 0 ]; then
+            "${trufflehog}" filesystem "${changed[@]}" "${flags[@]}" > "${report}.fs"
+          fi
+          jq -c -s 'map(select(.DetectorName != null)) | unique_by([.DetectorName, .Raw, (.SourceMetadata.Data.Git.file // .SourceMetadata.Data.Filesystem.file)]) | .[]' \
+            "${report}.git" "${report}.fs" > "${report}"
+          rm -f "${report}.git" "${report}.fs"
         else
-          source=(filesystem .)
+          "${trufflehog}" filesystem . "${flags[@]}" > "${report}"
         fi
-        ~/.cache/security-tools/trufflehog/trufflehog "${source[@]}" \
-          --json --no-update --no-color \
-          --results="${RESULTS}" \
-          --exclude-paths="${ACTION_PATH}/trufflehog-exclude.txt" \
-          > "${RUNNER_TEMP}/trufflehog.ndjson"
 
     # Detector, file and line only: the report holds the raw secret and must not reach the log or the
     # comment, so the comment reads a copy stripped down to those.
