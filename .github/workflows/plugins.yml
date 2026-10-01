@@ -403,6 +403,18 @@ jobs:
             service.name=${{ github.event.repository.name }}
             component=plugin
 
+      # Secret scan. Diff on a pull request, the whole tree otherwise.
+      - name: TruffleHog - Secret scan
+        if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
+        uses: kestra-io/actions/composite/scan-trufflehog@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            service.name=${{ github.event.repository.name }}
+            component=plugin
+
       # Trivy scan for the plugin's optional Vue micro-frontend (ui/package-lock.json). No-op for
       # plugins with no UI — same guard as "Test - UI unit tests" above.
       - name: Trivy - Scan UI npm dependencies
