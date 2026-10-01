@@ -27,10 +27,11 @@ rulesets:
   - p/default
 
 # Rule ids to drop entirely. These must be the *full* dotted id — `--exclude-rule` matches the whole
-# id, so a short name silently drops nothing. Both are replaced by narrower rules below.
+# id, so a short name silently drops nothing. Each is replaced by a narrower rule below.
 exclude-rules:
   - yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
   - yaml.github-actions.security.secrets-inherit.secrets-inherit
+  - javascript.vue.security.audit.xss.templates.avoid-v-html.avoid-v-html
 
 # Paths skipped, as --exclude. OpenGrep's built-in .semgrepignore already drops test sources, but a
 # repository adding its own .semgrepignore replaces those built-ins rather than extending them, so
@@ -91,3 +92,20 @@ rules:
       compromise of the called workflow cannot reach all of them.
     languages: [yaml]
     severity: ERROR
+
+  # Upstream flags every v-html attribute by regex, with no way to tell translator-controlled content
+  # from user-controlled content. `t(...)`/`$t(...)` calls render only i18n strings, not arbitrary
+  # input, so this narrows to everything else: the v-html usage that's actually worth a look.
+  - id: kestra-vue-avoid-v-html
+    languages: [regex]
+    severity: WARNING
+    paths:
+      include:
+        - '*.vue'
+    patterns:
+      - pattern-regex: <[^<>]*v-html=["'][^"']*["']
+      - pattern-not-regex: <[^<>]*v-html=["']\s*\$?t\(.*\)\s*["']
+    message: >-
+      Dynamically rendering arbitrary HTML on your website can be very dangerous because it can easily
+      lead to XSS vulnerabilities. Only use HTML interpolation on trusted content and never on user-
+      provided content.
