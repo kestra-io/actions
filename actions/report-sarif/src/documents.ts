@@ -240,7 +240,11 @@ function misconfiguration(finding: Finding, context: DocumentContext, id: string
 
 export function toDocument(finding: Finding, context: DocumentContext): Record<string, unknown> {
   const id = findingId(finding, context)
-  if (context.type === 'misconfigurations') return prune(misconfiguration(finding, context, id))
+  if (context.type === 'misconfigurations') {
+    const document = misconfiguration(finding, context, id)
+    applyMetadata(document, context.metadata)
+    return prune(document)
+  }
   const github = context.github
   const enumeration = enumerationOf(finding.ruleId)
   const document: Record<string, unknown> = {
