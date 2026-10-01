@@ -92,8 +92,12 @@ jobs:
 
       # Publish
       - name: Publish - Release package with Gradle
-        working-directory: kestra-ee
-        run: ./gradlew publish --console=plain
+        uses: kestra-io/actions/composite/publish-java@main
+        with:
+          is-private: 'true'
+          working-directory: kestra-ee
+          # --continue: the already-published guard requires every module to be attempted.
+          gradle-args: '--console=plain --continue'
 
       # Gradle dependency
       - name: Java - Gradle dependency graph
