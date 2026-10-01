@@ -3,3 +3,4 @@
 (^|/)build/
 (^|/)\.gradle/
 (^|/)\.cache/
+(^|/)gha-creds-[^/]*\.json$
