@@ -7,3 +7,4 @@
 (^|/)src/test/
 ^docker-compose-ci\.yml$
 (^|/)\.venv/
+^\.github/setup-unit\.sh$
