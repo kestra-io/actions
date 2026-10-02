@@ -3,14 +3,13 @@ description: 'Scan with trivy and output result'
 
 inputs:
   scan-type:
-    description: 'Does we push to private maven registry'
+    description: 'Trivy scan type: `fs` for a lockfile or directory (npm package-lock.json), `sbom` for a CycloneDX/SPDX file'
     required: false
-    default: "rootfs"
+    default: "fs"
 
   scan-path:
-    description: 'The file mask that will be scanned'
-    required: false
-    default: "*/build/libs/*.jar"
+    description: 'The file or directory to scan, e.g. ./ui/package-lock.json or build/reports/cyclonedx/bom.json'
+    required: true
 
   github-token:
     description: 'GitHub token used to update the pull request comment'
@@ -37,13 +36,6 @@ runs:
       run: |
         mkdir -p ${{ github.workspace }}/trivy-tmp
 
-    - name: Trivy - Copy template and files to scan
-      shell: bash
-      run: |
-        mkdir -p /tmp/trivy-scan
-        find -type f -wholename '${{ inputs.scan-path }}' -exec cp "{}" /tmp/trivy-scan  \;
-        ls -lh /tmp/trivy-scan/
-
     - name: Trivy - Run Trivy scanner
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       id: trivy
@@ -52,9 +44,9 @@ runs:
         TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
       with:
         scan-type: ${{ inputs.scan-type }}
-        scan-ref: /tmp/trivy-scan
+        scan-ref: ${{ inputs.scan-path }}
         format: 'json'
-        output: "${{ github.workspace }}/trivy-result.json"
+        output: ${{ github.workspace }}/trivy-result.json
 
     # The scan above already did the work; `convert` re-renders that report rather than scanning a
     # second time. SARIF is what report-sarif reads, while the comment below keeps rendering the
