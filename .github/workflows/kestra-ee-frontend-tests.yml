@@ -200,18 +200,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           scan-path: kestra-ee/ui-ee
-
-      # Ship the findings to Elastic, alongside the pull request comment and the artifact the
-      # composite above already produces. Reuses the OTLP secrets: the managed _bulk input lives on
-      # the same ingest host as the Managed OTLP Endpoint and authenticates the same way.
-      - name: OpenGrep - Report findings to Elastic
-        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
-        continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
-        with:
-          sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
-          # Static analysis, not a vulnerability scanner: no CVE, no package, a rule a file breaks.
-          type: misconfigurations
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
@@ -237,19 +225,6 @@ jobs:
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           scan-path: ./kestra-ee/ui-ee/package-lock.json
-          title: "🛡 Trivy (frontend)"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Dependency CVEs, shipped to the same data stream as the OpenGrep findings above.
-      - name: Trivy - Report findings to Elastic
-        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy.outcome == 'success' }}
-        continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
-        with:
-          # The native JSON, not the SARIF the composite also produces: SARIF drops the advisory
-          # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
-          sarif-files: ${{ steps.trivy.outputs.json-file }}
-          type: vulnerabilities
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |

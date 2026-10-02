@@ -352,44 +352,28 @@ jobs:
           echo "✅ Disk space cleanup complete."
 
       # CycloneDX SBOM of the runtime classpath, written to build/sbom/java.json by
-      # io.kestra.gradle.repository-conventions (>= 1.2.11) and scanned by Trivy below. Its own step
+      # io.kestra.gradle.repository-conventions and scanned by Trivy below. Its own step
       # and continue-on-error so a plugin on an older version, without the task, doesn't fail the build.
       - name: Trivy - Generate CycloneDX
-        if: ${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) && startsWith(github.repository, 'kestra-io/') }}
         continue-on-error: true
         shell: bash
         run: ./gradlew cyclonedxBom --console=plain
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      # Trivy scan of the Java dependencies for PR and main branch, from the CycloneDX SBOM (runtime
+      # Trivy scan of the Java dependencies on the default branch and releases/*, from the CycloneDX SBOM (runtime
       # classpath) generated above rather than from the final jar. Gated on the SBOM file existing.
       - name: Trivy - Scan Java dependencies
         id: trivy
-        if: ${{ hashFiles('build/sbom/java.json') != '' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ hashFiles('build/sbom/java.json') != '' && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           scan-type: sbom
           scan-path: build/sbom/java.json
-          title: "🛡 Trivy (backend)"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Dependency CVEs, shipped to the same data stream as the OpenGrep findings below — one view
-      # over both. Gated on the scan's outcome because that step only runs for a pull request or a
-      # main push with an SBOM; a skipped or failed scan leaves no report to ship.
-      - name: Trivy - Report findings to Elastic
-        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy.outcome == 'success' }}
-        continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
-        with:
-          # The native JSON, not the SARIF the composite also produces: SARIF drops the advisory
-          # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
-          sarif-files: ${{ steps.trivy.outputs.json-file }}
-          type: vulnerabilities
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            service.name=${{ github.event.repository.name }}
             component=plugin
             target=java-dependencies
 
@@ -400,22 +384,9 @@ jobs:
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Ship the findings to Elastic, alongside the pull request comment and the artifact the
-      # composite above already produces. Reuses the OTLP secrets: the managed _bulk input lives on
-      # the same ingest host as the Managed OTLP Endpoint and authenticates the same way.
-      - name: OpenGrep - Report findings to Elastic
-        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && startsWith(github.repository, 'kestra-io/') }}
-        continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
-        with:
-          sarif-files: ${{ steps.opengrep.outputs.sarif-file }}
-          # Static analysis, not a vulnerability scanner: no CVE, no package, a rule a file breaks.
-          type: misconfigurations
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            service.name=${{ github.event.repository.name }}
             component=plugin
 
       # Secret scan. Diff on a pull request, the whole tree otherwise.
@@ -427,7 +398,6 @@ jobs:
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            service.name=${{ github.event.repository.name }}
             component=plugin
 
       # Trivy scan for the plugin's optional Vue micro-frontend (ui/package-lock.json). No-op for
@@ -438,22 +408,9 @@ jobs:
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           scan-path: ./ui/package-lock.json
-          title: "🛡 Trivy (frontend)"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Dependency CVEs for the UI micro-frontend, tagged apart from the jar scan above (both
-      # carry component=plugin) via target=ui-dependencies.
-      - name: Trivy - Report UI dependency findings to Elastic
-        if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy-ui.outcome == 'success' }}
-        continue-on-error: true
-        uses: kestra-io/actions/actions/report-sarif@main
-        with:
-          sarif-files: ${{ steps.trivy-ui.outputs.json-file }}
-          type: vulnerabilities
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            service.name=${{ github.event.repository.name }}
             component=plugin
             target=ui-dependencies
 
@@ -487,7 +444,6 @@ jobs:
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            service.name=${{ github.event.repository.name }}
             component=plugin
 
       # Unreleased commits since latest release
