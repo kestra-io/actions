@@ -8,3 +8,6 @@
 ^docker-compose-ci\.yml$
 (^|/)\.venv/
 ^\.github/setup-unit\.sh$
+(^|/)allure-results/
+(^|/)\.gcp-service-account\.json$
+^\.env$
