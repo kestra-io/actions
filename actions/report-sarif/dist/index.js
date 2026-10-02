@@ -32225,6 +32225,7 @@ function findingId(finding, context) {
   return sha256(
     [
       context.github.repository,
+      context.github.refName ?? "",
       finding.tool,
       finding.ruleId,
       finding.file ?? "",
@@ -32278,9 +32279,11 @@ function resourceFor(finding, context) {
       url: repositoryUrl
     };
   }
+  const branch = context.github.refName;
+  const scope = repository && branch ? `${repository} (${branch})` : repository;
   return {
-    id: sha256(`${repository}|${target}`).slice(0, 32),
-    name: repository ? `${repository} / ${target}` : target,
+    id: sha256(`${repository}|${branch ?? ""}|${target}`).slice(0, 32),
+    name: scope ? `${scope} / ${target}` : target,
     type: "github-repository",
     sub_type: languageOf(target) ?? target.toLowerCase(),
     target,

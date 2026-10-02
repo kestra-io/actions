@@ -205,12 +205,14 @@ One document per SARIF result, in ECS:
 | `rule.section`, `rule.benchmark.rule_number` | the Findings list's "Framework Section" and "Rule Number" columns |
 | `user.name` / `.id` | the triggering actor, falling back to the actor |
 | `organization.name` / `.id` | the repository owner |
-| `event.id` | `sha256(repository, tool, rule, file, line, package)` |
+| `event.id` | `sha256(repository, branch, tool, rule, file, line, package)` |
 | `github.*` | everything the runner knows about the run that observed the finding |
 | `sarif.*` | the raw `level`, `ruleId`, `ruleName`, `fingerprint`, `snippet` and region, kept for anything the ECS fields flatten away |
 
-`event.id` is stable across runs, so repeated scans are a time series of one
-finding rather than a new finding each time; `event.sequence` carries the run
+`event.id` is stable across runs of one branch, so repeated scans are a time
+series of one finding rather than a new finding each time. The branch is part
+of it, so a latest-state transform keyed on `event.id` keeps one state per
+branch instead of one branch overwriting another; `event.sequence` carries the run
 id that observed it, which is how a current finding is told apart from a stale
 one.
 
