@@ -355,11 +355,11 @@ jobs:
       # classpath) generated above rather than from the final jar. Gated on the SBOM file existing.
       - name: Trivy - Scan Java dependencies
         id: trivy
-        if: ${{ hashFiles('build/reports/cyclonedx/bom.json') != '' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ hashFiles('build/sbom/java.json') != '' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@configure-scan-trivy-sbom
         with:
           scan-type: sbom
-          scan-path: build/reports/cyclonedx/bom.json
+          scan-path: build/sbom/java.json
           title: "🛡 Trivy (backend)"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
