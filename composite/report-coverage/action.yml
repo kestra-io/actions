@@ -1,5 +1,5 @@
 name: 'Report Coverage'
-description: 'Comment every pull request with the coverage change vs develop, and ship it to Elastic on the default branch or a releases/* branch'
+description: 'Comment every pull request with the coverage change vs develop, and ship it to Elastic on the default branch'
 
 # Thin wiring only, matching composite/report-java and composite/scan-opengrep: the parsing, the
 # module detection, the develop baseline lookup and the comment markdown all live in
@@ -50,7 +50,7 @@ inputs:
   dry-run:
     description: >-
       Force shipping to Elastic on or off. Left empty (the default), shipping happens only on the
-      default branch or a branch prefixed "releases/" — every pull request and feature branch still
+      default branch — every pull request and feature branch still
       gets the coverage comment, just without writing to Elastic
     required: false
     default: ''
@@ -82,12 +82,14 @@ runs:
         namespace: ${{ inputs.namespace }}
         modules: ${{ inputs.modules }}
         base-branch: ${{ inputs.base-branch }}
-        metadata: ${{ inputs.metadata }}
+        metadata: |
+          service.name=${{ github.event.repository.name }}
+          ${{ inputs.metadata }}
         github-token: ${{ inputs.github-token }}
-        # A pull request's ref_name is its merge ref ("123/merge"), never the default branch or a
-        # releases/* name, so this is 'true' (comment only, no write) for every PR on its own —
-        # writing dashboard data from a feature branch would pollute it with unmerged coverage.
-        dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || ((github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) && 'false' || 'true') }}
+        # A pull request's ref_name is its merge ref ("123/merge"), never the default branch, so
+        # this is 'true' (comment only, no write) for every PR on its own — writing dashboard data
+        # from a feature branch would pollute it with unmerged coverage.
+        dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || (github.ref_name == github.event.repository.default_branch && 'false' || 'true') }}
 
     - name: Coverage - Comment pull request
       if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}

@@ -1,5 +1,9 @@
 name: 'Trivy Scan'
-description: 'Scan with trivy and output result'
+description: 'Scan dependencies with trivy on the default branch and releases/*, shipped to Elastic'
+
+# Scans only where the findings are kept: the default branch and releases/*. A pull request or a
+# feature branch is not scanned, so it neither comments nor writes to Elastic. The branch is part of
+# each vulnerability id, so every scanned branch keeps its own state in Elastic.
 
 inputs:
   scan-type:
@@ -11,17 +15,29 @@ inputs:
     description: 'The file or directory to scan, e.g. ./ui/package-lock.json or build/reports/cyclonedx/bom.json'
     required: true
 
-  github-token:
-    description: 'GitHub token used to update the pull request comment'
-    required: true
+  elastic-endpoint:
+    description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
+    required: false
+    default: ''
 
-  title:
-    description: 'PR-comment section title. Callers scanning more than one target in the same job must each pass a distinct title, so one call does not overwrite another section.'
-    required: true
+  elastic-headers:
+    description: 'Elastic ingest headers, the OTLP_HEADERS secret'
+    required: false
+    default: ''
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every finding, e.g. component=plugin. service.name defaults to the repository name and can be overridden here. A dotted key is written at that path, an undotted one lands under labels.'
+    required: false
+    default: ''
+
+  dry-run:
+    description: 'Build the Elastic payload without sending it'
+    required: false
+    default: 'false'
 
 outputs:
   json-file:
-    description: 'Absolute path to the Trivy JSON report, the one the pull request comment renders'
+    description: 'Absolute path to the Trivy JSON report, the one shipped to Elastic'
     value: ${{ github.workspace }}/trivy-result.json
 
   sarif-file:
@@ -32,11 +48,13 @@ runs:
   using: composite
   steps:
     - name: Trivy - Create custom temp directory
+      if: ${{ (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
       shell: bash
       run: |
         mkdir -p ${{ github.workspace }}/trivy-tmp
 
     - name: Trivy - Run Trivy scanner
+      if: ${{ (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       id: trivy
       env:
@@ -49,12 +67,11 @@ runs:
         output: ${{ github.workspace }}/trivy-result.json
 
     # The scan above already did the work; `convert` re-renders that report rather than scanning a
-    # second time. SARIF is what report-sarif reads, while the comment below keeps rendering the
-    # JSON — one scan, two outputs. trivy-action installs the binary via setup-trivy, so it is on
-    # PATH here.
+    # second time. Only the `sarif-file` output needs it, as report-sarif below reads the JSON.
+    # trivy-action installs the binary via setup-trivy, so it is on PATH here.
     - name: Trivy - Convert the report to SARIF
       shell: bash
-      if: ${{ !cancelled() }}
+      if: ${{ !cancelled() && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
       continue-on-error: true
       run: |
         set -euo pipefail
@@ -66,41 +83,18 @@ runs:
           --output "${{ github.workspace }}/trivy-result.sarif" \
           "${{ github.workspace }}/trivy-result.json"
 
-    - name: Trivy - Count vulnerabilities
-      id: count
-      shell: bash
-      if: ${{ !cancelled() }}
+    - name: Trivy - Report findings to Elastic
+      if: ${{ !cancelled() && inputs.elastic-endpoint != '' && steps.trivy.outcome == 'success' }}
       continue-on-error: true
-      run: |
-        set -euo pipefail
-        total=""
-        if [ -f "${{ github.workspace }}/trivy-result.json" ]; then
-          total=$(jq '[.Results[]?.Vulnerabilities[]?] | length' "${{ github.workspace }}/trivy-result.json")
-        fi
-        echo "total=${total}" >> "$GITHUB_OUTPUT"
-
-    - name: Artifacts - Comment pull request
-      if: ${{ github.event_name == 'pull_request' }}
-      uses: kestra-io/actions/actions/comment-update@main
-      continue-on-error: true
+      uses: kestra-io/actions/actions/report-sarif@main
       with:
-        github-token: ${{ inputs.github-token }}
-        title: ${{ inputs.title }}
-        result: ${{ steps.count.outputs.total == '' && 'empty' || (steps.count.outputs.total > 0 && 'warning' || 'success') }}
-        title-summary: ${{ steps.count.outputs.total != '' && format('{0} vulnerabilities', steps.count.outputs.total) || '' }}
-        files: |
-          ${{ github.workspace }}/trivy-result.json
-        template: |
-          {% if files[0] and files[0].Results | length > 0 %}
-          {%- for suite in files[0].Results %}
-          {% if suite.Vulnerabilities | length > 0 %}
-          ####  Vulnerability in: `{{ suite.Target }}`
-
-          | Vulnerability | Severity | Package | Installed Version | Fixed Version |
-          | :--- | :--- | :--- | :--- | :--- |
-          {%- for vulnerability in suite.Vulnerabilities %}
-          | [{{ vulnerability.VulnerabilityID }}]({{ vulnerability.PrimaryURL }}) | {{ vulnerability.Severity }} | {{ vulnerability.PkgName }} | {{ vulnerability.InstalledVersion }} | {{ vulnerability.FixedVersion }} |          
-          {%- endfor %}
-          {% endif %}
-          {%- endfor %}
-          {% endif %}
+        # The native JSON, not the SARIF the composite also produces: SARIF drops the advisory
+        # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
+        sarif-files: ${{ github.workspace }}/trivy-result.json
+        type: vulnerabilities
+        elastic-endpoint: ${{ inputs.elastic-endpoint }}
+        elastic-headers: ${{ inputs.elastic-headers }}
+        dry-run: ${{ inputs.dry-run }}
+        metadata: |
+          service.name=${{ github.event.repository.name }}
+          ${{ inputs.metadata }}

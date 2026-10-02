@@ -52,12 +52,15 @@ export function enumerationOf(ruleId: string): 'CVE' | 'GHSA' | undefined {
 /**
  * Stable across runs: the same finding in the same place reports the same id every scan, so
  * repeated CI runs are a time series of one finding rather than a new finding each time. The line
- * number is deliberately in, since two hits of one rule in one file are two findings to fix.
+ * number is deliberately in, since two hits of one rule in one file are two findings to fix. The
+ * branch is in too, so a latest-state transform keyed on this id keeps one state per branch
+ * (main and every releases/*) instead of the last branch scanned overwriting the others.
  */
 export function findingId(finding: Finding, context: DocumentContext): string {
   return sha256(
     [
       context.github.repository,
+      context.github.refName ?? '',
       finding.tool,
       finding.ruleId,
       finding.file ?? '',
@@ -98,8 +101,9 @@ function location(finding: Finding): string {
  *
  * A vulnerability is on a dependency, and Trivy reports its target as the ecosystem rather than a
  * path — "Java" for a jar scan. "Java" alone says nothing about which repository is affected, so
- * the name is scoped to it. The repository stays filterable through github.* and organization.*
- * either way.
+ * the name is scoped to it, and to the branch, since the same dependency is tracked separately on
+ * main and on each releases/* branch. The repository stays filterable through github.* and
+ * organization.* either way.
  */
 function resourceFor(finding: Finding, context: DocumentContext): Record<string, unknown> {
   const repository = context.github.repository
@@ -136,9 +140,11 @@ function resourceFor(finding: Finding, context: DocumentContext): Record<string,
     }
   }
 
+  const branch = context.github.refName
+  const scope = repository && branch ? `${repository} (${branch})` : repository
   return {
-    id: sha256(`${repository}|${target}`).slice(0, 32),
-    name: repository ? `${repository} / ${target}` : target,
+    id: sha256(`${repository}|${branch ?? ''}|${target}`).slice(0, 32),
+    name: scope ? `${scope} / ${target}` : target,
     type: 'github-repository',
     sub_type: languageOf(target) ?? target.toLowerCase(),
     target,

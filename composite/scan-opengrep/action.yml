@@ -1,5 +1,5 @@
 name: 'OpenGrep Scan'
-description: 'Static analysis with OpenGrep, reported as check annotations, a pull request comment and an artifact'
+description: 'Static analysis with OpenGrep, reported as check annotations, a pull request comment, an artifact and Elastic on the default branch'
 
 # Thin wiring only. Everything with logic in it — install, cache, rule resolution, the scan, rule
 # id normalisation, the summary and the gate — lives in actions/scan-opengrep, where it is unit
@@ -46,6 +46,28 @@ inputs:
     required: false
     default: "."
 
+  elastic-endpoint:
+    description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
+    required: false
+    default: ''
+
+  elastic-headers:
+    description: 'Elastic ingest headers, the OTLP_HEADERS secret'
+    required: false
+    default: ''
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every finding, e.g. component=backend. service.name defaults to the repository name and can be overridden here. A dotted key is written at that path, an undotted one lands under labels.'
+    required: false
+    default: ''
+
+  dry-run:
+    description: >-
+      Force shipping to Elastic on or off. Left empty (the default), shipping happens only on the
+      default branch — every other branch and pull request is still scanned and commented, just
+      without writing to Elastic
+    required: false
+    default: ''
 
 
 outputs:
@@ -106,3 +128,18 @@ runs:
           {% else %}
           Found **{{ files[0].total }}** finding(s).
           {% endif %}
+
+    # Static analysis, not a vulnerability scanner: no CVE, no package, a rule a file breaks.
+    - name: OpenGrep - Report findings to Elastic
+      if: ${{ !cancelled() && inputs.elastic-endpoint != '' }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/report-sarif@main
+      with:
+        sarif-files: ${{ steps.scan.outputs.sarif-file }}
+        type: misconfigurations
+        elastic-endpoint: ${{ inputs.elastic-endpoint }}
+        elastic-headers: ${{ inputs.elastic-headers }}
+        dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || (github.ref_name == github.event.repository.default_branch && 'false' || 'true') }}
+        metadata: |
+          service.name=${{ github.event.repository.name }}
+          ${{ inputs.metadata }}

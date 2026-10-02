@@ -1,5 +1,5 @@
 name: 'TruffleHog Scan'
-description: 'Secret scan of the checked out tree with TruffleHog, shipped to Elastic'
+description: 'Secret scan of the checked out tree with TruffleHog, shipped to Elastic on the default branch'
 
 # Expects the repository to be checked out already. The binary is cached and verified against the
 # release checksums. The report holds the raw secrets, so it is never uploaded and is deleted at the end.
@@ -36,15 +36,17 @@ inputs:
     default: ''
 
   metadata:
-    description: 'Newline separated key=value pairs added to every finding, e.g. component=plugin. A dotted key is written at that path, an undotted one lands under labels.'
+    description: 'Newline separated key=value pairs added to every finding, e.g. component=plugin. service.name defaults to the repository name and can be overridden here. A dotted key is written at that path, an undotted one lands under labels.'
     required: false
-    default: |
-      service.name=${{ github.event.repository.name }}
+    default: ''
 
   dry-run:
-    description: 'Build the Elastic payload without sending it'
+    description: >-
+      Force shipping to Elastic on or off. Left empty (the default), shipping happens only on the
+      default branch — every other branch and pull request is still scanned and commented, just
+      without writing to Elastic
     required: false
-    default: 'false'
+    default: ''
 
 runs:
   using: composite
@@ -151,8 +153,10 @@ runs:
         type: misconfigurations
         elastic-endpoint: ${{ inputs.elastic-endpoint }}
         elastic-headers: ${{ inputs.elastic-headers }}
-        dry-run: ${{ inputs.dry-run }}
-        metadata: ${{ inputs.metadata }}
+        dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || (github.ref_name == github.event.repository.default_branch && 'false' || 'true') }}
+        metadata: |
+          service.name=${{ github.event.repository.name }}
+          ${{ inputs.metadata }}
 
     - name: TruffleHog - Remove the report
       if: always()

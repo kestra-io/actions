@@ -101,6 +101,17 @@ test('the finding id is stable across runs but distinct per location', () => {
   assert.notEqual(findingId(finding, context), findingId({ ...finding, file: 'other.jar' }, context))
 })
 
+test('the same finding on two branches gets two ids and two resources', () => {
+  const on = (refName: string): DocumentContext => ({ ...context, github: { ...context.github, refName } })
+  assert.notEqual(findingId(finding, on('main')), findingId(finding, on('releases/v1.2')))
+  assert.equal(findingId(finding, on('main')), findingId(finding, on('main')))
+
+  const main = toDocument({ ...finding, file: 'Java' }, on('main')) as Record<string, Record<string, unknown>>
+  const release = toDocument({ ...finding, file: 'Java' }, on('releases/v1.2')) as Record<string, Record<string, unknown>>
+  assert.notEqual(main.resource.id, release.resource.id)
+  assert.equal(release.resource.name, 'kestra-io/kestra (releases/v1.2) / Java')
+})
+
 test('empty values are pruned rather than indexed as empty strings', () => {
   const bare: Finding = {
     tool: 'x',
