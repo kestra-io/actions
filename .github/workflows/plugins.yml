@@ -323,18 +323,6 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # CycloneDX SBOM of the runtime classpath, written to build/sbom/java.json by
-      # io.kestra.gradle.repository-conventions (>= 1.2.11) and scanned by Trivy below. Its own step
-      # and continue-on-error so a plugin on an older version, without the task, doesn't fail the build.
-      - name: SBOM - Generate CycloneDX
-        if: ${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
-        continue-on-error: true
-        shell: bash
-        run: ./gradlew cyclonedxBom --console=plain
-        env:
-          JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
-          GITHUB_TOKEN: ${{ github.token }}
-
       # Cleanup disk space to avoid "no space left on device" errors during Trivy scan (needed for plugin-jdbc only, which installs many docker images)
       - name: Cleanup - Free up disk space
         if: ${{ github.repository == 'kestra-io/plugin-jdbc' }}
@@ -362,6 +350,17 @@ jobs:
           df -h
 
           echo "✅ Disk space cleanup complete."
+
+      # CycloneDX SBOM of the runtime classpath, written to build/sbom/java.json by
+      # io.kestra.gradle.repository-conventions (>= 1.2.11) and scanned by Trivy below. Its own step
+      # and continue-on-error so a plugin on an older version, without the task, doesn't fail the build.
+      - name: Trivy - Generate CycloneDX
+        if: ${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
+        continue-on-error: true
+        shell: bash
+        run: ./gradlew cyclonedxBom --console=plain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       # Trivy scan of the Java dependencies for PR and main branch, from the CycloneDX SBOM (runtime
       # classpath) generated above rather than from the final jar. Gated on the SBOM file existing.
