@@ -356,7 +356,7 @@ jobs:
       - name: Trivy - Scan Java dependencies
         id: trivy
         if: ${{ hashFiles('build/reports/cyclonedx/bom.json') != '' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-trivy@main
+        uses: kestra-io/actions/composite/scan-trivy@configure-scan-trivy-sbom
         with:
           scan-type: sbom
           scan-path: build/reports/cyclonedx/bom.json
@@ -424,7 +424,7 @@ jobs:
       - name: Trivy - Scan UI npm dependencies
         id: trivy-ui
         if: ${{ hashFiles('ui/package-lock.json') != '' && !cancelled() && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-trivy@main
+        uses: kestra-io/actions/composite/scan-trivy@configure-scan-trivy-sbom
         with:
           scan-path: ./ui/package-lock.json
           title: "🛡 Trivy (frontend)"
