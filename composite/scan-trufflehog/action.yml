@@ -40,6 +40,13 @@ inputs:
     required: false
     default: ''
 
+  ignore-examples:
+    description: >-
+      Drop unverified findings inside the `code = """..."""` block of a Java `@Example`, where plugin
+      documentation shows placeholder credentials on purpose. Verified findings are always kept
+    required: false
+    default: 'true'
+
   dry-run:
     description: >-
       Force shipping to Elastic on or off. Left empty (the default), shipping happens only on the
@@ -106,6 +113,18 @@ runs:
         else
           "${trufflehog}" filesystem . "${flags[@]}" > "${report}"
         fi
+
+    # Filtered after the scan, not with --exclude-paths: that is per file, and the rest of the file must
+    # still be scanned. TruffleHog has no per-block ignore that keeps the comment out of the docs.
+    - name: TruffleHog - Drop plugin examples
+      if: ${{ !cancelled() && inputs.ignore-examples == 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        report="${RUNNER_TEMP}/trufflehog.ndjson"
+        [ -f "${report}" ] || exit 0
+        "${ACTION_PATH}/drop-examples.sh" "${report}"
 
     # Detector, file and line only: the report holds the raw secret and must not reach the log or the
     # comment, so the comment reads a copy stripped down to those.
