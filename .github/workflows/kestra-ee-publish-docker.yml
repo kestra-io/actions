@@ -245,7 +245,11 @@ jobs:
             echo "TAG '$TAG' is not a real release, skipping minor_semver"
           fi
 
-          PRIVATE_REPO="--repositories=https://oauth2accesstoken:${{ steps.glogin.outputs.access_token }}@europe-west1-maven.pkg.dev/kestra-host/maven"
+          # Never embed the OAuth access token in this URL: this string can reach the Docker
+          # build as the KESTRA_PLUGINS build-arg, which bakes the credential into the image
+          # layer history. Build-time private-plugin install authenticates through kestractl
+          # (--maven-username/--maven-password) in the download steps below, not through here.
+          PRIVATE_REPO="--repositories=https://europe-west1-maven.pkg.dev/kestra-host/maven"
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             echo "plugins=$PRIVATE_REPO-snapshot --repositories=https://central.sonatype.com/repository/maven-snapshots ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
           else
