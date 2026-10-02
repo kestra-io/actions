@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Drops unverified findings that sit inside the `code = """..."""` text block of a Java `@Example`:
-# plugin docs show placeholder credentials on purpose. A verified secret is kept wherever it is.
+# Drops unverified findings that sit inside the `code = """..."""` text block of a Java `@Example`, or
+# on a `example = "..."` attribute line (`@Schema`): plugin docs show placeholder credentials on purpose. A verified secret is kept wherever it is.
 # Usage: drop-examples.sh <trufflehog.ndjson>, rewritten in place.
 set -euo pipefail
 
@@ -13,6 +13,7 @@ while IFS= read -r file; do
     /@Example\(/ { example = 1 }
     example && !block && /code[[:space:]]*=[[:space:]]*"""/ { block = 1; start = NR; next }
     block && /"""/ { print start, NR; block = 0; example = 0 }
+    !block && /^[[:space:]]*examples?[[:space:]]*=/ { print NR, NR }
   ' "${file}" | jq -Rsc 'split("\n") | map(select(length > 0) | split(" ") | map(tonumber))')"
   ranges="$(jq -c --arg f "${file}" --argjson r "${found}" '.[$f] = $r' <<< "${ranges}")"
 done < <(jq -r 'select(.DetectorName != null and (.Verified | not))

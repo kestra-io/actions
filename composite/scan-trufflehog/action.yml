@@ -42,7 +42,7 @@ inputs:
 
   ignore-examples:
     description: >-
-      Drop unverified findings inside the `code = """..."""` block of a Java `@Example`, where plugin
+      Drop unverified findings inside the `code = """..."""` block of a Java `@Example` or on a `example = "..."` line, where plugin
       documentation shows placeholder credentials on purpose. Verified findings are always kept
     required: false
     default: 'true'
