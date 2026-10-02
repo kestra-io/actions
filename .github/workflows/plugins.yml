@@ -256,7 +256,7 @@ jobs:
       - name: Test - Gradle Check
         if: ${{ inputs.skip-test == false }}
         shell: bash
-        run: ./gradlew check ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel --console=plain
+        run: ./gradlew check cyclonedxBom ${{ inputs.generate-shadowjar == true && 'shadowJar' || ''  }} --parallel --console=plain
         env:
           JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
           GITHUB_TOKEN: ${{ github.token }}
@@ -351,18 +351,21 @@ jobs:
 
           echo "✅ Disk space cleanup complete."
 
-      # Trivy scan for PR and main branch
-      - name: Trivy - Scan jar
+      # Trivy scan of the Java dependencies for PR and main branch, from the CycloneDX SBOM (runtime
+      # classpath) generated above rather than from the final jar. Gated on the SBOM file existing.
+      - name: Trivy - Scan Java dependencies
         id: trivy
-        if: ${{ inputs.generate-shadowjar == true && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
+        if: ${{ hashFiles('build/reports/cyclonedx/bom.json') != '' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && startsWith(github.repository, 'kestra-io/') }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
+          scan-type: sbom
+          scan-path: build/reports/cyclonedx/bom.json
           title: "🛡 Trivy (backend)"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Dependency CVEs, shipped to the same data stream as the OpenGrep findings below — one view
-      # over both. Gated on the scan's outcome because that step only runs for a pull request with a
-      # shadow jar; a skipped or failed scan leaves no report to ship.
+      # over both. Gated on the scan's outcome because that step only runs for a pull request or a
+      # main push with an SBOM; a skipped or failed scan leaves no report to ship.
       - name: Trivy - Report findings to Elastic
         if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' && steps.trivy.outcome == 'success' }}
         continue-on-error: true
@@ -377,6 +380,7 @@ jobs:
           metadata: |
             service.name=${{ github.event.repository.name }}
             component=plugin
+            target=java-dependencies
 
       # OpenGrep static analysis.
       - name: OpenGrep - Static analysis
