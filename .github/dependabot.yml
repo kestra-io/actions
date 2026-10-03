@@ -17,7 +17,7 @@ updates:
         patterns:
           - "*"
     labels:
-      - dependencies
+      - dependency-upgrade
     open-pull-requests-limit: 5
 
   - package-ecosystem: npm
@@ -35,5 +35,5 @@ updates:
         patterns:
           - "*"
     labels:
-      - dependencies
+      - dependency-upgrade
     open-pull-requests-limit: 5
