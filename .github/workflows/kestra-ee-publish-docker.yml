@@ -119,7 +119,6 @@ jobs:
       # Routes the Build Jar Gradle step through the GCP AR maven-remote proxy to
       # avoid Maven Central HTTP 429 on shared runner IPs. No-op if the secret is empty.
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
     with:

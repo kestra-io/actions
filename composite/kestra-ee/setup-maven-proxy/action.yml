@@ -114,7 +114,7 @@ runs:
             }
         }
         EOF
-        # Export the token to the whole job so every subsequent Gradle step (build, sonar,
+        # Export the token to the whole job so every subsequent Gradle step (build,
         # publish, javadoc, ...) resolves through the proxy — not just one step's env.
         echo "MAVEN_REMOTE_TOKEN=${MAVEN_REMOTE_ACCESS_TOKEN}" >> "$GITHUB_ENV"
         # Route Kestra's runtime plugin downloader (MavenPluginDownloader) through the same

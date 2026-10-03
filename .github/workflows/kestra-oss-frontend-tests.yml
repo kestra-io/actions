@@ -3,11 +3,11 @@ name: Frontend - Tests
 on:
   workflow_call:
     secrets:
+      CODECOV_TOKEN:
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
+        required: false
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
-        required: true
-      CODECOV_TOKEN:
-        description: 'Codecov Token'
         required: true
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
@@ -106,8 +106,6 @@ jobs:
       - parallel:
           - name: Npm - Run build
             working-directory: ui
-            env:
-              CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
             run: npm run build
 
           - name: Run front-end unit tests
