@@ -4,7 +4,7 @@ on:
   workflow_call:
     secrets:
       CODECOV_TOKEN:
-        description: "The Codecov token."
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
         required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'

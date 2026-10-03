@@ -3,6 +3,9 @@ name: Backend tests
 on:
   workflow_call:
     secrets:
+      CODECOV_TOKEN:
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
+        required: false
       SLACK_WEBHOOK_URL:
         description: "The Slack webhook url."
         required: true
@@ -11,9 +14,6 @@ on:
         required: false
       GCP_SERVICE_ACCOUNT:
         description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
-        required: false
-      CODECOV_TOKEN:
-        description: "The Codecov token."
         required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
