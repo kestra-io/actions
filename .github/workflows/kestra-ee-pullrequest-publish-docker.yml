@@ -3,13 +3,13 @@ name: Pull Request - Publish Docker
 on:
   workflow_call:
     secrets:
+      CODECOV_TOKEN:
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
+        required: false
       GOOGLE_SERVICE_ACCOUNT:
         required: true
       GCP_SERVICE_ACCOUNT:
         description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
-        required: false
-      CODECOV_TOKEN:
-        description: "The Codecov token."
         required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
@@ -48,7 +48,6 @@ jobs:
       # Routes the Build Jar Gradle step through the GCP AR maven-remote proxy to
       # avoid Maven Central HTTP 429 on shared runner IPs. No-op if the secret is empty.
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
     with:

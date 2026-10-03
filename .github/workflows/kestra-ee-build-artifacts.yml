@@ -3,15 +3,15 @@ name: Build Artifacts
 on:
   workflow_call:
     secrets:
+      CODECOV_TOKEN:
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
+        required: false
       GOOGLE_SERVICE_ACCOUNT:
         description: "The Google Service Account."
         required: true
       GCP_SERVICE_ACCOUNT:
         description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
         required: false
-      CODECOV_TOKEN:
-        description: 'Codecov Token'
-        required: true
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
         required: false
@@ -115,8 +115,6 @@ jobs:
 
       # Shadow Jar
       - name: Gradle - Build jars
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         run: |
           cd kestra-ee
           if [ "${{ steps.cloud-ee.outputs.exists }}" == "true" ]; then

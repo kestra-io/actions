@@ -3,14 +3,14 @@ name: Backend - Tests
 on:
   workflow_call:
     secrets:
+      CODECOV_TOKEN:
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
+        required: false
+      SONAR_TOKEN:
+        description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
+        required: false
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
-        required: true
-      CODECOV_TOKEN:
-        description: 'Codecov Token'
-        required: true
-      SONAR_TOKEN:
-        description: 'Sonar Token'
         required: true
       GOOGLE_SERVICE_ACCOUNT:
         description: 'Google Service Account'
@@ -46,7 +46,6 @@ jobs:
     timeout-minutes: 90
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.

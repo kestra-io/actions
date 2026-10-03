@@ -1,11 +1,7 @@
 name: 'Report Java'
-description: 'Send Allure, Jacoco, Sonar and Codecov reports'
+description: 'Send Allure and Jacoco reports'
 
 inputs:
-  run-sonar:
-    description: 'Run Sonar analysis'
-    required: false
-    default: 'true'
   secrets:
     description: 'Secrets passed as toJSON'
     required: true
@@ -114,21 +110,6 @@ runs:
           gsutil -m rsync -d -r  build/reports/jacoco/test/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'jacoco') }}
         fi
 
-    # Codecov
-    - name: Codecov - Upload coverage reports
-      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-      if: ${{ job.status == 'success' }}
-      continue-on-error: true
-      with:
-        token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
-
-    - name: Codecov - Upload test results
-      uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
-      if: ${{ job.status == 'success' }}
-      continue-on-error: true
-      with:
-        token: ${{ fromJSON(inputs.secrets).CODECOV_TOKEN }}
-
     # Gradle dependency
     - name: Java - Gradle dependency graph
       if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
@@ -136,13 +117,3 @@ runs:
       continue-on-error: true
       env:
         JAVA_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=1g"
-
-    # Sonar
-    - name: Sonar - Analyze with Sonar
-      if: ${{ job.status == 'success' && inputs.run-sonar == 'true' && env.SONAR_TOKEN != '' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
-      env:
-        GITHUB_TOKEN: ${{ fromJSON(inputs.secrets).GITHUB_AUTH_TOKEN }}
-        SONAR_TOKEN: ${{ fromJSON(inputs.secrets).SONAR_TOKEN }}
-      shell: bash
-      continue-on-error: true
-      run: ./gradlew sonar
