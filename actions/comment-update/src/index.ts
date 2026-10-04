@@ -166,7 +166,7 @@ class CommentUpdate {
 
     _sectionContent(content: string): string {
         // The summary text stays outside <b>, so only the title and result emoji are bold
-        let section = `<details>\n<summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>\n<br>\n\n${content}\n\n</details>\n`
+        let section = `<details>\n<summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>\n\n<blockquote>\n\n${content}\n\n</blockquote>\n\n</details>\n`
 
         if (content.trim().length == 0) {
             section = "";
