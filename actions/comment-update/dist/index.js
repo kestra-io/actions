@@ -40841,9 +40841,12 @@ ${JSON.stringify(data, void 0, 2)}`);
   _sectionContent(content) {
     let section = `<details>
 <summary><b>${this.boldTitle}</b>${this.summarySuffix}</summary>
-<br>
+
+<blockquote>
 
 ${content}
+
+</blockquote>
 
 </details>
 `;
