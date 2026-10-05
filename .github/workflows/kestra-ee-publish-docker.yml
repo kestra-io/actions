@@ -143,8 +143,8 @@ jobs:
           # deprecated aliases for one release so downstream consumers can migrate.
           - tag: -slim
             plugins: ""
-            base-image-jre25: "ghcr.io/kestra-io/kestra-base:latest-jre25-slim"
-            base-image-jre21: "ghcr.io/kestra-io/kestra-base:latest-jre21-slim"
+            base-image-jre25: "europe-west1-docker.pkg.dev/kestra-host/ghcr-proxy/kestra-io/kestra-base:latest-jre25-slim"
+            base-image-jre21: "europe-west1-docker.pkg.dev/kestra-host/ghcr-proxy/kestra-io/kestra-base:latest-jre21-slim"
             packages: jattach
             node-apt-packages: ""
             python-libraries: ""
@@ -152,8 +152,8 @@ jobs:
 
           - tag: ""
             plugins: ${{needs.plugins.outputs.plugins}}
-            base-image-jre25: "ghcr.io/kestra-io/kestra-base:latest-jre25"
-            base-image-jre21: "ghcr.io/kestra-io/kestra-base:latest-jre21"
+            base-image-jre25: "europe-west1-docker.pkg.dev/kestra-host/ghcr-proxy/kestra-io/kestra-base:latest-jre25"
+            base-image-jre21: "europe-west1-docker.pkg.dev/kestra-host/ghcr-proxy/kestra-io/kestra-base:latest-jre21"
             packages: python3 python-is-python3 python3-pip curl jattach
             python-libraries: kestra
             deprecated-alias: ""
