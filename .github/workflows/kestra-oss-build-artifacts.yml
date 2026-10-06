@@ -23,6 +23,11 @@ on:
         type: boolean
         default: false
         required: false
+      sbom:
+        description: 'Generate the CycloneDX SBOM (backend and UI dependencies merged, via `./gradlew sbom`), attest the executable with SLSA build provenance and with the SBOM, and upload the SBOM as the `sbom` artifact. The caller job must grant `id-token: write`, `attestations: write` and `actions: read`. Meant for tag builds.'
+        type: boolean
+        default: false
+        required: false
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -152,6 +157,34 @@ jobs:
           "$EXECUTABLE" plugins-schema --plugins ./plugins-catalog -o build/plugins-schema.json
           ./gradlew executableJar -PpluginsSchemaBundle=build/plugins-schema.json --console=plain
 
+      # ------------------------------------------------------------------------------------------
+      # SBOM and attestations. Must come after the last executableJar pass above, so that the
+      # attested executable is byte-for-byte the one that gets released.
+      # ------------------------------------------------------------------------------------------
+      - name: SBOM - Generate
+        if: ${{ inputs.sbom }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew sbom --console=plain
+          # A branch name can contain slashes, which are not valid in a file name.
+          NAME="kestra-${GITHUB_REF_NAME//\//-}-sbom.json"
+          echo "SBOM_NAME=$NAME" >> "$GITHUB_ENV"
+          mv build/sbom/kestra-sbom.json "build/sbom/$NAME"
+
+      - name: SBOM - Attest SLSA build provenance
+        if: ${{ inputs.sbom }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: build/executable/*
+
+      - name: SBOM - Attest CycloneDX SBOM
+        if: ${{ inputs.sbom }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: build/executable/*
+          sbom-path: build/sbom/${{ env.SBOM_NAME }}
+
       - name: Artifacts - Copy exe to image
         shell: bash
         run: |
@@ -170,3 +203,10 @@ jobs:
             with:
               name: exe
               path: build/executable/
+
+          - name: Artifacts - Upload SBOM
+            if: ${{ inputs.sbom }}
+            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            with:
+              name: sbom
+              path: build/sbom/
