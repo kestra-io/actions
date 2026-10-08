@@ -53,7 +53,7 @@ OR_LATER = re.compile(r"\bor (?:any )?later(?: version)?\b", re.IGNORECASE)
 # Permissive licenses and file-level weak copyleft.
 ALLOWED = re.compile(
     r"\bapache|\bmit\b|\bbsd|\bisc\b|\b0bsd\b|\bunlicense\b|\bcc0\b|public domain|\bblueoak|\bpython-2\.0\b|\bpsf\b|"
-    r"\bmpl\b|mozilla public|\bepl\b|eclipse public|\bedl\b|eclipse distribution|\bcddl\b|bouncy castle|\bzlib\b|\bwtfpl\b|\bw3c\b",
+    r"\bmpl\b|mozilla public|\bepl\b|eclipse public|\bedl\b|eclipse distribution|\bcddl\b|bouncy castle|\bzlib\b|\bwtfpl\b|\bw3c\b|\bgo license\b",
     re.IGNORECASE,
 )
 
