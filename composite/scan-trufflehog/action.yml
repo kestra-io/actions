@@ -88,6 +88,7 @@ runs:
     # request changes reads them whole and finds it. Anything else scans the whole tree. Needs the base
     # commit locally, so the caller checks out with fetch-depth: 0.
     - name: TruffleHog - Scan
+      id: scan
       shell: bash
       env:
         RESULTS: ${{ inputs.results }}
@@ -170,6 +171,9 @@ runs:
       with:
         sarif-files: ${{ runner.temp }}/trufflehog.ndjson
         type: misconfigurations
+        # An empty report names no scanner, so the scan_completed summary is told which one ran.
+        scanner: TruffleHog
+        scan-outcome: ${{ steps.scan.outcome }}
         elastic-endpoint: ${{ inputs.elastic-endpoint }}
         elastic-headers: ${{ inputs.elastic-headers }}
         dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || (github.ref_name == github.event.repository.default_branch && 'false' || 'true') }}

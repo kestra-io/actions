@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { flattenTrivy, isTrivyReport, primaryScore, type TrivyReport } from './trivy.js'
+import { flattenTrivy, isTrivyReport, primaryScore, trivyTargets, type TrivyReport } from './trivy.js'
 
 // Trimmed from a real `trivy fs --format json` run against a pom with a vulnerable netty.
 const report: TrivyReport = {
@@ -48,6 +48,7 @@ test('isTrivyReport tells a native report from a SARIF log', () => {
   assert.equal(isTrivyReport(report), true)
   assert.equal(isTrivyReport({ version: '2.1.0', runs: [] }), false)
   assert.equal(isTrivyReport({ Results: [] }), false, 'SchemaVersion is what makes it Trivy')
+  assert.equal(isTrivyReport({ SchemaVersion: 2, ArtifactName: '.' }), true, 'a report with no target still is one')
   assert.equal(isTrivyReport(null), false)
   assert.equal(isTrivyReport('a string'), false)
 })
@@ -112,4 +113,12 @@ test('a vulnerability with no CVSS still lands, scored by its severity word', ()
 test('a result with no vulnerabilities yields nothing', () => {
   assert.deepEqual(flattenTrivy({ SchemaVersion: 2, Results: [{ Target: 'pom.xml' }] }), [])
   assert.deepEqual(flattenTrivy({ SchemaVersion: 2 }), [])
+})
+
+test('trivyTargets lists clean targets too', () => {
+  assert.deepEqual(
+    trivyTargets({ SchemaVersion: 2, Results: [{ Target: 'package-lock.json', Class: 'lang-pkgs' }, { Target: 'Java' }, { Target: 'Java' }] }),
+    ['package-lock.json', 'Java']
+  )
+  assert.deepEqual(trivyTargets({ SchemaVersion: 2 }), [])
 })

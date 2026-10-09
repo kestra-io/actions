@@ -91,9 +91,37 @@ inputs:
     required: false
     default: 'false'
 
+  scanner:
+    description: >-
+      The scanner that produced the reports, e.g. Trivy, Opengrep or TruffleHog. Only read when no
+      report names it — an empty TruffleHog report, or no report at all because the scan failed —
+      so the scan_completed summary still lands in that scanner's data stream
+    required: false
+    default: ''
+
+  scan-outcome:
+    description: >-
+      How the scan itself went: success, or failure (any GitHub step outcome other than success
+      counts as one). A failure ships a scan_completed summary with event.outcome failure and no
+      findings count, so a broken scan is never read as a clean one. A missing or unreadable
+      report is a failure whatever this says
+    required: false
+    default: 'success'
+
+  scan-summary:
+    description: >-
+      Ship one scan_completed document per scanned scope (a Trivy target, else the repository
+      branch) alongside the findings, on every run including a clean one, so a fixed finding can be
+      told apart from a scope that was not scanned. See the README for its shape
+    required: false
+    default: 'true'
+
 outputs:
   documents-count:
-    description: Number of finding documents built from the SARIF files
+    description: Number of finding documents built from the SARIF files, not counting the scan_completed summaries
+
+  summary-count:
+    description: Number of scan_completed summary documents built, shipped alongside the findings
 
   sent-count:
     description: Number of documents the endpoint durably accepted

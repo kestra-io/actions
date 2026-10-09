@@ -54,7 +54,17 @@ export interface TrivyReport {
 export function isTrivyReport(value: unknown): value is TrivyReport {
   if (typeof value !== 'object' || value === null) return false
   const report = value as TrivyReport
-  return Array.isArray(report.Results) && typeof report.SchemaVersion === 'number'
+  // `Results` is left out altogether when Trivy found no target to scan, and that report still has
+  // to be recognised: it is the one a clean scan_completed summary is built from.
+  return typeof report.SchemaVersion === 'number' && (report.Results === undefined || Array.isArray(report.Results))
+}
+
+/**
+ * Every target Trivy looked at, whether or not it found anything there: a clean target is listed
+ * in `Results` with no `Vulnerabilities`, which is what lets its scan_completed summary say so.
+ */
+export function trivyTargets(report: TrivyReport): string[] {
+  return [...new Set((report.Results ?? []).map(result => result.Target).filter((target): target is string => Boolean(target)))]
 }
 
 /**
