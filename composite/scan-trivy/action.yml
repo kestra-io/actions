@@ -84,7 +84,9 @@ runs:
           "${{ github.workspace }}/trivy-result.json"
 
     - name: Trivy - Report findings to Elastic
-      if: ${{ !cancelled() && inputs.elastic-endpoint != '' && steps.trivy.outcome == 'success' }}
+      # Also after a failed scan, so its scan_completed summary says failure instead of the run
+      # going silent. A skipped scan (not the default branch nor releases/*) ships nothing.
+      if: ${{ !cancelled() && inputs.elastic-endpoint != '' && (steps.trivy.outcome == 'success' || steps.trivy.outcome == 'failure') }}
       continue-on-error: true
       uses: kestra-io/actions/actions/report-sarif@main
       with:
@@ -92,6 +94,8 @@ runs:
         # database, the publication date and the per-vendor CVSS, which the Elastic flyout shows.
         sarif-files: ${{ github.workspace }}/trivy-result.json
         type: vulnerabilities
+        scanner: Trivy
+        scan-outcome: ${{ steps.trivy.outcome }}
         elastic-endpoint: ${{ inputs.elastic-endpoint }}
         elastic-headers: ${{ inputs.elastic-headers }}
         dry-run: ${{ inputs.dry-run }}

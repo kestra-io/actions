@@ -32411,8 +32411,13 @@ function resourceFor(finding, context) {
       url: repositoryUrl
     };
   }
+  return targetResource(target, context);
+}
+function targetResource(target, context) {
+  const repository = context.github.repository;
+  const repositoryUrl = repository ? `${context.github.serverUrl}/${repository}` : void 0;
   const branch = context.github.refName;
-  const scope = repository && branch ? `${repository} (${branch})` : repository;
+  const scope = branchScopeName(context);
   return {
     id: sha256(`${repository}|${branch ?? ""}|${target}`).slice(0, 32),
     name: scope ? `${scope} / ${target}` : target,
@@ -32424,6 +32429,10 @@ function resourceFor(finding, context) {
     repository_url: repositoryUrl,
     url: repositoryUrl
   };
+}
+function branchScopeName(context) {
+  const { repository, refName } = context.github;
+  return repository && refName ? `${repository} (${refName})` : repository;
 }
 function common(finding, context) {
   const github = context.github;
@@ -32692,10 +32701,117 @@ function flatten(log) {
   return (log.runs ?? []).flatMap((run) => (run.results ?? []).map((result) => toFinding$1(run, result)));
 }
 
+function parseOutcome(value) {
+  const normalised = value.trim().toLowerCase();
+  if (normalised === "" || normalised === "success") return "success";
+  if (["failure", "cancelled", "skipped", "error"].includes(normalised)) return "failure";
+  return void 0;
+}
+function sameTool(a, b) {
+  return datasetForTool(a) === datasetForTool(b);
+}
+function branchResource(context) {
+  const { repository, refName, serverUrl } = context.github;
+  const repositoryUrl = repository ? `${serverUrl}/${repository}` : void 0;
+  return {
+    id: sha256(`${repository}|${refName ?? ""}`).slice(0, 32),
+    name: branchScopeName(context),
+    type: "github-repository",
+    sub_type: "branch",
+    repository,
+    repository_url: repositoryUrl,
+    url: repositoryUrl
+  };
+}
+function summaryDocument(context, tool, toolVersion, outcome, scope, resource, count, artifact) {
+  const github = context.github;
+  const dataset = context.dataset || datasetForTool(tool);
+  const where = String(resource.name ?? github.repository ?? "");
+  const document = {
+    "@timestamp": context.scanTime,
+    tags: context.tags,
+    data_stream: { type: "logs", dataset, namespace: context.namespace },
+    ecs: { version: "8.11.0" },
+    message: outcome === "success" ? `${tool} scan completed on ${where}: ${count} finding(s)` : `${tool} scan did not complete on ${where}; its findings, if any, are not a complete picture`,
+    event: {
+      kind: "event",
+      action: "scan_completed",
+      type: ["end"],
+      outcome,
+      dataset,
+      module: datasetForTool(tool),
+      provider: "github-actions",
+      created: context.scanTime,
+      sequence: Number(github.runId) || void 0
+    },
+    observer: { vendor: tool, product: tool, version: toolVersion },
+    resource,
+    scan: {
+      scope,
+      type: context.type,
+      artifact,
+      // Absent on a failed scan: a count would claim a coverage the scan never had.
+      findings_count: outcome === "success" ? count : void 0
+    },
+    user: { name: github.triggeringActor || github.actor, id: github.actorId },
+    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
+    github: structuredClone(github)
+  };
+  applyMetadata(document, context.metadata);
+  return prune(document);
+}
+function buildSummaries(input, context) {
+  const tools = [];
+  const remember = (tool, toolVersion) => {
+    if (!tool || tool === "unknown") return;
+    const known = tools.find((entry) => sameTool(entry.tool, tool));
+    if (!known) tools.push({ tool, toolVersion });
+  };
+  for (const scan of input.scans) remember(scan.tool, scan.toolVersion);
+  for (const finding of input.findings) remember(finding.tool, finding.toolVersion);
+  if (tools.length === 0 && input.scanner.trim()) remember(input.scanner.trim(), "");
+  return tools.flatMap(({ tool, toolVersion }) => {
+    const findings = input.findings.filter((finding) => sameTool(finding.tool, tool));
+    const scans = input.scans.filter((scan) => sameTool(scan.tool, tool));
+    const artifact = scans.map((scan) => scan.artifact).find(Boolean);
+    if (input.outcome === "failure") {
+      return [summaryDocument(context, tool, toolVersion, "failure", "branch", branchResource(context), findings.length, artifact)];
+    }
+    const enumeratesTargets = scans.some((scan) => scan.targets !== void 0);
+    if (!enumeratesTargets) {
+      return [summaryDocument(context, tool, toolVersion, "success", "branch", branchResource(context), findings.length, artifact)];
+    }
+    const targets = [
+      .../* @__PURE__ */ new Set([
+        ...scans.flatMap((scan) => scan.targets ?? []),
+        ...findings.map((finding) => finding.file).filter((file) => Boolean(file))
+      ])
+    ];
+    if (targets.length === 0) {
+      return [summaryDocument(context, tool, toolVersion, "success", "artifact", branchResource(context), findings.length, artifact)];
+    }
+    return targets.map(
+      (target) => summaryDocument(
+        context,
+        tool,
+        toolVersion,
+        "success",
+        "target",
+        targetResource(target, context),
+        findings.filter((finding) => finding.file === target).length,
+        artifact
+      )
+    );
+  });
+}
+
 function isTrivyReport(value) {
   if (typeof value !== "object" || value === null) return false;
   const report = value;
-  return Array.isArray(report.Results) && typeof report.SchemaVersion === "number";
+  return typeof report.SchemaVersion === "number" && (report.Results === void 0 || Array.isArray(report.Results));
+}
+function trivyTargets(report) {
+  return [...new Set((report.Results ?? []).map((result) => result.Target).filter((target) => Boolean(target)))];
 }
 function primaryScore(cvss, severitySource) {
   if (!cvss) return {};
@@ -32795,17 +32911,35 @@ async function readReport(file) {
     try {
       parsed = JSON.parse(content);
     } catch {
-      return flattenTrufflehog(parseTrufflehog(content));
+      const findings = flattenTrufflehog(parseTrufflehog(content));
+      return { findings, scans: findings.length > 0 ? [{ tool: "TruffleHog", toolVersion: "" }] : [], readable: true };
     }
-    if (isTrufflehogLine(parsed)) return flattenTrufflehog([parsed]);
-    return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed);
+    if (isTrufflehogLine(parsed)) {
+      return { findings: flattenTrufflehog([parsed]), scans: [{ tool: "TruffleHog", toolVersion: "" }], readable: true };
+    }
+    if (isTrivyReport(parsed)) {
+      const scan = {
+        tool: "Trivy",
+        toolVersion: parsed.Trivy?.Version ?? "",
+        targets: trivyTargets(parsed),
+        artifact: parsed.ArtifactName
+      };
+      return { findings: flattenTrivy(parsed), scans: [scan], readable: true };
+    }
+    const log = parsed;
+    const scans = (log.runs ?? []).map((run2) => ({
+      tool: run2.tool?.driver?.name ?? "unknown",
+      toolVersion: run2.tool?.driver?.semanticVersion ?? run2.tool?.driver?.version ?? ""
+    }));
+    return { findings: flatten(log), scans, readable: true };
   } catch (error) {
     warning(`Could not read ${file} as SARIF or a Trivy report: ${error.message}`);
-    return [];
+    return { findings: [], scans: [], readable: false };
   }
 }
-function finish(documents, sent, ndjsonFile, skipped) {
+function finish(documents, sent, ndjsonFile, skipped, summaries = 0) {
   setOutput("documents-count", String(documents));
+  setOutput("summary-count", String(summaries));
   setOutput("sent-count", String(sent));
   setOutput("ndjson-file", ndjsonFile);
   setOutput("skipped", String(skipped));
@@ -32823,13 +32957,23 @@ async function run() {
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const ndjsonFile = path$2.join(temp, "elastic-bulk.ndjson");
   const failOnError = parseBoolean(getInput("fail-on-error"));
+  const scanner = getInput("scanner").trim();
+  const requestedOutcome = parseOutcome(getInput("scan-outcome"));
+  if (!requestedOutcome) {
+    setFailed(`scan-outcome must be success or failure, got '${getInput("scan-outcome")}'`);
+    return;
+  }
+  const summariesEnabled = parseBoolean(getInput("scan-summary") || "true");
   const files = patterns.trim() ? await (await create(patterns, { matchDirectories: false })).glob() : [];
   if (files.length === 0) {
     warning(patterns.trim() ? `No SARIF file matched: ${patterns.split("\n").join(", ")}` : "No SARIF file supplied, the scan that produces it most likely skipped");
-    finish(0, 0, ndjsonFile, true);
-    return;
+    if (!summariesEnabled || !scanner) {
+      finish(0, 0, ndjsonFile, true);
+      return;
+    }
+  } else {
+    info(`SARIF files: ${files.map((file) => path$2.relative(process.cwd(), file)).join(", ")}`);
   }
-  info(`SARIF files: ${files.map((file) => path$2.relative(process.cwd(), file)).join(", ")}`);
   const context = {
     dataset,
     namespace,
@@ -32839,7 +32983,10 @@ async function run() {
     tags: parseList(getInput("tags")),
     metadata: parsePairs(getInput("metadata"))
   };
-  const findings = (await Promise.all(files.map(readReport))).flat();
+  const reports = await Promise.all(files.map(readReport));
+  const findings = reports.flatMap((report) => report.findings);
+  const outcome = files.length === 0 || reports.some((report) => !report.readable) ? "failure" : requestedOutcome;
+  if (outcome !== requestedOutcome) warning("The scan report is missing or unreadable, so the scan is summarised as failed.");
   const byStream = /* @__PURE__ */ new Map();
   for (const finding of findings) {
     const stream = dataStreamName(datasetOf(finding, context), namespace);
@@ -32852,12 +32999,6 @@ async function run() {
     documents.push(toDocument(finding, context));
     byStream.set(stream, documents);
   }
-  const size = Math.max(1, Number(getInput("batch-size") || "500"));
-  const batches = [...byStream].flatMap(
-    ([stream, documents]) => chunk(documents, size).map((batch) => ({ stream, batch }))
-  );
-  const documentCount = findings.length;
-  await fs$1.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(""));
   for (const [stream, documents] of byStream) {
     const bySeverity = documents.reduce((counts, document) => {
       const severity = String(
@@ -32868,14 +33009,37 @@ async function run() {
     }, {});
     info(`${documents.length} ${type} finding(s) for ${stream}: ${JSON.stringify(bySeverity)}`);
   }
-  if (documentCount === 0) {
+  const summaries = summariesEnabled ? buildSummaries({ findings, scans: reports.flatMap((report) => report.scans), scanner, outcome }, context) : [];
+  if (summariesEnabled && summaries.length === 0) {
+    warning("No scanner could be named from the reports and no `scanner` input was given, so no scan_completed summary is shipped.");
+  }
+  for (const summary of summaries) {
+    const stream = dataStreamName(String(summary.data_stream.dataset), namespace);
+    const invalid = validateDataStream(stream);
+    if (invalid) {
+      setFailed(invalid);
+      return;
+    }
+    const documents = byStream.get(stream) ?? [];
+    documents.push(summary);
+    byStream.set(stream, documents);
+    info(`scan_completed for ${stream}: ${String(summary.message)}`);
+  }
+  const size = Math.max(1, Number(getInput("batch-size") || "500"));
+  const batches = [...byStream].flatMap(
+    ([stream, documents]) => chunk(documents, size).map((batch) => ({ stream, batch }))
+  );
+  const documentCount = findings.length;
+  const summaryCount = summaries.length;
+  await fs$1.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(""));
+  if (documentCount + summaryCount === 0) {
     info("Nothing to ship.");
     finish(0, 0, ndjsonFile, false);
     return;
   }
   if (parseBoolean(getInput("dry-run"))) {
     info(`Dry run, payload written to ${ndjsonFile}`);
-    finish(documentCount, 0, ndjsonFile, true);
+    finish(documentCount, 0, ndjsonFile, true, summaryCount);
     return;
   }
   const url = bulkUrl(getInput("elastic-endpoint", { required: true }));
@@ -32893,13 +33057,13 @@ async function run() {
     }
   } catch (error) {
     const message = `Could not ship findings to Elastic: ${error.message}`;
-    finish(documentCount, sent, ndjsonFile, true);
+    finish(documentCount, sent, ndjsonFile, true, summaryCount);
     if (failOnError) setFailed(message);
     else warning(message);
     return;
   }
   info(`Accepted ${sent} document(s) into ${[...byStream.keys()].join(", ")}`);
-  finish(documentCount, sent, ndjsonFile, false);
+  finish(documentCount, sent, ndjsonFile, false, summaryCount);
 }
 run().catch((error) => setFailed(error.message));
 //# sourceMappingURL=index.js.map
