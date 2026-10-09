@@ -104,7 +104,7 @@ rules:
         - '*.vue'
     patterns:
       - pattern-regex: <[^<>]*v-html=["'][^"']*["']
-      - pattern-not-regex: <[^<>]*v-html=["']\s*\$?t\(.*\)\s*["']
+      - pattern-not-regex: <[^<>]*v-html=(?:"\s*\$?t\([^"]*\)\s*"|'\s*\$?t\([^']*\)\s*')
     message: >-
       Dynamically rendering arbitrary HTML on your website can be very dangerous because it can easily
       lead to XSS vulnerabilities. Only use HTML interpolation on trusted content and never on user-
