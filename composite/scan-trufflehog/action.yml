@@ -47,6 +47,12 @@ inputs:
     required: false
     default: 'true'
 
+  components:
+    description: >-
+      Newline separated component=glob pairs, e.g. frontend=ui/** then backend=**. Each finding gets
+      the component of the first glob its file matches, overriding the component= in metadata
+    required: true
+
   dry-run:
     description: >-
       Force shipping to Elastic on or off. Left empty (the default), shipping happens only on the
@@ -176,6 +182,7 @@ runs:
         metadata: |
           service.name=${{ github.event.repository.name }}
           ${{ inputs.metadata }}
+        components: ${{ inputs.components }}
 
     - name: TruffleHog - Remove the report
       if: always()

@@ -32192,6 +32192,25 @@ function authHeaders(rawHeaders, apiKey) {
   return headers;
 }
 
+function parseComponents(raw) {
+  const rules = [];
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) continue;
+    const component = trimmed.slice(0, separator).trim();
+    const glob = trimmed.slice(separator + 1).trim();
+    if (component && glob) rules.push({ component, glob });
+  }
+  return rules;
+}
+function componentOf(file, rules) {
+  if (!file) return void 0;
+  const relative = file.replace(/^file:\/\//, "").replace(/^\.\//, "");
+  return rules.find((rule) => path$2.matchesGlob(relative, rule.glob))?.component;
+}
+
 function sha256(input) {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -32840,6 +32859,7 @@ async function run() {
     metadata: parsePairs(getInput("metadata"))
   };
   const findings = (await Promise.all(files.map(readReport))).flat();
+  const components = parseComponents(getInput("components"));
   const byStream = /* @__PURE__ */ new Map();
   for (const finding of findings) {
     const stream = dataStreamName(datasetOf(finding, context), namespace);
@@ -32849,7 +32869,8 @@ async function run() {
       return;
     }
     const documents = byStream.get(stream) ?? [];
-    documents.push(toDocument(finding, context));
+    const component = componentOf(finding.file, components);
+    documents.push(toDocument(finding, component ? { ...context, metadata: { ...context.metadata, component } } : context));
     byStream.set(stream, documents);
   }
   const size = Math.max(1, Number(getInput("batch-size") || "500"));
