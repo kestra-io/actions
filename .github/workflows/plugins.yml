@@ -215,97 +215,6 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      # Cleanup disk space to avoid "no space left on device" errors during Trivy scan (needed for plugin-jdbc only, which installs many docker images)
-      - name: Cleanup - Free up disk space
-        if: ${{ github.repository == 'kestra-io/plugin-jdbc' }}
-        run: |
-          echo "🧹 Freeing up disk space on the runner..."
-          sudo docker system prune -a -f --volumes
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          sudo apt-get autoclean
-
-          echo "🗑️ Deleting large pre-installed tools (Dotnet, Android, Haskell)"
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-
-          echo "⚠️ Deleting tmp folders"
-          sudo rm -rf /tmp/*
-          sudo rm -rf /var/tmp/*
-
-          echo "🧼 Deleting Trivy cache and temp directories"
-          rm -rf ${{ github.workspace }}/.trivy-cache
-          rm -rf ${{ github.workspace }}/trivy-tmp
-
-          echo "📊 Disk usage after cleanup:"
-          df -h
-
-          echo "✅ Disk space cleanup complete."
-
-      # CycloneDX SBOM of the runtime classpath, written to build/sbom/java.json by
-      # io.kestra.gradle.repository-conventions and scanned by Trivy below. Its own step
-      # and continue-on-error so a plugin on an older version, without the task, doesn't fail the build.
-      - name: Trivy - Generate CycloneDX
-        if: ${{ (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) && startsWith(github.repository, 'kestra-io/') }}
-        continue-on-error: true
-        shell: bash
-        run: ./gradlew cyclonedxBom --console=plain
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      # Trivy scan of the Java dependencies on the default branch and releases/*, from the CycloneDX SBOM (runtime
-      # classpath) generated above rather than from the final jar. Gated on the SBOM file existing.
-      - name: Trivy - Scan Java dependencies
-        id: trivy
-        if: ${{ hashFiles('build/sbom/java.json') != '' && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-trivy@main
-        with:
-          scan-type: sbom
-          scan-path: build/sbom/java.json
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            component=plugin
-            target=java-dependencies
-
-      # OpenGrep static analysis.
-      - name: OpenGrep - Static analysis
-        id: opengrep
-        if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-opengrep@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            component=plugin
-
-      # Secret scan. Diff on a pull request, the whole tree otherwise.
-      - name: TruffleHog - Secret scan
-        if: ${{ !cancelled() && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-trufflehog@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            component=plugin
-
-      # Trivy scan for the plugin's optional Vue micro-frontend (ui/package-lock.json). No-op for
-      # plugins with no UI — same guard as "Test - UI unit tests" above.
-      - name: Trivy - Scan UI npm dependencies
-        id: trivy-ui
-        if: ${{ hashFiles('ui/package-lock.json') != '' && !cancelled() && startsWith(github.repository, 'kestra-io/') }}
-        uses: kestra-io/actions/composite/scan-trivy@main
-        with:
-          scan-path: ./ui/package-lock.json
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            component=plugin
-            target=ui-dependencies
-
       # GitHub Release
       - name: GitHub - Create release
         uses: kestra-io/actions/composite/github-release@main
@@ -381,11 +290,20 @@ jobs:
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
 
+  # Skipped on a kestra-version override: the SBOM would hold that version's dependencies, not the plugin's.
+  security-scan:
+    if: ${{ startsWith(github.repository, 'kestra-io/') && inputs.kestra-version == '' }}
+    uses: kestra-io/actions/.github/workflows/security-scan.yml@main
+    with:
+      components: plugin=**
+      npm-lockfile: ui/package-lock.json
+    secrets: inherit
+
   otel-export-trace:
     if: always()
     name: OpenTelemetry Export Trace
     runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
-    needs: [main]
+    needs: [main, security-scan]
     steps:
       # Reconstruct and export the whole workflow -> job -> step trace. The live
       # Gradle/JUnit spans emitted during "main" nest under their step spans via

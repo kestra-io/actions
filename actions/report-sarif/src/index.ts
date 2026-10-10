@@ -3,6 +3,7 @@ import * as glob from '@actions/glob'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { authHeaders, bulkUrl, chunk, dataStreamName, sendBulk, toNdjson, validateDataStream } from '../../../shared/elastic-core/src/bulk.js'
+import { componentOf, parseComponents } from './component.js'
 import { datasetOf, toDocument, type DocumentContext, type FindingType } from './documents.js'
 import { githubMetadata } from '../../../shared/elastic-core/src/github.js'
 import { parseBoolean, parseList, parsePairs } from '../../../shared/elastic-core/src/inputs.js'
@@ -82,6 +83,7 @@ async function run(): Promise<void> {
   }
 
   const findings = (await Promise.all(files.map(readReport))).flat()
+  const components = parseComponents(core.getInput('components'))
 
   // Grouped by target rather than shipped as one stream: each scanner writes its own
   // logs-<tool>-<namespace>, so one tool's volume never buries another's.
@@ -95,7 +97,8 @@ async function run(): Promise<void> {
       return
     }
     const documents = byStream.get(stream) ?? []
-    documents.push(toDocument(finding, context))
+    const component = componentOf(finding.file, components)
+    documents.push(toDocument(finding, component ? { ...context, metadata: { ...context.metadata, component } } : context))
     byStream.set(stream, documents)
   }
 

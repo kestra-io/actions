@@ -108,55 +108,6 @@ jobs:
         run: |
           ./gradlew check --parallel --console=plain
 
-      # OpenGrep static analysis: pull requests scan only what the branch introduced, every other
-      # event scans the whole tree. Advisory by default, see composite/scan-opengrep.
-      - name: OpenGrep - Static analysis
-        id: opengrep
-        if: ${{ !cancelled() }}
-        uses: kestra-io/actions/composite/scan-opengrep@main
-        with:
-          github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            service.name=kestra
-            component=backend
-
-      # Secret scan. Diff on a pull request, the whole tree otherwise.
-      - name: TruffleHog - Secret scan
-        if: ${{ !cancelled() }}
-        uses: kestra-io/actions/composite/scan-trufflehog@main
-        with:
-          github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            service.name=kestra
-            component=backend
-
-      # Trivy scan of the Java dependencies on the default branch and releases/*, from the CycloneDX SBOM
-      # (runtime classpath). Its own step and continue-on-error so a branch without the task doesn't fail the build.
-      - name: Trivy - Generate CycloneDX
-        id: sbom
-        if: ${{ !cancelled() && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
-        continue-on-error: true
-        shell: bash
-        run: ./gradlew cyclonedxBom --console=plain
-
-      - name: Trivy - Scan Java dependencies
-        id: trivy
-        if: ${{ !cancelled() && steps.sbom.outcome == 'success' && hashFiles('build/sbom/java.json') != '' }}
-        uses: kestra-io/actions/composite/scan-trivy@main
-        with:
-          scan-type: sbom
-          scan-path: build/sbom/java.json
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            service.name=kestra
-            component=backend
-            target=java-dependencies
-
       - name: comment PR with test report
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository}}
         env:
