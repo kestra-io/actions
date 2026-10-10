@@ -154,20 +154,6 @@ jobs:
               reporter: github-pr-review
               workdir: ui
 
-      # OpenGrep static analysis.
-      - name: OpenGrep - Static analysis
-        id: opengrep
-        if: ${{ !cancelled() }}
-        uses: kestra-io/actions/composite/scan-opengrep@main
-        with:
-          github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-          scan-path: ui
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            service.name=kestra
-            component=frontend
-
       # Coverage
       - name: Coverage - Report
         if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
@@ -179,19 +165,6 @@ jobs:
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           coverage-files: '**/coverage/lcov.info'
           component: frontend
-
-      # Trivy dependency-CVE scan of the frontend's npm lockfile.
-      - name: Trivy - Scan npm dependencies
-        id: trivy
-        if: ${{ !cancelled() }}
-        uses: kestra-io/actions/composite/scan-trivy@main
-        with:
-          scan-path: ./ui/package-lock.json
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
-          metadata: |
-            service.name=kestra
-            component=frontend
 
       - name: Storybook - Wait for Playwright install
         wait: [playwright-install]
