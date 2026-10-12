@@ -13,6 +13,13 @@ inputs:
       Registry proxy. When empty, this action is a no-op and Gradle resolves from Maven Central.
     required: false
     default: ''
+  export-adc:
+    description: >-
+      When 'true', also export GOOGLE_APPLICATION_CREDENTIALS (and the related google-github-actions/auth
+      environment variables) for the rest of the job, so tests and tools that rely on Application Default
+      Credentials keep working. Defaults to 'false' so the action only touches Maven resolution.
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -31,7 +38,7 @@ runs:
         credentials_json: ${{ inputs.gcp-service-account }}
         # Do not clobber GOOGLE_APPLICATION_CREDENTIALS: callers set it to a different
         # (unit-test) service account for their own build/test steps.
-        export_environment_variables: false
+        export_environment_variables: ${{ inputs.export-adc == 'true' }}
 
     - name: Setup - Gradle maven-remote init script
       if: ${{ steps.gcp-auth.outputs.access_token != '' }}

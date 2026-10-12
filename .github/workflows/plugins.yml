@@ -119,6 +119,9 @@ jobs:
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          # Plugin live tests rely on Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS),
+          # which the former inline auth step exported.
+          export-adc: 'true'
 
       # Setup unit tests environment
       - name: Setup - Unit test
