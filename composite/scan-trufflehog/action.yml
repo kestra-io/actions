@@ -42,8 +42,9 @@ inputs:
 
   ignore-examples:
     description: >-
-      Drop unverified findings inside the `code = """..."""` block of a Java `@Example`, where plugin
-      documentation shows placeholder credentials on purpose. Verified findings are always kept
+      Drop unverified findings inside plugin documentation, which shows placeholder credentials on purpose:
+      the `code = """..."""` block of a Java `@Example` and any `@Schema(...)` annotation. Verified findings
+      are always kept
     required: false
     default: 'true'
 

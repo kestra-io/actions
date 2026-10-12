@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Drops unverified findings that sit inside the `code = """..."""` text block of a Java `@Example`:
-# plugin docs show placeholder credentials on purpose. A verified secret is kept wherever it is.
+# Drops unverified findings that sit inside plugin documentation, where placeholder credentials are shown
+# on purpose: the `code = """..."""` text block of a Java `@Example`, and a whole `@Schema(...)` annotation
+# (title, description, example and defaultValue land in the plugin docs, e.g. `jdbc:ucanaccess:///path`).
+# A verified secret is kept wherever it is.
 # Usage: drop-examples.sh <trufflehog.ndjson>, rewritten in place.
 set -euo pipefail
 
@@ -13,6 +15,21 @@ while IFS= read -r file; do
     /@Example\(/ { example = 1 }
     example && !block && /code[[:space:]]*=[[:space:]]*"""/ { block = 1; start = NR; next }
     block && /"""/ { print start, NR; block = 0; example = 0 }
+
+    # @Schema(...): from the annotation to its closing parenthesis, counting parentheses outside string
+    # literals and text blocks only, since descriptions often contain "(" or ")"
+    !schema && /@Schema\(/ { schema = 1; depth = 0; str = 0; text = 0; sstart = NR; from = index($0, "@Schema(") + 7 }
+    schema {
+      for (i = (NR == sstart ? from : 1); i <= length($0); i++) {
+        c = substr($0, i, 1)
+        if (text) { if (substr($0, i, 3) == "\"\"\"") { text = 0; i += 2 }; continue }
+        if (str) { if (c == "\\") i++; else if (c == "\"") str = 0; continue }
+        if (substr($0, i, 3) == "\"\"\"") { text = 1; i += 2 }
+        else if (c == "\"") str = 1
+        else if (c == "(") depth++
+        else if (c == ")" && --depth == 0) { print sstart, NR; schema = 0; break }
+      }
+    }
   ' "${file}" | jq -Rsc 'split("\n") | map(select(length > 0) | split(" ") | map(tonumber))')"
   ranges="$(jq -c --arg f "${file}" --argjson r "${found}" '.[$f] = $r' <<< "${ranges}")"
 done < <(jq -r 'select(.DetectorName != null and (.Verified | not))
