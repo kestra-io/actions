@@ -120,6 +120,20 @@ jobs:
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      # Application Default Credentials for the job: exports GOOGLE_APPLICATION_CREDENTIALS, used by tests and
+      # tools that rely on ADC (e.g. plugin live tests). Deliberately separate from the Maven proxy setup above,
+      # which authenticates only to mint the Artifact Registry token and exports no environment variables.
+      # This uses the GCP_SERVICE_ACCOUNT secret (the "github" service account).
+      - name: GCP - Check credentials availability (ADC)
+        id: gcp-adc-check
+        run: echo "available=${{ secrets.GCP_SERVICE_ACCOUNT != '' }}" >> $GITHUB_OUTPUT
+
+      - name: GCP - Auth with github service account (ADC)
+        if: steps.gcp-adc-check.outputs.available == 'true'
+        uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       # Setup unit tests environment
       - name: Setup - Unit test
         if: ${{ inputs.skip-test == false }}
