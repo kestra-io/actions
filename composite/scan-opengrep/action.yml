@@ -137,6 +137,10 @@ runs:
       with:
         sarif-files: ${{ steps.scan.outputs.sarif-file }}
         type: misconfigurations
+        scanner: Opengrep
+        # Not steps.scan.outcome: that is also a failure when fail-on-severity tripped on a scan that
+        # completed. `skipped` is false only once a report was produced and read.
+        scan-outcome: ${{ steps.scan.outputs.skipped == 'false' && 'success' || 'failure' }}
         elastic-endpoint: ${{ inputs.elastic-endpoint }}
         elastic-headers: ${{ inputs.elastic-headers }}
         dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || (github.ref_name == github.event.repository.default_branch && 'false' || 'true') }}

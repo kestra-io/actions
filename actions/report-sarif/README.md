@@ -295,6 +295,47 @@ ECS fields keep their canonical names — `package.fixed_version`,
 those are what Elastic's security views and the latest-state transforms read,
 and renaming them would take the findings straight out of those views.
 
+## The scan_completed summary
+
+Findings alone cannot say a finding was fixed: every run re-emits the findings that are still
+current, so when a fix removes the **last** finding of a scope the next run emits nothing at all,
+which looks exactly like a scope that was not scanned. So every call also ships one summary
+document per scope it covered, **including runs with zero findings**, to the same data stream as
+the findings, with the same `@timestamp`, `github.*`, `labels.*` (the step's `metadata`) and
+`resource.*` scope fields. A finding whose last `@timestamp` is older than a successful summary of
+its scope is fixed.
+
+| Field | Value |
+| :--- | :--- |
+| `event.kind` / `.action` / `.type` | `event` / `scan_completed` / `["end"]` |
+| `event.outcome` | `success`, or `failure` when the scan itself failed (`scan-outcome`, or a missing/unreadable report) — a failure never claims a clean scan |
+| `event.sequence`, `github.*` | the run, exactly as on the findings |
+| `scan.scope` | `target` (Trivy: one summary per target it listed, clean ones included), `branch` (OpenGrep, TruffleHog: repository + `github.refName` + the step's `labels.*`), or `artifact` (Trivy listed no target) |
+| `scan.findings_count` | findings in that scope this run; absent on a failure |
+| `scan.type`, `scan.artifact` | the `type` input, and what Trivy was pointed at |
+| `resource.id` / `.name` | `target`: the same values as that target's vulnerabilities; `branch`: `sha256(repository, branch)` / `kestra-io/kestra-ee (develop)` |
+| `observer.vendor` / `.product` / `.version` | the scanner, named as on its findings |
+
+The scope of a step is everything that step's `metadata` sets: two steps on one run with
+`component=backend` and `component=frontend` ship two summaries, each covering only its own
+findings. A step that scans a pull request diff (TruffleHog and OpenGrep on `pull_request`) is not
+a full scan, which is why shipping stays off there by default; downstream should ignore summaries
+with `github.eventName: pull_request`.
+
+It is deliberately **not** shaped like a finding: no `event.id`, no `event.category`, no `rule.*`,
+`vulnerability.*` or `result.evaluation`. A latest-state transform over these streams should still
+exclude it explicitly, in its source query:
+
+```json
+"source": {
+  "index": ["logs-trivy-gha"],
+  "query": { "bool": { "must_not": [ { "term": { "event.action": "scan_completed" } } ] } }
+}
+```
+
+The composites pass `scanner` (an empty TruffleHog report names no tool) and `scan-outcome`.
+Set `scan-summary: false` to ship findings only.
+
 ## Surfacing in Elastic Security's Findings UI
 
 The `/_es` input can only write `logs-` data streams, and Elastic Security's
@@ -306,7 +347,10 @@ it cannot be installed through this endpoint, and the action does not try:
 ```json
 PUT _transform/security-findings-latest
 {
-  "source": { "index": "logs-security_scan.findings-github-actions" },
+  "source": {
+    "index": "logs-security_scan.findings-github-actions",
+    "query": { "bool": { "must_not": [ { "term": { "event.action": "scan_completed" } } ] } }
+  },
   "dest": { "index": "security_solution-github_scan.vulnerability_latest-v1" },
   "sync": { "time": { "field": "@timestamp", "delay": "60s" } },
   "latest": { "unique_key": ["event.id"], "sort": "@timestamp" },

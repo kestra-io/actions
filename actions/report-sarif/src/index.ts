@@ -8,7 +8,8 @@ import { githubMetadata } from '../../../shared/elastic-core/src/github.js'
 import { parseBoolean, parseList, parsePairs } from '../../../shared/elastic-core/src/inputs.js'
 import type { Finding } from './finding.js'
 import { flatten, type SarifLog } from './sarif.js'
-import { flattenTrivy, isTrivyReport } from './trivy.js'
+import { buildSummaries, parseOutcome, type ScanInfo } from './summary.js'
+import { flattenTrivy, isTrivyReport, trivyTargets } from './trivy.js'
 import { flattenTrufflehog, isTrufflehogLine, parseTrufflehog } from './trufflehog.js'
 
 /**
@@ -17,7 +18,15 @@ import { flattenTrufflehog, isTrufflehogLine, parseTrufflehog } from './truffleh
  * preferring where it exists, because SARIF drops its advisory, publication and per-vendor CVSS
  * fields.
  */
-async function readReport(file: string): Promise<Finding[]> {
+interface Report {
+  readonly findings: Finding[]
+  /** What the report says about the scan itself; empty when it names no scanner (an empty TruffleHog report). */
+  readonly scans: ScanInfo[]
+  /** False when the file could not be read: the scan behind it cannot be called clean. */
+  readonly readable: boolean
+}
+
+async function readReport(file: string): Promise<Report> {
   const content = await fs.readFile(file, 'utf8')
   try {
     let parsed: unknown
@@ -25,19 +34,37 @@ async function readReport(file: string): Promise<Finding[]> {
       parsed = JSON.parse(content)
     } catch {
       // Not one JSON document: TruffleHog writes one object per line, and an empty file is a clean scan.
-      return flattenTrufflehog(parseTrufflehog(content))
+      const findings = flattenTrufflehog(parseTrufflehog(content))
+      return { findings, scans: findings.length > 0 ? [{ tool: 'TruffleHog', toolVersion: '' }] : [], readable: true }
     }
     // A report with a single finding is one line, so it parses as one JSON document too.
-    if (isTrufflehogLine(parsed)) return flattenTrufflehog([parsed])
-    return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed as SarifLog)
+    if (isTrufflehogLine(parsed)) {
+      return { findings: flattenTrufflehog([parsed]), scans: [{ tool: 'TruffleHog', toolVersion: '' }], readable: true }
+    }
+    if (isTrivyReport(parsed)) {
+      const scan: ScanInfo = {
+        tool: 'Trivy',
+        toolVersion: parsed.Trivy?.Version ?? '',
+        targets: trivyTargets(parsed),
+        artifact: parsed.ArtifactName
+      }
+      return { findings: flattenTrivy(parsed), scans: [scan], readable: true }
+    }
+    const log = parsed as SarifLog
+    const scans = (log.runs ?? []).map(run => ({
+      tool: run.tool?.driver?.name ?? 'unknown',
+      toolVersion: run.tool?.driver?.semanticVersion ?? run.tool?.driver?.version ?? ''
+    }))
+    return { findings: flatten(log), scans, readable: true }
   } catch (error) {
     core.warning(`Could not read ${file} as SARIF or a Trivy report: ${(error as Error).message}`)
-    return []
+    return { findings: [], scans: [], readable: false }
   }
 }
 
-function finish(documents: number, sent: number, ndjsonFile: string, skipped: boolean): void {
+function finish(documents: number, sent: number, ndjsonFile: string, skipped: boolean, summaries = 0): void {
   core.setOutput('documents-count', String(documents))
+  core.setOutput('summary-count', String(summaries))
   core.setOutput('sent-count', String(sent))
   core.setOutput('ndjson-file', ndjsonFile)
   core.setOutput('skipped', String(skipped))
@@ -61,15 +88,27 @@ async function run(): Promise<void> {
   const ndjsonFile = path.join(temp, 'elastic-bulk.ndjson')
   const failOnError = parseBoolean(core.getInput('fail-on-error'))
 
+  const scanner = core.getInput('scanner').trim()
+  const requestedOutcome = parseOutcome(core.getInput('scan-outcome'))
+  if (!requestedOutcome) {
+    core.setFailed(`scan-outcome must be success or failure, got '${core.getInput('scan-outcome')}'`)
+    return
+  }
+  const summariesEnabled = parseBoolean(core.getInput('scan-summary') || 'true')
+
   const files = patterns.trim() ? await (await glob.create(patterns, { matchDirectories: false })).glob() : []
   if (files.length === 0) {
     // The scan that should have produced these may legitimately have skipped — see scan-opengrep's
     // registry fallback — so this is a warning, never a failure.
     core.warning(patterns.trim() ? `No SARIF file matched: ${patterns.split('\n').join(', ')}` : 'No SARIF file supplied, the scan that produces it most likely skipped')
-    finish(0, 0, ndjsonFile, true)
-    return
+    // Without a scanner name there is nothing to say which stream a summary belongs to.
+    if (!summariesEnabled || !scanner) {
+      finish(0, 0, ndjsonFile, true)
+      return
+    }
+  } else {
+    core.info(`SARIF files: ${files.map(file => path.relative(process.cwd(), file)).join(', ')}`)
   }
-  core.info(`SARIF files: ${files.map(file => path.relative(process.cwd(), file)).join(', ')}`)
 
   const context: DocumentContext = {
     dataset,
@@ -81,7 +120,11 @@ async function run(): Promise<void> {
     metadata: parsePairs(core.getInput('metadata'))
   }
 
-  const findings = (await Promise.all(files.map(readReport))).flat()
+  const reports = await Promise.all(files.map(readReport))
+  const findings = reports.flatMap(report => report.findings)
+  // No report, or one that could not be read, is not a clean scan whatever the step said.
+  const outcome = files.length === 0 || reports.some(report => !report.readable) ? 'failure' : requestedOutcome
+  if (outcome !== requestedOutcome) core.warning('The scan report is missing or unreadable, so the scan is summarised as failed.')
 
   // Grouped by target rather than shipped as one stream: each scanner writes its own
   // logs-<tool>-<namespace>, so one tool's volume never buries another's.
@@ -99,13 +142,7 @@ async function run(): Promise<void> {
     byStream.set(stream, documents)
   }
 
-  const size = Math.max(1, Number(core.getInput('batch-size') || '500'))
-  const batches = [...byStream].flatMap(([stream, documents]) =>
-    chunk(documents, size).map(batch => ({ stream, batch }))
-  )
-  const documentCount = findings.length
-  await fs.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(''))
-
+  // Logged before the summaries join the streams, which have no severity to count.
   for (const [stream, documents] of byStream) {
     const bySeverity = documents.reduce<Record<string, number>>((counts, document) => {
       const severity = String(
@@ -117,7 +154,36 @@ async function run(): Promise<void> {
     core.info(`${documents.length} ${type} finding(s) for ${stream}: ${JSON.stringify(bySeverity)}`)
   }
 
-  if (documentCount === 0) {
+  // Shipped on every run, including a clean one: the positive "this scope was scanned" signal a
+  // silent run cannot give. Same streams, same @timestamp and metadata as the findings.
+  const summaries = summariesEnabled
+    ? buildSummaries({ findings, scans: reports.flatMap(report => report.scans), scanner, outcome }, context)
+    : []
+  if (summariesEnabled && summaries.length === 0) {
+    core.warning('No scanner could be named from the reports and no `scanner` input was given, so no scan_completed summary is shipped.')
+  }
+  for (const summary of summaries) {
+    const stream = dataStreamName(String((summary.data_stream as Record<string, unknown>).dataset), namespace)
+    const invalid = validateDataStream(stream)
+    if (invalid) {
+      core.setFailed(invalid)
+      return
+    }
+    const documents = byStream.get(stream) ?? []
+    documents.push(summary)
+    byStream.set(stream, documents)
+    core.info(`scan_completed for ${stream}: ${String((summary as { message?: string }).message)}`)
+  }
+
+  const size = Math.max(1, Number(core.getInput('batch-size') || '500'))
+  const batches = [...byStream].flatMap(([stream, documents]) =>
+    chunk(documents, size).map(batch => ({ stream, batch }))
+  )
+  const documentCount = findings.length
+  const summaryCount = summaries.length
+  await fs.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(''))
+
+  if (documentCount + summaryCount === 0) {
     core.info('Nothing to ship.')
     finish(0, 0, ndjsonFile, false)
     return
@@ -125,7 +191,7 @@ async function run(): Promise<void> {
 
   if (parseBoolean(core.getInput('dry-run'))) {
     core.info(`Dry run, payload written to ${ndjsonFile}`)
-    finish(documentCount, 0, ndjsonFile, true)
+    finish(documentCount, 0, ndjsonFile, true, summaryCount)
     return
   }
 
@@ -145,7 +211,7 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     const message = `Could not ship findings to Elastic: ${(error as Error).message}`
-    finish(documentCount, sent, ndjsonFile, true)
+    finish(documentCount, sent, ndjsonFile, true, summaryCount)
     // Matches otel-export-trace: an unreachable ingest endpoint is an infrastructure problem and
     // must not redden a pull request whose scan itself succeeded, unless the caller opts in.
     if (failOnError) core.setFailed(message)
@@ -156,7 +222,7 @@ async function run(): Promise<void> {
   // A 2xx means the managed input durably accepted the batch, not that Elasticsearch indexed it;
   // indexing errors surface asynchronously in Data Set Quality, never in this response.
   core.info(`Accepted ${sent} document(s) into ${[...byStream.keys()].join(', ')}`)
-  finish(documentCount, sent, ndjsonFile, false)
+  finish(documentCount, sent, ndjsonFile, false, summaryCount)
 }
 
 run().catch((error: Error) => core.setFailed(error.message))

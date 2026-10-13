@@ -140,8 +140,19 @@ function resourceFor(finding: Finding, context: DocumentContext): Record<string,
     }
   }
 
+  return targetResource(target, context)
+}
+
+/**
+ * A scan target on one branch, e.g. "kestra-io/kestra-ee (develop) / package-lock.json". Shared by
+ * a vulnerability and by the scan_completed summary of that target, so both carry the same
+ * resource.id and a summary can be joined to the findings it covers.
+ */
+export function targetResource(target: string, context: DocumentContext): Record<string, unknown> {
+  const repository = context.github.repository
+  const repositoryUrl = repository ? `${context.github.serverUrl}/${repository}` : undefined
   const branch = context.github.refName
-  const scope = repository && branch ? `${repository} (${branch})` : repository
+  const scope = branchScopeName(context)
   return {
     id: sha256(`${repository}|${branch ?? ''}|${target}`).slice(0, 32),
     name: scope ? `${scope} / ${target}` : target,
@@ -153,6 +164,12 @@ function resourceFor(finding: Finding, context: DocumentContext): Record<string,
     repository_url: repositoryUrl,
     url: repositoryUrl
   }
+}
+
+/** "kestra-io/kestra-ee (develop)", or the bare repository outside a branch. */
+export function branchScopeName(context: DocumentContext): string | undefined {
+  const { repository, refName } = context.github
+  return repository && refName ? `${repository} (${refName})` : repository
 }
 
 /**
