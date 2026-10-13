@@ -32205,9 +32205,13 @@ function parseComponents(raw) {
   }
   return rules;
 }
-function componentOf(file, rules) {
+function componentOf(file, rules, workspace = "") {
   if (!file) return void 0;
-  const relative = file.replace(/^file:\/\//, "").replace(/^\.\//, "");
+  let relative = file.replace(/^file:\/\//, "");
+  if (workspace && relative.startsWith(`${workspace.replace(/\/$/, "")}/`)) {
+    relative = relative.slice(workspace.replace(/\/$/, "").length + 1);
+  }
+  relative = relative.replace(/^\.\//, "");
   return rules.find((rule) => path$2.matchesGlob(relative, rule.glob))?.component;
 }
 
@@ -32860,6 +32864,8 @@ async function run() {
   };
   const findings = (await Promise.all(files.map(readReport))).flat();
   const components = parseComponents(getInput("components"));
+  const componentsPath = getInput("components-path");
+  const workspace = process.env.GITHUB_WORKSPACE ?? "";
   const byStream = /* @__PURE__ */ new Map();
   for (const finding of findings) {
     const stream = dataStreamName(datasetOf(finding, context), namespace);
@@ -32869,7 +32875,7 @@ async function run() {
       return;
     }
     const documents = byStream.get(stream) ?? [];
-    const component = componentOf(finding.file, components);
+    const component = componentOf(componentsPath || finding.file, components, workspace);
     documents.push(toDocument(finding, component ? { ...context, metadata: { ...context.metadata, component } } : context));
     byStream.set(stream, documents);
   }

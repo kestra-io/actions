@@ -30,6 +30,13 @@ inputs:
     required: false
     default: ''
 
+  components:
+    description: >-
+      Newline separated component=glob pairs, e.g. frontend=ui/** then backend=**. Every finding gets
+      the component of the first glob the scanned file (scan-path) matches, overriding the
+      component= in metadata
+    required: true
+
   dry-run:
     description: 'Build the Elastic payload without sending it'
     required: false
@@ -98,3 +105,5 @@ runs:
         metadata: |
           service.name=${{ github.event.repository.name }}
           ${{ inputs.metadata }}
+        components: ${{ inputs.components }}
+        components-path: ${{ inputs.scan-path }}

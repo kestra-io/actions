@@ -78,6 +78,13 @@ inputs:
     required: false
     default: ''
 
+  components-path:
+    description: >-
+      Match this path against components instead of each finding's file. For a report whose
+      findings carry no source path, e.g. Trivy, whose target is an ecosystem: pass the scanned file
+    required: false
+    default: ''
+
   tags:
     description: Comma separated values for the ECS tags field, added to every document
     required: false

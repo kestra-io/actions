@@ -84,6 +84,8 @@ async function run(): Promise<void> {
 
   const findings = (await Promise.all(files.map(readReport))).flat()
   const components = parseComponents(core.getInput('components'))
+  const componentsPath = core.getInput('components-path')
+  const workspace = process.env.GITHUB_WORKSPACE ?? ''
 
   // Grouped by target rather than shipped as one stream: each scanner writes its own
   // logs-<tool>-<namespace>, so one tool's volume never buries another's.
@@ -97,7 +99,7 @@ async function run(): Promise<void> {
       return
     }
     const documents = byStream.get(stream) ?? []
-    const component = componentOf(finding.file, components)
+    const component = componentOf(componentsPath || finding.file, components, workspace)
     documents.push(toDocument(finding, component ? { ...context, metadata: { ...context.metadata, component } } : context))
     byStream.set(stream, documents)
   }

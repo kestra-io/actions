@@ -93,33 +93,6 @@ jobs:
         shell: bash
         run: mv kestra ../kestra
 
-      # Trivy findings carry an ecosystem, not a file, so their component comes from the scanned path.
-      # Bash patterns, where * crosses / like the ** of the globs report-sarif matches.
-      - name: Setup - Trivy components
-        id: components
-        shell: bash
-        env:
-          COMPONENTS: ${{ inputs.components }}
-          JAVA_PATH: ${{ inputs.java-sbom-path }}
-          NPM_PATH: ${{ inputs.npm-lockfile }}
-        run: |
-          resolve() {
-            local file="${1#./}" line name glob
-            while IFS= read -r line; do
-              line="${line#"${line%%[![:space:]]*}"}"
-              line="${line%"${line##*[![:space:]]}"}"
-              [[ -z "${line}" || "${line}" == \#* || "${line}" != *=* ]] && continue
-              name="${line%%=*}"
-              glob="${line#*=}"
-              # shellcheck disable=SC2053
-              if [[ "${file}" == ${glob} ]]; then echo "${name}"; return; fi
-            done <<< "${COMPONENTS}"
-          }
-          java="$(resolve "${JAVA_PATH}")"
-          npm="$(resolve "${NPM_PATH}")"
-          echo "java=${java:+component=${java}}" >> "$GITHUB_OUTPUT"
-          echo "npm=${npm:+component=${npm}}" >> "$GITHUB_OUTPUT"
-
       - name: Setup - Patch Gradle JVM args
         if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradle.properties') != '' }}
         shell: bash
@@ -171,8 +144,8 @@ jobs:
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            ${{ steps.components.outputs.java }}
             target=java-dependencies
+          components: ${{ inputs.components }}
 
       - name: Trivy - Scan npm dependencies
         id: trivy-npm
@@ -183,8 +156,8 @@ jobs:
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
-            ${{ steps.components.outputs.npm }}
             target=npm-dependencies
+          components: ${{ inputs.components }}
 
       - name: OpenGrep - Static analysis
         id: opengrep

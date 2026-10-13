@@ -33,6 +33,12 @@ test('a leading ./ or file:// does not stop a path from matching', () => {
   assert.equal(componentOf('file://ui/src/App.vue', rules), 'frontend')
 })
 
+test('a path under the workspace is matched relative to it', () => {
+  assert.equal(componentOf('/home/runner/work/kestra/kestra/ui/package-lock.json', rules, '/home/runner/work/kestra/kestra'), 'frontend')
+  assert.equal(componentOf('/home/runner/work/kestra/kestra/build/sbom/java.json', rules, '/home/runner/work/kestra/kestra/'), 'backend')
+  assert.equal(componentOf('/elsewhere/ui/a.ts', parseComponents('frontend=ui/**'), '/home/runner/work/kestra/kestra'), undefined)
+})
+
 test('no file or no matching rule gives no component', () => {
   assert.equal(componentOf(undefined, rules), undefined)
   assert.equal(componentOf('ui/src/App.vue', parseComponents('frontend=ui-ee/**')), undefined)

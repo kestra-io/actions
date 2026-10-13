@@ -25,11 +25,16 @@ export function parseComponents(raw: string): ComponentRule[] {
 
 /**
  * The component owning a repository relative path, so a single scan of a repository holding both
- * the backend and the frontend labels each finding with the right one. Undefined when the finding
- * has no file (a Trivy target is an ecosystem, not a path) or no rule matches.
+ * the backend and the frontend labels each finding with the right one. Undefined when there is no
+ * file (a Trivy finding names an ecosystem, not a path) or no rule matches. A path under
+ * `workspace` is made relative to it, so a scanner that reports absolute paths still matches.
  */
-export function componentOf(file: string | undefined, rules: ComponentRule[]): string | undefined {
+export function componentOf(file: string | undefined, rules: ComponentRule[], workspace = ''): string | undefined {
   if (!file) return undefined
-  const relative = file.replace(/^file:\/\//, '').replace(/^\.\//, '')
+  let relative = file.replace(/^file:\/\//, '')
+  if (workspace && relative.startsWith(`${workspace.replace(/\/$/, '')}/`)) {
+    relative = relative.slice(workspace.replace(/\/$/, '').length + 1)
+  }
+  relative = relative.replace(/^\.\//, '')
   return rules.find(rule => path.matchesGlob(relative, rule.glob))?.component
 }
