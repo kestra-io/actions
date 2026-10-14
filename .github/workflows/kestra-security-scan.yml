@@ -1,0 +1,41 @@
+name: Kestra security scan
+
+# Security scan of kestra (OSS) or kestra-ee, for their own CI: a Java SBOM scan, the UI lockfile, OpenGrep
+# and TruffleHog, every finding labelled frontend (the UI folder) or backend (the rest). See security-scan.yml.
+
+on:
+  workflow_call:
+    inputs:
+      ee:
+        description: "Scan kestra-ee instead of kestra: its UI lives in ui-ee, and kestra OSS is checked out next to it for the Gradle build"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      OTLP_ENDPOINT:
+        required: false
+      OTLP_HEADERS:
+        required: false
+      GCP_SERVICE_ACCOUNT:
+        required: false
+      GOOGLE_SERVICE_ACCOUNT:
+        description: "Only read for kestra-ee, by its Gradle build"
+        required: false
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  packages: read
+
+jobs:
+  scan:
+    name: Security scan
+    uses: kestra-io/actions/.github/workflows/security-scan.yml@main
+    with:
+      components: |
+        frontend=${{ inputs.ee && 'ui-ee' || 'ui' }}/**
+        backend=**
+      npm-lockfile: ${{ inputs.ee && 'ui-ee' || 'ui' }}/package-lock.json
+      kestra-ee: ${{ inputs.ee }}
+    secrets: inherit

@@ -293,10 +293,7 @@ jobs:
   # Skipped on a kestra-version override: the SBOM would hold that version's dependencies, not the plugin's.
   security-scan:
     if: ${{ startsWith(github.repository, 'kestra-io/') && inputs.kestra-version == '' }}
-    uses: kestra-io/actions/.github/workflows/security-scan.yml@main
-    with:
-      components: plugin=**
-      npm-lockfile: ui/package-lock.json
+    uses: kestra-io/actions/.github/workflows/plugin-security-scan.yml@main
     secrets: inherit
 
   otel-export-trace:
