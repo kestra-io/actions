@@ -1,0 +1,108 @@
+name: Security scan
+
+# Reusable, side-effect-free security scan of the calling repository, dispatched by Kestra
+# (security-controller-tower). No build, no tests, no publish: checkout + scanners + ship to Elastic.
+#
+# Every kestra-io repository carries the same 15-line stub, `.github/workflows/security-scan.yml`,
+# with a single `params` input (a JSON object) that it passes here untouched. The schema of that
+# object is owned HERE, so adding a parameter never needs a commit in the calling repositories:
+#
+#   {
+#     "v": 1,                              required, schema version; anything else fails fast
+#     "request_id": "<kestra execution>",  required, copied to every document (labels.request_id)
+#                                          and into the run name, so Kestra can find the run back
+#     "scanners": "trufflehog,opengrep",   optional, subset of trufflehog, opengrep, trivy-ui
+#     "ref": "",                           optional, branch/tag/sha to scan; empty = the dispatched ref
+#     "component": "central",             optional, labels.component; keeps these runs in their own
+#                                          scope in the tower, apart from the repository's own CI scans
+#     "dry_run": false                     optional, true = scan, don't ship to Elastic
+#   }
+#
+# No `schedule:` trigger, neither here nor in the stubs: the scan cadence is owned by the tower
+# (security-controller-tower, docs/adr/0001). Kestra dispatches the stub with
+# `io.kestra.plugin.github.actions.RunWorkflow`.
+
+on:
+  workflow_call:
+    inputs:
+      params:
+        description: 'JSON object, see the schema above'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: write        # OpenGrep check-run annotations
+  pull-requests: write # the composites declare a comment step; it is skipped outside pull requests
+
+env:
+  PARAMS: ${{ inputs.params }}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Params - Validate
+        id: params
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(jq -r '.v // empty' <<< "${PARAMS}")"
+          [ "${v}" = "1" ] || { echo "::error::unsupported params.v '${v}' (expected 1)"; exit 1; }
+          request_id="$(jq -r '.request_id // empty' <<< "${PARAMS}")"
+          [ -n "${request_id}" ] || { echo "::error::params.request_id is required"; exit 1; }
+          {
+            echo "request_id=${request_id}"
+            echo "scanners=$(jq -r '.scanners // "trufflehog,opengrep"' <<< "${PARAMS}")"
+            echo "ref=$(jq -r '.ref // empty' <<< "${PARAMS}")"
+            echo "component=$(jq -r '.component // "central"' <<< "${PARAMS}")"
+            echo "dry_run=$(jq -r 'if .dry_run == true then "true" else "false" end' <<< "${PARAMS}")"
+          } >> "$GITHUB_OUTPUT"
+
+      # Shallow: no pull-request diff here, the whole tree is scanned.
+      - name: Checkout - Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.params.outputs.ref || github.ref_name }}
+          fetch-depth: 1
+
+      - name: TruffleHog - Secret scan
+        if: ${{ contains(steps.params.outputs.scanners, 'trufflehog') }}
+        uses: kestra-io/actions/composite/scan-trufflehog@main
+        with:
+          github-token: ${{ github.token }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          dry-run: ${{ steps.params.outputs.dry_run }}
+          metadata: |
+            component=${{ steps.params.outputs.component }}
+            request_id=${{ steps.params.outputs.request_id }}
+
+      - name: OpenGrep - Static analysis
+        if: ${{ !cancelled() && contains(steps.params.outputs.scanners, 'opengrep') }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          github-token: ${{ github.token }}
+          mode: full
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          dry-run: ${{ steps.params.outputs.dry_run }}
+          metadata: |
+            component=${{ steps.params.outputs.component }}
+            request_id=${{ steps.params.outputs.request_id }}
+
+      # Only the UI lockfile: the Java SBOM needs a Gradle build (`cyclonedxBom`), which stays in the
+      # repository's own CI for now (tower ADR-0001, phase 2).
+      - name: Trivy - Scan UI npm dependencies
+        if: ${{ !cancelled() && contains(steps.params.outputs.scanners, 'trivy-ui') && hashFiles('ui/package-lock.json') != '' }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-path: ./ui/package-lock.json
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          dry-run: ${{ steps.params.outputs.dry_run }}
+          metadata: |
+            component=${{ steps.params.outputs.component }}
+            request_id=${{ steps.params.outputs.request_id }}
+            target=ui-dependencies
