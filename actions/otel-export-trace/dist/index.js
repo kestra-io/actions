@@ -34156,7 +34156,7 @@ function requireConstants$5 () {
 	return constants$5;
 }
 
-var version$1 = "1.14.5";
+var version$1 = "1.14.6";
 var require$$12 = {
 	version: version$1};
 
@@ -34415,7 +34415,6 @@ function requireMetadata () {
 	class Metadata {
 	    constructor(options = {}) {
 	        this.internalRepr = new Map();
-	        this.opaqueData = new Map();
 	        this.options = options;
 	    }
 	    /**
@@ -34525,15 +34524,17 @@ function requireMetadata () {
 	     * Creates an OutgoingHttpHeaders object that can be used with the http2 API.
 	     */
 	    toHttp2Headers() {
-	        // NOTE: Node <8.9 formats http2 headers incorrectly.
 	        const result = {};
 	        for (const [key, values] of this.internalRepr) {
 	            if (key.startsWith(':')) {
 	                continue;
 	            }
-	            // We assume that the user's interaction with this object is limited to
-	            // through its public API (i.e. keys and values are already validated).
-	            result[key] = values.map(bufToString);
+	            if (values.length === 1) {
+	                result[key] = bufToString(values[0]);
+	            }
+	            else {
+	                result[key] = values.map(bufToString);
+	            }
 	        }
 	        return result;
 	    }
@@ -34557,6 +34558,9 @@ function requireMetadata () {
 	     * @param value
 	     */
 	    setOpaque(key, value) {
+	        if (!this.opaqueData) {
+	            this.opaqueData = new Map();
+	        }
 	        this.opaqueData.set(key, value);
 	    }
 	    /**
@@ -34565,7 +34569,8 @@ function requireMetadata () {
 	     * @returns
 	     */
 	    getOpaque(key) {
-	        return this.opaqueData.get(key);
+	        var _a;
+	        return (_a = this.opaqueData) === null || _a === void 0 ? void 0 : _a.get(key);
 	    }
 	    /**
 	     * Returns a new Metadata object based fields in a given IncomingHttpHeaders
@@ -34648,6 +34653,7 @@ function requireCallCredentials () {
 	 */
 	Object.defineProperty(callCredentials, "__esModule", { value: true });
 	callCredentials.CallCredentials = void 0;
+	callCredentials.isEmptyCallCredentials = isEmptyCallCredentials;
 	const metadata_1 = requireMetadata();
 	function isCurrentOauth2Client(client) {
 	    return ('getRequestHeaders' in client &&
@@ -34724,6 +34730,9 @@ function requireCallCredentials () {
 	        return base;
 	    }
 	    compose(other) {
+	        if (other instanceof EmptyCallCredentials) {
+	            return this;
+	        }
 	        return new ComposedCallCredentials(this.creds.concat([other]));
 	    }
 	    _equals(other) {
@@ -34756,6 +34765,9 @@ function requireCallCredentials () {
 	        });
 	    }
 	    compose(other) {
+	        if (other instanceof EmptyCallCredentials) {
+	            return this;
+	        }
 	        return new ComposedCallCredentials([this, other]);
 	    }
 	    _equals(other) {
@@ -34780,6 +34792,9 @@ function requireCallCredentials () {
 	    _equals(other) {
 	        return other instanceof EmptyCallCredentials;
 	    }
+	}
+	function isEmptyCallCredentials(callCredentials) {
+	    return callCredentials instanceof EmptyCallCredentials;
 	}
 	
 	return callCredentials;
@@ -34860,6 +34875,8 @@ function requireUriParser () {
 	uriParser.splitHostPort = splitHostPort;
 	uriParser.combineHostPort = combineHostPort;
 	uriParser.uriToString = uriToString;
+	uriParser.extractServiceName = extractServiceName;
+	uriParser.computeServiceUrl = computeServiceUrl;
 	/*
 	 * The groups correspond to URI parts as follows:
 	 * 1. scheme
@@ -34961,6 +34978,31 @@ function requireUriParser () {
 	    }
 	    result += uri.path;
 	    return result;
+	}
+	/**
+	 * Extracts the service name from a gRPC method path (e.g.
+	 * "/package.Service/Method" -> "package.Service").
+	 */
+	function extractServiceName(methodName) {
+	    const firstSlashIndex = methodName.indexOf('/');
+	    if (firstSlashIndex === -1) {
+	        return '';
+	    }
+	    const secondSlashIndex = methodName.indexOf('/', firstSlashIndex + 1);
+	    if (secondSlashIndex === -1) {
+	        return methodName.substring(firstSlashIndex + 1);
+	    }
+	    return methodName.substring(firstSlashIndex + 1, secondSlashIndex);
+	}
+	/**
+	 * Computes the service URL used by call credentials (e.g.
+	 * "https://hostname/serviceName").
+	 */
+	function computeServiceUrl(host, methodName) {
+	    var _a, _b;
+	    const serviceName = extractServiceName(methodName);
+	    const hostname = (_b = (_a = splitHostPort(host)) === null || _a === void 0 ? void 0 : _a.host) !== null && _b !== void 0 ? _b : 'localhost';
+	    return `https://${hostname}/${serviceName}`;
 	}
 	
 	return uriParser;
@@ -35179,6 +35221,7 @@ function requireChannelCredentials () {
 	        return other instanceof InsecureChannelCredentialsImpl;
 	    }
 	    _createSecureConnector(channelTarget, options, callCredentials) {
+	        const credentials = callCredentials !== null && callCredentials !== void 0 ? callCredentials : call_credentials_1.CallCredentials.createEmpty();
 	        return {
 	            connect(socket) {
 	                return Promise.resolve({
@@ -35190,7 +35233,7 @@ function requireChannelCredentials () {
 	                return Promise.resolve();
 	            },
 	            getCallCredentials: () => {
-	                return callCredentials !== null && callCredentials !== void 0 ? callCredentials : call_credentials_1.CallCredentials.createEmpty();
+	                return credentials;
 	            },
 	            destroy() { }
 	        };
@@ -36602,6 +36645,7 @@ function requireResolvingLoadBalancer () {
 	 */
 	Object.defineProperty(resolvingLoadBalancer, "__esModule", { value: true });
 	resolvingLoadBalancer.ResolvingLoadBalancer = void 0;
+	resolvingLoadBalancer.getDefaultConfigSelector = getDefaultConfigSelector;
 	const load_balancer_1 = requireLoadBalancer();
 	const service_config_1 = requireServiceConfig();
 	const connectivity_state_1 = requireConnectivityState();
@@ -36656,40 +36700,47 @@ function requireResolvingLoadBalancer () {
 	    }
 	    return null;
 	}
+	const MAX_CACHED_METHOD_CONFIGS = 100;
 	function getDefaultConfigSelector(serviceConfig) {
+	    const methodConfigCache = new Map();
 	    return {
-	        invoke(methodName, metadata) {
+	        invoke(methodName, metadata, channelId) {
 	            var _a, _b;
-	            const splitName = methodName.split('/').filter(x => x.length > 0);
-	            const service = (_a = splitName[0]) !== null && _a !== void 0 ? _a : '';
-	            const method = (_b = splitName[1]) !== null && _b !== void 0 ? _b : '';
-	            if (serviceConfig && serviceConfig.methodConfig) {
-	                /* Check for the following in order, and return the first method
-	                * config that matches:
-	                * 1. A name that exactly matches the service and method
-	                * 2. A name with no method set that matches the service
-	                * 3. An empty name
-	                */
-	                for (const matchLevel of NAME_MATCH_LEVEL_ORDER) {
-	                    const matchingConfig = findMatchingConfig(service, method, serviceConfig.methodConfig, matchLevel);
-	                    if (matchingConfig) {
-	                        return {
-	                            methodConfig: matchingConfig,
-	                            pickInformation: {},
-	                            status: constants_1.Status.OK,
-	                            dynamicFilterFactories: [],
-	                        };
+	            let matchingConfig = methodConfigCache.get(methodName);
+	            if (matchingConfig === undefined) {
+	                const splitName = methodName.split('/').filter(x => x.length > 0);
+	                const service = (_a = splitName[0]) !== null && _a !== void 0 ? _a : '';
+	                const method = (_b = splitName[1]) !== null && _b !== void 0 ? _b : '';
+	                matchingConfig = { name: [] };
+	                if (serviceConfig && serviceConfig.methodConfig) {
+	                    /* Check for the following in order, and return the first method
+	                     * config that matches:
+	                     * 1. A name that exactly matches the service and method
+	                     * 2. A name with no method set that matches the service
+	                     * 3. An empty name
+	                     */
+	                    for (const matchLevel of NAME_MATCH_LEVEL_ORDER) {
+	                        const foundConfig = findMatchingConfig(service, method, serviceConfig.methodConfig, matchLevel);
+	                        if (foundConfig) {
+	                            matchingConfig = foundConfig;
+	                            break;
+	                        }
 	                    }
+	                }
+	                if (methodConfigCache.size < MAX_CACHED_METHOD_CONFIGS) {
+	                    methodConfigCache.set(methodName, matchingConfig);
 	                }
 	            }
 	            return {
-	                methodConfig: { name: [] },
+	                methodConfig: matchingConfig,
 	                pickInformation: {},
 	                status: constants_1.Status.OK,
 	                dynamicFilterFactories: [],
 	            };
 	        },
-	        unref() { }
+	        unref() {
+	            methodConfigCache.clear();
+	        }
 	    };
 	}
 	class ResolvingLoadBalancer {
@@ -55242,6 +55293,7 @@ function requireChannelz () {
 	Object.defineProperty(channelz, "__esModule", { value: true });
 	channelz.registerChannelzSocket = channelz.registerChannelzServer = channelz.registerChannelzSubchannel = channelz.registerChannelzChannel = channelz.ChannelzCallTrackerStub = channelz.ChannelzCallTracker = channelz.ChannelzChildrenTrackerStub = channelz.ChannelzChildrenTracker = channelz.ChannelzTrace = channelz.ChannelzTraceStub = void 0;
 	channelz.unregisterChannelzRef = unregisterChannelzRef;
+	channelz.dateToProtoTimestamp = dateToProtoTimestamp;
 	channelz.getChannelzHandlers = getChannelzHandlers;
 	channelz.getChannelzServiceDefinition = getChannelzServiceDefinition;
 	channelz.setup = setup;
@@ -55401,7 +55453,7 @@ function requireChannelz () {
 	    }
 	    addCallStarted() {
 	        this.callsStarted += 1;
-	        this.lastCallStartedTimestamp = new Date();
+	        this.lastCallStartedTimestamp = Date.now();
 	    }
 	    addCallSucceeded() {
 	        this.callsSucceeded += 1;
@@ -55544,12 +55596,12 @@ function requireChannelz () {
 	    }
 	}
 	function dateToProtoTimestamp(date) {
-	    if (!date) {
+	    if (date === null || date === undefined) {
 	        return null;
 	    }
-	    const millisSinceEpoch = date.getTime();
+	    const millisSinceEpoch = typeof date === 'number' ? date : date.getTime();
 	    return {
-	        seconds: (millisSinceEpoch / 1000) | 0,
+	        seconds: Math.floor(millisSinceEpoch / 1000),
 	        nanos: (millisSinceEpoch % 1000) * 1000000,
 	    };
 	}
@@ -56353,7 +56405,7 @@ function requireDeadline () {
 	    ['H', 60 * 60 * 1000],
 	];
 	function getDeadlineTimeoutString(deadline) {
-	    const now = new Date().getTime();
+	    const now = Date.now();
 	    if (deadline instanceof Date) {
 	        deadline = deadline.getTime();
 	    }
@@ -56384,7 +56436,7 @@ function requireDeadline () {
 	 */
 	function getRelativeTimeout(deadline) {
 	    const deadlineMs = deadline instanceof Date ? deadline.getTime() : deadline;
-	    const now = new Date().getTime();
+	    const now = Date.now();
 	    const timeout = deadlineMs - now;
 	    if (timeout < 0) {
 	        return 0;
@@ -56418,7 +56470,9 @@ function requireDeadline () {
 	 * @returns
 	 */
 	function formatDateDifference(startDate, endDate) {
-	    return ((endDate.getTime() - startDate.getTime()) / 1000).toFixed(3) + 's';
+	    const startMs = typeof startDate === 'number' ? startDate : startDate.getTime();
+	    const endMs = typeof endDate === 'number' ? endDate : endDate.getTime();
+	    return ((endMs - startMs) / 1000).toFixed(3) + 's';
 	}
 	
 	return deadline;
@@ -56551,7 +56605,6 @@ function requireSingleSubchannelChannel () {
 	const uri_parser_1 = requireUriParser();
 	class SubchannelCallWrapper {
 	    constructor(subchannel, method, filterStackFactory, options, callNumber) {
-	        var _a, _b;
 	        this.subchannel = subchannel;
 	        this.method = method;
 	        this.options = options;
@@ -56563,18 +56616,7 @@ function requireSingleSubchannelChannel () {
 	        this.pendingStatus = null;
 	        this.readFilterPending = false;
 	        this.writeFilterPending = false;
-	        const splitPath = this.method.split('/');
-	        let serviceName = '';
-	        /* The standard path format is "/{serviceName}/{methodName}", so if we split
-	          * by '/', the first item should be empty and the second should be the
-	          * service name */
-	        if (splitPath.length >= 2) {
-	            serviceName = splitPath[1];
-	        }
-	        const hostname = (_b = (_a = (0, uri_parser_1.splitHostPort)(this.options.host)) === null || _a === void 0 ? void 0 : _a.host) !== null && _b !== void 0 ? _b : 'localhost';
-	        /* Currently, call credentials are only allowed on HTTPS connections, so we
-	          * can assume that the scheme is "https" */
-	        this.serviceUrl = `https://${hostname}/${serviceName}`;
+	        this.serviceUrl = (0, uri_parser_1.computeServiceUrl)(this.options.host, this.method);
 	        const timeout = (0, deadline_1.getRelativeTimeout)(options.deadline);
 	        if (timeout !== Infinity) {
 	            if (timeout <= 0) {
@@ -58426,21 +58468,23 @@ function requireSubchannelCall () {
 	        catch (e) {
 	            metadata = new metadata_1.Metadata();
 	        }
-	        const metadataMap = metadata.getMap();
+	        const statusValues = metadata.get('grpc-status');
 	        let status;
-	        if (typeof metadataMap['grpc-status'] === 'string') {
-	            const receivedStatus = Number(metadataMap['grpc-status']);
+	        if (statusValues.length > 0 && typeof statusValues[0] === 'string') {
+	            const receivedStatus = Number(statusValues[0]);
 	            if (this.traceEnabled) {
 	                this.trace('received status code ' + receivedStatus + ' from server');
 	            }
 	            metadata.remove('grpc-status');
 	            let details = '';
-	            if (typeof metadataMap['grpc-message'] === 'string') {
+	            const messageValues = metadata.get('grpc-message');
+	            if (messageValues.length > 0 && typeof messageValues[0] === 'string') {
+	                const messageString = messageValues[0];
 	                try {
-	                    details = decodeURI(metadataMap['grpc-message']);
+	                    details = decodeURI(messageString);
 	                }
-	                catch (e) {
-	                    details = metadataMap['grpc-message'];
+	                catch (error) {
+	                    details = messageString;
 	                }
 	                metadata.remove('grpc-message');
 	                if (this.traceEnabled) {
@@ -58450,7 +58494,7 @@ function requireSubchannelCall () {
 	            status = {
 	                code: receivedStatus,
 	                details: details,
-	                metadata: metadata
+	                metadata: metadata,
 	            };
 	        }
 	        else if (this.httpStatusCode) {
@@ -58461,7 +58505,7 @@ function requireSubchannelCall () {
 	            status = {
 	                code: constants_1.Status.UNKNOWN,
 	                details: 'No status information received',
-	                metadata: metadata
+	                metadata: metadata,
 	            };
 	        }
 	        // This is a no-op if the call was already ended when handling headers.
@@ -59054,13 +59098,13 @@ function requireTransport () {
 	                addMessageSent: () => {
 	                    var _a;
 	                    this.messagesSent += 1;
-	                    this.lastMessageSentTimestamp = new Date();
+	                    this.lastMessageSentTimestamp = Date.now();
 	                    (_a = subchannelCallStatsTracker.addMessageSent) === null || _a === void 0 ? void 0 : _a.call(subchannelCallStatsTracker);
 	                },
 	                addMessageReceived: () => {
 	                    var _a;
 	                    this.messagesReceived += 1;
-	                    this.lastMessageReceivedTimestamp = new Date();
+	                    this.lastMessageReceivedTimestamp = Date.now();
 	                    (_a = subchannelCallStatsTracker.addMessageReceived) === null || _a === void 0 ? void 0 : _a.call(subchannelCallStatsTracker);
 	                },
 	                onCallEnd: status => {
@@ -59466,19 +59510,19 @@ function requireLoadBalancingCall () {
 	 */
 	Object.defineProperty(loadBalancingCall, "__esModule", { value: true });
 	loadBalancingCall.LoadBalancingCall = void 0;
+	const call_credentials_1 = requireCallCredentials();
 	const connectivity_state_1 = requireConnectivityState();
 	const constants_1 = requireConstants$5();
 	const deadline_1 = requireDeadline();
 	const metadata_1 = requireMetadata();
 	const picker_1 = requirePicker();
-	const uri_parser_1 = requireUriParser();
 	const logging = requireLogging();
 	const control_plane_status_1 = requireControlPlaneStatus();
 	const http2 = require$$0$9;
 	const TRACER_NAME = 'load_balancing_call';
+	const RESOLVED_EMPTY_METADATA = Promise.resolve(undefined);
 	class LoadBalancingCall {
 	    constructor(channel, callConfig, methodName, host, credentials, deadline, callNumber) {
-	        var _a, _b;
 	        this.channel = channel;
 	        this.callConfig = callConfig;
 	        this.methodName = methodName;
@@ -59495,24 +59539,13 @@ function requireLoadBalancingCall () {
 	        this.listener = null;
 	        this.onCallEnded = null;
 	        this.childStartTime = null;
-	        const splitPath = this.methodName.split('/');
-	        let serviceName = '';
-	        /* The standard path format is "/{serviceName}/{methodName}", so if we split
-	         * by '/', the first item should be empty and the second should be the
-	         * service name */
-	        if (splitPath.length >= 2) {
-	            serviceName = splitPath[1];
-	        }
-	        const hostname = (_b = (_a = (0, uri_parser_1.splitHostPort)(this.host)) === null || _a === void 0 ? void 0 : _a.host) !== null && _b !== void 0 ? _b : 'localhost';
-	        /* Currently, call credentials are only allowed on HTTPS connections, so we
-	         * can assume that the scheme is "https" */
-	        this.serviceUrl = `https://${hostname}/${serviceName}`;
-	        this.startTime = new Date();
+	        this.serviceUrl = this.channel.getServiceUrl(this.host, this.methodName);
+	        this.startTime = Date.now();
 	    }
 	    getDeadlineInfo() {
 	        var _a, _b;
 	        const deadlineInfo = [];
-	        if (this.childStartTime) {
+	        if (this.childStartTime !== null) {
 	            if (this.childStartTime > this.startTime) {
 	                if ((_a = this.metadata) === null || _a === void 0 ? void 0 : _a.getOptions().waitForReady) {
 	                    deadlineInfo.push('wait_for_ready');
@@ -59556,13 +59589,21 @@ function requireLoadBalancingCall () {
 	                    ' details="' +
 	                    status.details +
 	                    '" start time=' +
-	                    this.startTime.toISOString());
+	                    new Date(this.startTime).toISOString());
 	            }
 	            const finalStatus = Object.assign(Object.assign({}, status), { progress });
 	            (_a = this.listener) === null || _a === void 0 ? void 0 : _a.onReceiveStatus(finalStatus);
 	            (_b = this.onCallEnded) === null || _b === void 0 ? void 0 : _b.call(this, finalStatus.code, finalStatus.details, finalStatus.metadata);
 	            this.channel.removeCallFromPickQueue(this);
 	        }
+	    }
+	    generateCallCredentialsMetadata(callCredentials) {
+	        return (0, call_credentials_1.isEmptyCallCredentials)(callCredentials)
+	            ? RESOLVED_EMPTY_METADATA
+	            : callCredentials.generateMetadata({
+	                method_name: this.methodName,
+	                service_url: this.serviceUrl,
+	            });
 	    }
 	    doPick() {
 	        var _a, _b;
@@ -59587,9 +59628,7 @@ function requireLoadBalancingCall () {
 	        }
 	        switch (pickResult.pickResultType) {
 	            case picker_1.PickResultType.COMPLETE:
-	                const combinedCallCredentials = this.credentials.compose(pickResult.subchannel.getCallCredentials());
-	                combinedCallCredentials
-	                    .generateMetadata({ method_name: this.methodName, service_url: this.serviceUrl })
+	                this.generateCallCredentialsMetadata(this.credentials.compose(pickResult.subchannel.getCallCredentials()))
 	                    .then(credsMetadata => {
 	                    var _a;
 	                    /* If this call was cancelled (e.g. by the deadline) before
@@ -59599,7 +59638,9 @@ function requireLoadBalancingCall () {
 	                        this.trace('Credentials metadata generation finished after call ended');
 	                        return;
 	                    }
-	                    finalMetadata.merge(credsMetadata);
+	                    if (credsMetadata) {
+	                        finalMetadata.merge(credsMetadata);
+	                    }
 	                    if (finalMetadata.get('authorization').length > 1) {
 	                        this.outputStatus({
 	                            code: constants_1.Status.INTERNAL,
@@ -59645,7 +59686,7 @@ function requireLoadBalancingCall () {
 	                                }
 	                            },
 	                        }, this.callNumber);
-	                        this.childStartTime = new Date();
+	                        this.childStartTime = Date.now();
 	                    }
 	                    catch (error) {
 	                        if (this.traceEnabled) {
@@ -59823,7 +59864,7 @@ function requireResolvingCall () {
 	        this.metadata = null;
 	        this.listener = null;
 	        this.statusWatchers = [];
-	        this.deadlineTimer = setTimeout(() => { }, 0);
+	        this.deadlineTimer = null;
 	        this.filterStack = null;
 	        this.deadlineStartTime = null;
 	        this.configReceivedTime = null;
@@ -59862,8 +59903,11 @@ function requireResolvingCall () {
 	        }
 	    }
 	    runDeadlineTimer() {
-	        clearTimeout(this.deadlineTimer);
-	        this.deadlineStartTime = new Date();
+	        if (this.deadlineTimer) {
+	            clearTimeout(this.deadlineTimer);
+	            this.deadlineTimer = null;
+	        }
+	        this.deadlineStartTime = Date.now();
 	        if (this.traceEnabled) {
 	            this.trace('Deadline: ' + (0, deadline_1.deadlineToString)(this.deadline));
 	        }
@@ -59873,18 +59917,19 @@ function requireResolvingCall () {
 	                this.trace('Deadline will be reached in ' + timeout + 'ms');
 	            }
 	            const handleDeadline = () => {
-	                if (!this.deadlineStartTime) {
+	                this.deadlineTimer = null;
+	                if (this.deadlineStartTime === null) {
 	                    this.cancelWithStatus(constants_1.Status.DEADLINE_EXCEEDED, 'Deadline exceeded');
 	                    return;
 	                }
 	                const deadlineInfo = [];
-	                const deadlineEndTime = new Date();
+	                const deadlineEndTime = Date.now();
 	                deadlineInfo.push(`Deadline exceeded after ${(0, deadline_1.formatDateDifference)(this.deadlineStartTime, deadlineEndTime)}`);
-	                if (this.configReceivedTime) {
+	                if (this.configReceivedTime !== null) {
 	                    if (this.configReceivedTime > this.deadlineStartTime) {
 	                        deadlineInfo.push(`name resolution: ${(0, deadline_1.formatDateDifference)(this.deadlineStartTime, this.configReceivedTime)}`);
 	                    }
-	                    if (this.childStartTime) {
+	                    if (this.childStartTime !== null) {
 	                        if (this.childStartTime > this.configReceivedTime) {
 	                            deadlineInfo.push(`metadata filters: ${(0, deadline_1.formatDateDifference)(this.configReceivedTime, this.childStartTime)}`);
 	                        }
@@ -59915,7 +59960,10 @@ function requireResolvingCall () {
 	            if (!this.filterStack) {
 	                this.filterStack = this.filterStackFactory.createFilter();
 	            }
-	            clearTimeout(this.deadlineTimer);
+	            if (this.deadlineTimer) {
+	                clearTimeout(this.deadlineTimer);
+	                this.deadlineTimer = null;
+	            }
 	            const filteredStatus = this.filterStack.receiveTrailers(status);
 	            if (this.traceEnabled) {
 	                this.trace('ended with status: code=' +
@@ -59970,7 +60018,7 @@ function requireResolvingCall () {
 	            return;
 	        }
 	        // configResult.type === 'SUCCESS'
-	        this.configReceivedTime = new Date();
+	        this.configReceivedTime = Date.now();
 	        const config = configResult.config;
 	        if (config.status !== constants_1.Status.OK) {
 	            const { code, details } = (0, control_plane_status_1.restrictControlPlaneStatusCode)(config.status, 'Failed to route call to method ' + this.method);
@@ -59982,10 +60030,9 @@ function requireResolvingCall () {
 	            return;
 	        }
 	        if (config.methodConfig.timeout) {
-	            const configDeadline = new Date();
-	            configDeadline.setSeconds(configDeadline.getSeconds() + config.methodConfig.timeout.seconds);
-	            configDeadline.setMilliseconds(configDeadline.getMilliseconds() +
+	            const timeoutMs = Math.floor(config.methodConfig.timeout.seconds * 1000 +
 	                config.methodConfig.timeout.nanos / 1000000);
+	            const configDeadline = Date.now() + timeoutMs;
 	            this.deadline = (0, deadline_1.minDeadline)(this.deadline, configDeadline);
 	            this.runDeadlineTimer();
 	        }
@@ -59996,7 +60043,7 @@ function requireResolvingCall () {
 	            if (this.traceEnabled) {
 	                this.trace('Created child [' + this.child.getCallNumber() + ']');
 	            }
-	            this.childStartTime = new Date();
+	            this.childStartTime = Date.now();
 	            this.child.start(filteredMetadata, {
 	                onReceiveMetadata: metadata => {
 	                    this.trace('Received metadata');
@@ -60279,7 +60326,7 @@ function requireRetryingCall () {
 	            this.state = 'TRANSPARENT_ONLY';
 	            this.maxAttempts = 1;
 	        }
-	        this.startTime = new Date();
+	        this.startTime = Date.now();
 	    }
 	    getDeadlineInfo() {
 	        if (this.underlyingCalls.length === 0) {
@@ -60314,7 +60361,7 @@ function requireRetryingCall () {
 	                ' details="' +
 	                statusObject.details +
 	                '" start time=' +
-	                this.startTime.toISOString());
+	                new Date(this.startTime).toISOString());
 	        }
 	        this.bufferTracker.freeAll(this.callNumber);
 	        this.writeBufferOffset = this.writeBufferOffset + this.writeBuffer.length;
@@ -60672,11 +60719,12 @@ function requireRetryingCall () {
 	            state: 'ACTIVE',
 	            call: child,
 	            nextMessageToSend: 0,
-	            startTime: new Date(),
+	            startTime: Date.now(),
 	        });
 	        const previousAttempts = this.attempts - 1;
-	        const initialMetadata = this.initialMetadata.clone();
+	        let initialMetadata = this.initialMetadata;
 	        if (previousAttempts > 0) {
+	            initialMetadata = initialMetadata.clone();
 	            initialMetadata.set(PREVIONS_RPC_ATTEMPTS_METADATA_KEY, `${previousAttempts}`);
 	        }
 	        let receivedMetadata = false;
@@ -61164,6 +61212,12 @@ function requireInternalChannel () {
 		         * 0 and MAX_SAFE_INTEGER.
 		         */
 		        this.randomChannelId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+		        /**
+		         * Two-level cache mapping host to method name to precomputed service URL
+		         * (`https://${hostname}/${serviceName}`) used by call credentials. Nested
+		         * maps avoid intermediate composite key string allocations on the hot path.
+		         */
+		        this.serviceUrlCache = new Map();
 		        if (typeof target !== 'string') {
 		            throw new TypeError('Channel target must be a string');
 		        }
@@ -61315,7 +61369,7 @@ function requireInternalChannel () {
 		                'Channel constructed \n' +
 		                ((_f = error.stack) === null || _f === void 0 ? void 0 : _f.substring(error.stack.indexOf('\n') + 1)));
 		        }
-		        this.lastActivityTimestamp = new Date();
+		        this.lastActivityTimestamp = Date.now();
 		    }
 		    get traceEnabled() {
 		        return (0, logging_1.isTracerEnabled)('channel');
@@ -61469,8 +61523,8 @@ function requireInternalChannel () {
 		                this.startIdleTimeout(this.idleTimeoutMs);
 		                return;
 		            }
-		            const now = new Date();
-		            const timeSinceLastActivity = now.valueOf() - this.lastActivityTimestamp.valueOf();
+		            const now = Date.now();
+		            const timeSinceLastActivity = now - this.lastActivityTimestamp;
 		            if (timeSinceLastActivity >= this.idleTimeoutMs) {
 		                this.trace('Idle timer triggered after ' +
 		                    this.idleTimeoutMs +
@@ -61509,8 +61563,34 @@ function requireInternalChannel () {
 		            }
 		        }
 		        this.callCount -= 1;
-		        this.lastActivityTimestamp = new Date();
+		        this.lastActivityTimestamp = Date.now();
 		        this.maybeStartIdleTimer();
+		    }
+		    /**
+		     * Returns the precomputed service URL (`https://${hostname}/${serviceName}`)
+		     * for the given host and method, using a bounded cache to avoid parsing on
+		     * every RPC.
+		     */
+		    getServiceUrl(host, methodName) {
+		        let methodMap = this.serviceUrlCache.get(host);
+		        if (methodMap === undefined) {
+		            if (this.serviceUrlCache.size < InternalChannel.MAX_CACHED_HOSTS) {
+		                methodMap = new Map();
+		                this.serviceUrlCache.set(host, methodMap);
+		            }
+		        }
+		        if (methodMap !== undefined) {
+		            const serviceUrl = methodMap.get(methodName);
+		            if (serviceUrl !== undefined) {
+		                return serviceUrl;
+		            }
+		            const computedServiceUrl = (0, uri_parser_1.computeServiceUrl)(host, methodName);
+		            if (methodMap.size < InternalChannel.MAX_METHODS_PER_HOST) {
+		                methodMap.set(methodName, computedServiceUrl);
+		            }
+		            return computedServiceUrl;
+		        }
+		        return (0, uri_parser_1.computeServiceUrl)(host, methodName);
 		    }
 		    createLoadBalancingCall(callConfig, method, host, credentials, deadline, callNumber) {
 		        const finalCallNumber = callNumber !== null && callNumber !== void 0 ? callNumber : (0, call_number_1.getNextCallNumber)();
@@ -61582,6 +61662,7 @@ function requireInternalChannel () {
 		        this.subchannelPool.unrefUnusedSubchannels();
 		        (_a = this.configSelector) === null || _a === void 0 ? void 0 : _a.unref();
 		        this.configSelector = null;
+		        this.serviceUrlCache.clear();
 		    }
 		    getTarget() {
 		        return (0, uri_parser_1.uriToString)(this.target);
@@ -61590,7 +61671,7 @@ function requireInternalChannel () {
 		        const connectivityState = this.connectivityState;
 		        if (tryToConnect) {
 		            this.resolvingLoadBalancer.exitIdle();
-		            this.lastActivityTimestamp = new Date();
+		            this.lastActivityTimestamp = Date.now();
 		            this.maybeStartIdleTimer();
 		        }
 		        return connectivityState;
@@ -61644,6 +61725,14 @@ function requireInternalChannel () {
 		    }
 		}
 		exports.InternalChannel = InternalChannel;
+		/**
+		 * Maximum number of distinct hosts to cache service URLs for on this channel.
+		 */
+		InternalChannel.MAX_CACHED_HOSTS = 5;
+		/**
+		 * Maximum number of distinct method paths to cache per host.
+		 */
+		InternalChannel.MAX_METHODS_PER_HOST = 100;
 		
 	} (internalChannel));
 	return internalChannel;
@@ -62733,6 +62822,7 @@ function requireServerInterceptors () {
 	const logging = requireLogging();
 	const tls_1 = require$$1$2;
 	const orca_1 = requireOrca();
+	const environment_1 = requireEnvironment();
 	const TRACER_NAME = 'server_call';
 	function trace(text) {
 	    logging.trace(constants_1.LogVerbosity.DEBUG, TRACER_NAME, text);
@@ -63146,8 +63236,7 @@ function requireServerInterceptors () {
 	            return;
 	        }
 	        const timeout = (+match[1] * deadlineUnitsToMs[match[2]]) | 0;
-	        const now = new Date();
-	        this.deadline = now.setMilliseconds(now.getMilliseconds() + timeout);
+	        this.deadline = Date.now() + timeout;
 	        this.deadlineTimer = setTimeout(() => {
 	            const status = {
 	                code: constants_1.Status.DEADLINE_EXCEEDED,
@@ -63275,9 +63364,16 @@ function requireServerInterceptors () {
 	            queueEntry.parsedMessage = this.handler.deserialize(decompressedMessage);
 	        }
 	        catch (err) {
+	            let details;
+	            if (environment_1.GRPC_NODE_DEBUG_SEND_ERROR_DETAILS) {
+	                details = `Error deserializing request: ${err.message}`;
+	            }
+	            else {
+	                details = 'Error deserializing request';
+	            }
 	            this.sendStatus({
 	                code: constants_1.Status.INTERNAL,
-	                details: `Error deserializing request: ${err.message}`,
+	                details: details,
 	            });
 	            return;
 	        }
@@ -63367,9 +63463,16 @@ function requireServerInterceptors () {
 	            response = this.serializeMessage(message);
 	        }
 	        catch (e) {
+	            let details;
+	            if (environment_1.GRPC_NODE_DEBUG_SEND_ERROR_DETAILS) {
+	                details = `Error serializing response: ${(0, error_1.getErrorMessage)(e)}`;
+	            }
+	            else {
+	                details = 'Error serializing response';
+	            }
 	            this.sendStatus({
 	                code: constants_1.Status.INTERNAL,
-	                details: `Error serializing response: ${(0, error_1.getErrorMessage)(e)}`,
+	                details: details,
 	                metadata: null,
 	            });
 	            return;
@@ -63391,9 +63494,16 @@ function requireServerInterceptors () {
 	        this.stream.write(response, error => {
 	            var _a;
 	            if (error) {
+	                let details;
+	                if (environment_1.GRPC_NODE_DEBUG_SEND_ERROR_DETAILS) {
+	                    details = `Error writing message: ${(0, error_1.getErrorMessage)(error)}`;
+	                }
+	                else {
+	                    details = 'Internal server error';
+	                }
 	                this.sendStatus({
 	                    code: constants_1.Status.INTERNAL,
-	                    details: `Error writing message: ${(0, error_1.getErrorMessage)(error)}`,
+	                    details: details,
 	                    metadata: null,
 	                });
 	                return;
@@ -64494,13 +64604,13 @@ function requireServer () {
 	                    addMessageSent: () => {
 	                        if (channelzSessionInfo) {
 	                            channelzSessionInfo.messagesSent += 1;
-	                            channelzSessionInfo.lastMessageSentTimestamp = new Date();
+	                            channelzSessionInfo.lastMessageSentTimestamp = Date.now();
 	                        }
 	                    },
 	                    addMessageReceived: () => {
 	                        if (channelzSessionInfo) {
 	                            channelzSessionInfo.messagesReceived += 1;
-	                            channelzSessionInfo.lastMessageReceivedTimestamp = new Date();
+	                            channelzSessionInfo.lastMessageReceivedTimestamp = Date.now();
 	                        }
 	                    },
 	                    onCallEnd: status => {
@@ -69995,7 +70105,7 @@ const _globalThis = globalThis;
  * SPDX-License-Identifier: Apache-2.0
  */
 // this is autogenerated file, see scripts/version-update.js
-const VERSION$2 = '2.11.0';
+const VERSION$2 = '2.12.0';
 
 /*
  * Copyright The OpenTelemetry Authors
@@ -71397,7 +71507,7 @@ const ATTR_ERROR_TYPE = 'error.type';
  * SPDX-License-Identifier: Apache-2.0
  */
 // this is autogenerated file, see scripts/version-update.js
-const VERSION = '0.222.0';
+const VERSION = '0.223.0';
 
 /*
  * Copyright The OpenTelemetry Authors
@@ -71533,7 +71643,7 @@ function requireVersion () {
 	Object.defineProperty(version, "__esModule", { value: true });
 	version.VERSION = void 0;
 	// this is autogenerated file, see scripts/version-update.js
-	version.VERSION = '0.222.0';
+	version.VERSION = '0.223.0';
 	
 	return version;
 }
