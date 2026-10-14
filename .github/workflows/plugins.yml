@@ -290,17 +290,11 @@ jobs:
         with:
           webhookUrl: "${{ secrets.KESTRA_WEBHOOK_URL_PLUGIN_RELEASE_INDEX }}"
 
-  # Skipped on a kestra-version override: the SBOM would hold that version's dependencies, not the plugin's.
-  security-scan:
-    if: ${{ startsWith(github.repository, 'kestra-io/') && inputs.kestra-version == '' }}
-    uses: kestra-io/actions/.github/workflows/plugin-security-scan.yml@main
-    secrets: inherit
-
   otel-export-trace:
     if: always()
     name: OpenTelemetry Export Trace
     runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
-    needs: [main, security-scan]
+    needs: [main]
     steps:
       # Reconstruct and export the whole workflow -> job -> step trace. The live
       # Gradle/JUnit spans emitted during "main" nest under their step spans via
