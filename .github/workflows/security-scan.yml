@@ -93,14 +93,6 @@ jobs:
         shell: bash
         run: mv kestra ../kestra
 
-      - name: Setup - Patch Gradle JVM args
-        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradle.properties') != '' }}
-        shell: bash
-        run: |
-          if ! grep -q "^org.gradle.jvmargs=" gradle.properties; then
-            printf "\norg.gradle.jvmargs=-Xmx1g -XX:MaxMetaspaceSize=512m\n" >> gradle.properties
-          fi
-
       - name: Setup - Build
         if: ${{ env.SBOM_ENABLED == 'true' }}
         uses: kestra-io/actions/composite/setup-build@main

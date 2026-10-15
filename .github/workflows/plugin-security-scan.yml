@@ -1,7 +1,4 @@
-name: Plugin security scan
-
-# Security scan of a plugin repository, for its own CI: a Java SBOM scan, the optional ui/ micro-frontend
-# lockfile, OpenGrep and TruffleHog, every finding labelled component=plugin. See security-scan.yml.
+name: Security scan
 
 on:
   workflow_call:
@@ -19,9 +16,6 @@ on:
       GCP_SERVICE_ACCOUNT:
         required: false
 
-# One scan per branch at a time, the next one queued behind it rather than cancelling it: a scan that
-# gets cut short ships nothing to Elastic. A queue holds a single run, so a third one replaces the
-# second. The group differs from the callers' own, a shared name would make them cancel each other.
 concurrency:
   group: plugin-security-scan-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: false

@@ -1,7 +1,4 @@
-name: Kestra security scan
-
-# Security scan of kestra (OSS) or kestra-ee, for their own CI: a Java SBOM scan, the UI lockfile, OpenGrep
-# and TruffleHog, every finding labelled frontend (the UI folder) or backend (the rest). See security-scan.yml.
+name: Security scan
 
 on:
   workflow_call:
@@ -27,9 +24,6 @@ on:
         description: "Only read for kestra-ee, by its Gradle build"
         required: false
 
-# One scan per branch at a time, the next one queued behind it rather than cancelling it: a scan that
-# gets cut short ships nothing to Elastic. A queue holds a single run, so a third one replaces the
-# second. The group differs from the callers' own, a shared name would make them cancel each other.
 concurrency:
   group: kestra-security-scan-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: false
