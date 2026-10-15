@@ -25,11 +25,6 @@ on:
         required: false
         type: string
         default: '25'
-      java-sbom-path:
-        description: "SBOM written by `./gradlew cyclonedxBom`"
-        required: false
-        type: string
-        default: 'build/sbom/java.json'
       npm-lockfile:
         description: "package-lock.json to scan with Trivy. Skipped when empty or missing"
         required: false
@@ -120,7 +115,7 @@ jobs:
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # CycloneDX SBOM of the runtime classpath, written by io.kestra.gradle.repository-conventions.
+      # CycloneDX SBOM of the runtime classpath, written to build/sbom/java.json by io.kestra.gradle.repository-conventions.
       # continue-on-error so a repository on an older version, without the task, doesn't fail the build.
       # The service account goes to RUNNER_TEMP, never the workspace TruffleHog scans.
       - name: Trivy - Generate CycloneDX
@@ -141,11 +136,11 @@ jobs:
 
       - name: Trivy - Scan Java dependencies
         id: trivy
-        if: ${{ !cancelled() && steps.sbom.outcome == 'success' && hashFiles(inputs.java-sbom-path) != '' }}
+        if: ${{ !cancelled() && steps.sbom.outcome == 'success' && hashFiles('build/sbom/java.json') != '' }}
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           scan-type: sbom
-          scan-path: ${{ inputs.java-sbom-path }}
+          scan-path: build/sbom/java.json
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
