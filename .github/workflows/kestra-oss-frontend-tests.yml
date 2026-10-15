@@ -173,6 +173,17 @@ jobs:
         working-directory: ui
         run: npm run test:storybook
 
+      - name: Report - Frontend tests
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: kestra-io/actions/composite/report-junit@main
+        with:
+          github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
+          title: Frontend Tests
+          report-paths: |
+            ui/test-report.junit.xml
+            ui/test-report.storybook.junit.xml
+
       # Runs on success too (not just failure): that's what lets it clear a
       # stale failures comment once the suite goes back to green.
       - name: Report failing UI tests on the PR
