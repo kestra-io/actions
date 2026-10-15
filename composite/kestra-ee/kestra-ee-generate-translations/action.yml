@@ -1,5 +1,5 @@
 name: Generate Translations
-description: "Requires the environment variable GEMINI_API_KEY to be set. This action will generate translations for the EE UI."
+description: "Generates translations for the EE UI with Gemini on Vertex AI. Authenticates with a service account key passed as `gcp-credentials`."
 
 inputs:
   github-token:
@@ -9,6 +9,18 @@ inputs:
     description: 'If true, forces a full re-translation of every key, ignoring the fingerprints'
     required: false
     default: false
+  gcp-credentials:
+    description: 'Service account key JSON (with roles/aiplatform.user), normally the GCP_SERVICE_ACCOUNT secret. When empty the authentication step is skipped and the generator uses whatever Application Default Credentials the job already has.'
+    required: false
+    default: ''
+  gcp-project:
+    description: 'GCP project that Vertex AI calls are billed to (GOOGLE_CLOUD_PROJECT)'
+    required: false
+    default: 'kestra-prd'
+  gcp-location:
+    description: 'Vertex AI location (GOOGLE_CLOUD_LOCATION)'
+    required: false
+    default: 'global'
 
 runs:
   using: composite
@@ -100,10 +112,19 @@ runs:
     # The former `only_pr` input is gone: it selected keys by diffing against the PR's merge-base,
     # which the fingerprints now answer directly and without git. It never took effect anyway —
     # it was read from `github.event.inputs`, which is empty on `pull_request`.
+    - name: Authenticate to Google Cloud
+      if: inputs.gcp-credentials != ''
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+      with:
+        credentials_json: ${{ inputs.gcp-credentials }}
+
     - name: Generate translations
       run: npm run translations:generate -- ${{ inputs.retranslate_modified_keys }}
       working-directory: kestra-ee/ui-ee
       shell: bash
+      env:
+        GOOGLE_CLOUD_PROJECT: ${{ inputs.gcp-project }}
+        GOOGLE_CLOUD_LOCATION: ${{ inputs.gcp-location }}
 
     - name: Set up Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
