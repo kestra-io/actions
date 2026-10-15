@@ -30,11 +30,6 @@ on:
         required: false
         type: string
         default: ''
-      opengrep-scan-path:
-        description: "Path scanned by OpenGrep"
-        required: false
-        type: string
-        default: '.'
       kestra-ee:
         description: "Check out kestra OSS next to the repository, as the kestra-ee Gradle build includes its projects"
         required: false
@@ -165,7 +160,6 @@ jobs:
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ github.token }}
-          scan-path: ${{ inputs.opengrep-scan-path }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           components: ${{ inputs.components }}
