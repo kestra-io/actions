@@ -1,0 +1,76 @@
+name: 'Report JUnit'
+description: 'Publish JUnit XML results as a check run and comment the pull request with the summary'
+
+inputs:
+  github-token:
+    description: 'Token used to publish the check run and to post the pull request comment'
+    required: true
+
+  report-paths:
+    description: 'JUnit XML report glob(s), e.g. build/test-results/test/TEST-*.xml'
+    required: true
+
+  title:
+    description: 'Name of the check run and of the pull request comment section, e.g. "Backend Tests"'
+    required: true
+
+outputs:
+  total:
+    description: 'Number of tests found, empty when no report matched'
+    value: ${{ steps.junit.outputs.total }}
+
+  passed:
+    description: 'Number of passed tests'
+    value: ${{ steps.junit.outputs.passed }}
+
+  failed:
+    description: 'Number of failed tests'
+    value: ${{ steps.junit.outputs.failed }}
+
+  skipped:
+    description: 'Number of skipped tests'
+    value: ${{ steps.junit.outputs.skipped }}
+
+runs:
+  using: composite
+  steps:
+    - name: JUnit - Report
+      id: junit
+      uses: mikepenz/action-junit-report@b7b80d7ac5b1da46d6aaff9fb57ad50d8453bcb3 # v6.6.0
+      if: ${{ !cancelled() }}
+      continue-on-error: true
+      env:
+        NODE_OPTIONS: "--max-old-space-size=4096"
+      with:
+        token: ${{ inputs.github-token }}
+        check_name: ${{ inputs.title }}
+        report_paths: ${{ inputs.report-paths }}
+        fail_on_failure: 'false'
+        require_tests: 'false'
+        summary: 'true'
+        detailed_summary: 'true'
+        failed_summary_logs: 'true'
+        include_time_in_summary: 'true'
+        job_summary: 'false'
+        verbose_summary: 'false'
+        simplified_summary: 'true'
+
+    - name: JUnit - Comment pull request
+      # Fork PRs get a read-only token, so the comment POST would return 403.
+      if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        title: "🧪 ${{ inputs.title }}"
+        result: ${{ steps.junit.outputs.total == '' && 'empty' || (steps.junit.outputs.failed > 0 && 'failure' || 'success') }}
+        title-summary: ${{ steps.junit.outputs.total != '' && format('{0} failed, {1} passed, {2} skipped', steps.junit.outputs.failed, steps.junit.outputs.passed, steps.junit.outputs.skipped) || '' }}
+        template: |
+          {% raw %}
+          ${{ steps.junit.outputs.summary }}
+          {% endraw %}
+          {% if ${{ steps.junit.outputs.failed || 0 }} > 0 %}
+          {% raw %}
+          ${{ steps.junit.outputs.detailed_summary }}
+          {% endraw %}
+          {% endif %}
