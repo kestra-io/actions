@@ -20,6 +20,11 @@ on:
         required: false
         type: boolean
         default: true
+      java-version:
+        description: "Java version used to generate the SBOM"
+        required: false
+        type: string
+        default: '25'
       java-sbom-path:
         description: "SBOM written by `./gradlew cyclonedxBom`"
         required: false
@@ -106,7 +111,7 @@ jobs:
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
-          java-version: '25'
+          java-version: ${{ inputs.java-version }}
 
       # Route Gradle Maven reads through the GCP maven-remote caching proxy (avoids Maven Central 429s)
       - name: Setup - Maven proxy
