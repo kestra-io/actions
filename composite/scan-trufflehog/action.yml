@@ -25,6 +25,16 @@ inputs:
     required: false
     default: ${{ github.token }}
 
+  check-name:
+    description: 'Name of the check run'
+    required: false
+    default: 'TruffleHog'
+
+  check-failed-conclusion:
+    description: 'Conclusion of the check run when a secret is found: neutral, failure or action_required'
+    required: false
+    default: 'neutral'
+
   elastic-endpoint:
     description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
     required: false
@@ -147,6 +157,32 @@ runs:
             | {detector: .DetectorName, verified: (.Verified // false), file: ($at.file // ""), line: ($at.line // 0)}]
           | {total: length, findings: .}' "${report}" > "${RUNNER_TEMP}/trufflehog-comment.json"
         echo "total=$(jq .total "${RUNNER_TEMP}/trufflehog-comment.json")" >> "$GITHUB_OUTPUT"
+
+    - name: TruffleHog - Publish check run
+      if: ${{ !cancelled() && steps.findings.outputs.total != '' }}
+      continue-on-error: true
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        CHECK_NAME: ${{ inputs.check-name }}
+        FAILED_CONCLUSION: ${{ inputs.check-failed-conclusion }}
+        REPORT: ${{ runner.temp }}/trufflehog-comment.json
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const { total, findings } = JSON.parse(require('fs').readFileSync(process.env.REPORT, 'utf8'))
+          const rows = findings.slice(0, 50).map(f => `| ${f.detector} | ${f.verified} | \`${f.file}\` | ${f.line} |`)
+          const summary = total === 0
+            ? 'No secret found.'
+            : ['| Detector | Verified | File | Line |', '| :--- | :--- | :--- | :--- |', ...rows,
+               ...(total > 50 ? ['', `_… and ${total - 50} more._`] : [])].join('\n')
+          await github.rest.checks.create({
+            ...context.repo,
+            name: process.env.CHECK_NAME,
+            head_sha: context.payload.pull_request?.head?.sha ?? context.sha,
+            status: 'completed',
+            conclusion: total > 0 ? process.env.FAILED_CONCLUSION : 'success',
+            output: { title: `${total} secrets`, summary }
+          })
 
     - name: TruffleHog - Comment pull request
       if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.findings.outputs.total != '' }}

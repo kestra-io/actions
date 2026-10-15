@@ -15,6 +15,21 @@ inputs:
     description: 'The file or directory to scan, e.g. ./ui/package-lock.json or build/reports/cyclonedx/bom.json'
     required: true
 
+  github-token:
+    description: 'Token used to publish the check run'
+    required: false
+    default: ${{ github.token }}
+
+  check-name:
+    description: 'Name of the check run'
+    required: false
+    default: 'Trivy'
+
+  check-failed-conclusion:
+    description: 'Conclusion of the check run when a vulnerability is found: neutral, failure or action_required'
+    required: false
+    default: 'neutral'
+
   elastic-endpoint:
     description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
     required: false
@@ -89,6 +104,43 @@ runs:
         trivy convert --quiet --format sarif \
           --output "${{ github.workspace }}/trivy-result.sarif" \
           "${{ github.workspace }}/trivy-result.json"
+
+    - name: Trivy - Publish check run
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      continue-on-error: true
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        CHECK_NAME: ${{ inputs.check-name }}
+        FAILED_CONCLUSION: ${{ inputs.check-failed-conclusion }}
+        TARGET: ${{ inputs.scan-path }}
+        REPORT: ${{ github.workspace }}/trivy-result.json
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
+          const vulns = (report.Results ?? []).flatMap(r => (r.Vulnerabilities ?? []).map(v => ({ ...v, target: r.Target })))
+          const counts = {}
+          for (const v of vulns) counts[v.Severity] = (counts[v.Severity] ?? 0) + 1
+          const order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']
+          const breakdown = order.filter(s => counts[s]).map(s => `${counts[s]} ${s.toLowerCase()}`).join(', ')
+          const rows = vulns
+            .sort((a, b) => order.indexOf(a.Severity) - order.indexOf(b.Severity))
+            .slice(0, 50)
+            .map(v => `| ${v.Severity} | ${v.VulnerabilityID} | \`${v.PkgName}\` | ${v.InstalledVersion} | ${v.FixedVersion ?? ''} |`)
+          const summary = vulns.length === 0
+            ? `No vulnerability found in \`${process.env.TARGET}\`.`
+            : [`Found **${vulns.length}** vulnerabilities in \`${process.env.TARGET}\`: ${breakdown}.`, '',
+               '| Severity | Id | Package | Installed | Fixed |', '| :--- | :--- | :--- | :--- | :--- |', ...rows,
+               ...(vulns.length > 50 ? ['', `_… and ${vulns.length - 50} more._`] : [])].join('\n')
+          await github.rest.checks.create({
+            ...context.repo,
+            name: process.env.CHECK_NAME,
+            head_sha: context.payload.pull_request?.head?.sha ?? context.sha,
+            status: 'completed',
+            conclusion: vulns.length > 0 ? process.env.FAILED_CONCLUSION : 'success',
+            output: { title: `${vulns.length} vulnerabilities`, summary }
+          })
 
     - name: Trivy - Report findings to Elastic
       if: ${{ !cancelled() && inputs.elastic-endpoint != '' && steps.trivy.outcome == 'success' }}

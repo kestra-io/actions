@@ -27,6 +27,11 @@ inputs:
     required: false
     default: ''
 
+  check-name:
+    description: 'Name of the check run, defaults to "Coverage - <component>"'
+    required: false
+    default: ''
+
   namespace:
     description: 'Data stream namespace'
     required: false
@@ -90,6 +95,33 @@ runs:
         # this is 'true' (comment only, no write) for every PR on its own — writing dashboard data
         # from a feature branch would pollute it with unmerged coverage.
         dry-run: ${{ inputs.dry-run != '' && inputs.dry-run || (github.ref_name == github.event.repository.default_branch && 'false' || 'true') }}
+
+    - name: Coverage - Publish check run
+      if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+      continue-on-error: true
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        CHECK_NAME: ${{ inputs.check-name != '' && inputs.check-name || format('Coverage - {0}', inputs.component) }}
+        DOCUMENTS: ${{ steps.coverage.outputs['documents-count'] }}
+        LINE_RATE: ${{ steps.coverage.outputs.line-rate }}
+        DELTA: ${{ steps.coverage.outputs.delta }}
+        TITLE_SUMMARY: ${{ steps.coverage.outputs['title-summary'] }}
+        MARKDOWN: ${{ steps.coverage.outputs.markdown }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const empty = process.env.DOCUMENTS === '0'
+          await github.rest.checks.create({
+            ...context.repo,
+            name: process.env.CHECK_NAME,
+            head_sha: context.payload.pull_request?.head?.sha ?? context.sha,
+            status: 'completed',
+            conclusion: empty || process.env.DELTA.startsWith('-') ? 'neutral' : 'success',
+            output: {
+              title: empty ? 'No coverage data' : (process.env.TITLE_SUMMARY || `${process.env.LINE_RATE}%`),
+              summary: process.env.MARKDOWN.slice(0, 65000) || 'No coverage data.'
+            }
+          })
 
     - name: Coverage - Comment pull request
       if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
