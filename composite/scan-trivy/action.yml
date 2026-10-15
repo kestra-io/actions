@@ -105,42 +105,43 @@ runs:
           --output "${{ github.workspace }}/trivy-result.sarif" \
           "${{ github.workspace }}/trivy-result.json"
 
-    - name: Trivy - Publish check run
+    - name: Trivy - Prepare check run
+      id: findings
       if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      run: |
+        jq '[.Results[]? | .Target as $target | .Vulnerabilities[]? | {severity: .Severity, id: .VulnerabilityID, package: .PkgName, installed: .InstalledVersion, fixed: (.FixedVersion // ""), target: $target}]
+          | {total: length, findings: .[0:50]}' "${{ github.workspace }}/trivy-result.json" > "${RUNNER_TEMP}/trivy-comment.json"
+        echo "total=$(jq .total "${RUNNER_TEMP}/trivy-comment.json")" >> "$GITHUB_OUTPUT"
+
+    # Default branch and releases/* only, so there is no pull request to comment on: this publishes the check run.
+    - name: Trivy - Publish check run
+      if: ${{ !cancelled() && steps.findings.outputs.total != '' }}
       continue-on-error: true
-      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-      env:
-        CHECK_NAME: ${{ inputs.check-name }}
-        FAILED_CONCLUSION: ${{ inputs.check-failed-conclusion }}
-        TARGET: ${{ inputs.scan-path }}
-        REPORT: ${{ github.workspace }}/trivy-result.json
+      uses: kestra-io/actions/actions/comment-update@main
       with:
         github-token: ${{ inputs.github-token }}
-        script: |
-          const fs = require('fs')
-          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
-          const vulns = (report.Results ?? []).flatMap(r => (r.Vulnerabilities ?? []).map(v => ({ ...v, target: r.Target })))
-          const counts = {}
-          for (const v of vulns) counts[v.Severity] = (counts[v.Severity] ?? 0) + 1
-          const order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']
-          const breakdown = order.filter(s => counts[s]).map(s => `${counts[s]} ${s.toLowerCase()}`).join(', ')
-          const rows = vulns
-            .sort((a, b) => order.indexOf(a.Severity) - order.indexOf(b.Severity))
-            .slice(0, 50)
-            .map(v => `| ${v.Severity} | ${v.VulnerabilityID} | \`${v.PkgName}\` | ${v.InstalledVersion} | ${v.FixedVersion ?? ''} |`)
-          const summary = vulns.length === 0
-            ? `No vulnerability found in \`${process.env.TARGET}\`.`
-            : [`Found **${vulns.length}** vulnerabilities in \`${process.env.TARGET}\`: ${breakdown}.`, '',
-               '| Severity | Id | Package | Installed | Fixed |', '| :--- | :--- | :--- | :--- | :--- |', ...rows,
-               ...(vulns.length > 50 ? ['', `_… and ${vulns.length - 50} more._`] : [])].join('\n')
-          await github.rest.checks.create({
-            ...context.repo,
-            name: process.env.CHECK_NAME,
-            head_sha: context.payload.pull_request?.head?.sha ?? context.sha,
-            status: 'completed',
-            conclusion: vulns.length > 0 ? process.env.FAILED_CONCLUSION : 'success',
-            output: { title: `${vulns.length} vulnerabilities`, summary }
-          })
+        title: "Trivy"
+        check-name: ${{ inputs.check-name }}
+        check-failed-conclusion: ${{ inputs.check-failed-conclusion }}
+        result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
+        title-summary: ${{ format('{0} vulnerabilities', steps.findings.outputs.total) }}
+        add-summary: 'false'
+        files: |
+          ${{ runner.temp }}/trivy-comment.json
+        template: |
+          {% if files[0] and files[0].total > 0 %}
+          | Severity | Id | Package | Installed | Fixed |
+          | :--- | :--- | :--- | :--- | :--- |
+          {%- for finding in files[0].findings %}
+          | {{ finding.severity }} | {{ finding.id }} | `{{ finding.package }}` | {{ finding.installed }} | {{ finding.fixed }} |
+          {%- endfor %}
+          {% if files[0].total > 50 %}
+          _… and {{ files[0].total - 50 }} more._
+          {% endif %}
+          {% else %}
+          No vulnerability found.
+          {% endif %}
 
     - name: Trivy - Report findings to Elastic
       if: ${{ !cancelled() && inputs.elastic-endpoint != '' && steps.trivy.outcome == 'success' }}

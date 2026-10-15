@@ -40739,6 +40739,8 @@ class CommentUpdate {
   repo;
   prId;
   fetchUnreleasedCommits;
+  checkName;
+  checkFailedConclusion;
   constructor() {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
@@ -40750,6 +40752,8 @@ class CommentUpdate {
     this.addSummary = getBooleanInput("add-summary");
     this.files = getMultilineInput("files");
     this.fetchUnreleasedCommits = getBooleanInput("fetch-unreleased-commits");
+    this.checkName = getInput("check-name");
+    this.checkFailedConclusion = getInput("check-failed-conclusion") || "failure";
     this.nunjucks = new nunjucks.Environment();
     this.nunjucks.addFilter("prettyDate", humanReadableDate).addFilter("prettySize", humanReadableSize);
     const ownerOverride = getInput("owner");
@@ -40897,15 +40901,53 @@ ${commentContent}`
 ${s}`);
     return s;
   }
+  _checkConclusion(result) {
+    switch (result.trim().toLowerCase()) {
+      case "success":
+        return "success";
+      case "failure":
+        return this.checkFailedConclusion;
+      default:
+        return "neutral";
+    }
+  }
+  async _publishCheckRun(summary, result, body) {
+    const headSha = context.payload.pull_request?.head?.sha ?? context.sha;
+    await this.octokit.rest.checks.create({
+      owner: this.owner,
+      repo: this.repo,
+      name: this.checkName,
+      head_sha: headSha,
+      status: "completed",
+      conclusion: this._checkConclusion(result),
+      output: {
+        title: summary,
+        // The API rejects a summary over 65535 characters
+        summary: body.length > 65e3 ? `${body.slice(0, 65e3)}
+
+_\u2026 truncated_` : body
+      }
+    });
+  }
   async run() {
     const data = await this._buildData();
     const renderer = await this._renderTemplate(data);
     const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : "";
     this.boldTitle = this._boldTitle(result);
-    this.summarySuffix = this._summarySuffix(
-      this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ""
-    );
-    await this._addComment(renderer);
+    const titleSummary = this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : "";
+    this.summarySuffix = this._summarySuffix(titleSummary);
+    if (this.checkName && titleSummary) {
+      try {
+        await this._publishCheckRun(titleSummary, result, renderer);
+      } catch (error) {
+        warning(`Could not publish the check run: ${error.message}`);
+      }
+    }
+    if (Number.isNaN(this.prId) || this.prId === void 0) {
+      info("No pull request to comment on, skipping the comment");
+    } else {
+      await this._addComment(renderer);
+    }
     if (this.addSummary && renderer.trim() !== "") {
       summary.addRaw(this._sectionContent(renderer), true).write();
     }

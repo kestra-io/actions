@@ -26,6 +26,15 @@ inputs:
     description: The handlebars template to use for the comment
     required: true
 
+  check-name:
+    description: 'Also publish a check run with this name when title-summary is not empty: the summary as title, the rendered comment as body, the conclusion derived from `result`. Leave empty to skip. Works without a pull request, then only the check run is published'
+    required: false
+
+  check-failed-conclusion:
+    description: 'Conclusion of the check run when result is failure: failure, neutral or action_required. A warning or empty result is always neutral'
+    required: false
+    default: 'failure'
+
   fetch-artifact:
     description: Does we fetch the artifact from the workflow run
     required: false

@@ -31,6 +31,8 @@ class CommentUpdate {
     private readonly repo: string;
     private readonly prId: number;
     private readonly fetchUnreleasedCommits: boolean;
+    private readonly checkName: string;
+    private readonly checkFailedConclusion: string;
 
     constructor() {
         this.octokit = github.getOctokit(core.getInput('github-token'));
@@ -46,6 +48,8 @@ class CommentUpdate {
         this.addSummary = core.getBooleanInput('add-summary');
         this.files = core.getMultilineInput('files');
         this.fetchUnreleasedCommits = core.getBooleanInput('fetch-unreleased-commits');
+        this.checkName = core.getInput('check-name');
+        this.checkFailedConclusion = core.getInput('check-failed-conclusion') || 'failure';
 
         this.nunjucks = new nunjucks.Environment();
         this.nunjucks
@@ -224,17 +228,59 @@ class CommentUpdate {
         return s
     }
 
+    _checkConclusion(result: string): string {
+        switch (result.trim().toLowerCase()) {
+            case 'success':
+                return 'success';
+            case 'failure':
+                return this.checkFailedConclusion;
+            default:
+                return 'neutral';
+        }
+    }
+
+    async _publishCheckRun(summary: string, result: string, body: string): Promise<void> {
+        // On a pull_request event the workflow runs against a synthetic merge commit, not the head the pull request shows
+        const headSha = github.context.payload.pull_request?.head?.sha ?? github.context.sha;
+
+        await this.octokit.rest.checks.create({
+            owner: this.owner,
+            repo: this.repo,
+            name: this.checkName,
+            head_sha: headSha,
+            status: 'completed',
+            conclusion: this._checkConclusion(result) as any,
+            output: {
+                title: summary,
+                // The API rejects a summary over 65535 characters
+                summary: body.length > 65000 ? `${body.slice(0, 65000)}\n\n_… truncated_` : body
+            }
+        });
+    }
+
     async run(): Promise<void> {
         const data = await this._buildData();
         const renderer: string = await this._renderTemplate(data);
 
         const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : '';
         this.boldTitle = this._boldTitle(result);
-        this.summarySuffix = this._summarySuffix(
-            this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ''
-        );
+        const titleSummary = this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : '';
+        this.summarySuffix = this._summarySuffix(titleSummary);
 
-        await this._addComment(renderer);
+        if (this.checkName && titleSummary) {
+            try {
+                await this._publishCheckRun(titleSummary, result, renderer);
+            } catch (error) {
+                // A missing checks:write permission must not fail the step that already commented
+                core.warning(`Could not publish the check run: ${(error as Error).message}`);
+            }
+        }
+
+        if (Number.isNaN(this.prId) || this.prId === undefined) {
+            core.info('No pull request to comment on, skipping the comment');
+        } else {
+            await this._addComment(renderer);
+        }
 
         if (this.addSummary && renderer.trim() !== '') {
             core.summary.addRaw(this._sectionContent(renderer), true).write();
