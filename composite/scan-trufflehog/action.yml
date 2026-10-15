@@ -158,7 +158,7 @@ runs:
           | {total: length, findings: .}' "${report}" > "${RUNNER_TEMP}/trufflehog-comment.json"
         echo "total=$(jq .total "${RUNNER_TEMP}/trufflehog-comment.json")" >> "$GITHUB_OUTPUT"
 
-    - name: TruffleHog - Comment pull request and publish check run
+    - name: TruffleHog - Comment pull request
       if: ${{ !cancelled() && steps.findings.outputs.total != '' }}
       continue-on-error: true
       uses: kestra-io/actions/actions/comment-update@main
