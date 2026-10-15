@@ -61,6 +61,8 @@ runs:
       continue-on-error: true
       uses: kestra-io/actions/actions/comment-update@main
       with:
+        # Its own check run is published elsewhere, or none is wanted
+        check-run: 'false'
         github-token: ${{ inputs.github-token }}
         title: "🧪 ${{ inputs.title }}"
         result: ${{ steps.junit.outputs.total == '' && 'empty' || (steps.junit.outputs.failed > 0 && 'failure' || 'success') }}

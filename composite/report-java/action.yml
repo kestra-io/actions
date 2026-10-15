@@ -32,6 +32,8 @@ runs:
       continue-on-error: true
       if: ${{ github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
       with:
+        # Its own check run is published elsewhere, or none is wanted
+        check-run: 'false'
         github-token: ${{ fromJSON(inputs.secrets).GITHUB_TOKEN }}
         title: "🧪 Java Unit Tests"
         result: ${{ steps.test-report.outputs.total == '' && 'empty' || (steps.test-report.outputs.failed > 0 && 'failure' || 'success') }}

@@ -149,12 +149,13 @@ runs:
         echo "total=$(jq .total "${RUNNER_TEMP}/trufflehog-comment.json")" >> "$GITHUB_OUTPUT"
 
     - name: TruffleHog - Comment pull request
-      if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.findings.outputs.total != '' }}
+      if: ${{ !cancelled() && steps.findings.outputs.total != '' }}
       continue-on-error: true
       uses: kestra-io/actions/actions/comment-update@main
       with:
         github-token: ${{ inputs.github-token }}
         title: "🐷 TruffleHog"
+        skip-failure: 'true'
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} secrets', steps.findings.outputs.total) }}
         files: |

@@ -30514,15 +30514,6 @@ var __awaiter$f = (undefined && undefined.__awaiter) || function (thisArg, _argu
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-function getAuthString(token, options) {
-    if (!token && !options.auth) {
-        throw new Error('Parameter token or opts.auth is required');
-    }
-    else if (token && options.auth) {
-        throw new Error('Parameters token and opts.auth may not both be specified');
-    }
-    return typeof options.auth === 'string' ? options.auth : `token ${token}`;
-}
 function getProxyAgent(destinationUrl) {
     const hc = new libExports.HttpClient();
     return hc.getAgent(destinationUrl);
@@ -30540,19 +30531,6 @@ function getProxyFetch(destinationUrl) {
 }
 function getApiBaseUrl() {
     return process.env['GITHUB_API_URL'] || 'https://api.github.com';
-}
-function getUserAgentWithOrchestrationId(baseUserAgent) {
-    var _a;
-    const orchId = (_a = process.env['ACTIONS_ORCHESTRATION_ID']) === null || _a === void 0 ? void 0 : _a.trim();
-    if (orchId) {
-        const sanitizedId = orchId.replace(/[^a-z0-9_.-]/gi, '_');
-        const tag = `actions_orchestration_id/${sanitizedId}`;
-        if (baseUserAgent === null || baseUserAgent === void 0 ? void 0 : baseUserAgent.includes(tag))
-            return baseUserAgent;
-        const ua = baseUserAgent ? `${baseUserAgent} ` : '';
-        return `${ua}${tag}`;
-    }
-    return baseUserAgent;
 }
 
 function getUserAgent() {
@@ -34914,41 +34892,10 @@ const defaults$1 = {
         fetch: getProxyFetch(baseUrl)
     }
 };
-const GitHub = Octokit.plugin(restEndpointMethods, paginateRest).defaults(defaults$1);
-/**
- * Convience function to correctly format Octokit Options to pass into the constructor.
- *
- * @param     token    the repo PAT or GITHUB_TOKEN
- * @param     options  other options to set
- */
-function getOctokitOptions(token, options) {
-    const opts = Object.assign({}, {}); // Shallow clone - don't mutate the object provided by the caller
-    // Auth
-    const auth = getAuthString(token, opts);
-    if (auth) {
-        opts.auth = auth;
-    }
-    // Orchestration ID
-    const userAgent = getUserAgentWithOrchestrationId(opts.userAgent);
-    if (userAgent) {
-        opts.userAgent = userAgent;
-    }
-    return opts;
-}
+Octokit.plugin(restEndpointMethods, paginateRest).defaults(defaults$1);
 
 const context$2 = new Context();
-/**
- * Returns a hydrated octokit ready to use for GitHub Actions
- *
- * @param     token    the repo PAT or GITHUB_TOKEN
- * @param     options  other options to set
- */
-function getOctokit(token, options, ...additionalPlugins) {
-    const GitHubWithPlugins = GitHub.plugin(...additionalPlugins);
-    return new GitHubWithPlugins(getOctokitOptions(token));
-}
 
-const ANNOTATIONS_PER_REQUEST = 50;
 const MAX_ANNOTATIONS = 1e3;
 const LEVELS = {
   ERROR: "failure",
@@ -34974,15 +34921,6 @@ function toAnnotation(result) {
 }
 function toAnnotations(results, max = MAX_ANNOTATIONS) {
   return results.slice(0, max).map(toAnnotation);
-}
-function chunk(items, size) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
-function annotationBatches(annotations) {
-  const batches = chunk(annotations, ANNOTATIONS_PER_REQUEST);
-  return batches.length > 0 ? batches : [[]];
 }
 
 async function git(args) {
@@ -35017,36 +34955,6 @@ async function resolveBaseline(context) {
     return null;
   }
   return baseline;
-}
-
-async function publishCheckRun(options) {
-  const octokit = getOctokit(options.token);
-  const { owner, repo } = context$2.repo;
-  const headSha = context$2.payload.pull_request?.head?.sha ?? context$2.sha;
-  const batches = annotationBatches(options.annotations);
-  const [first, ...rest] = batches;
-  const created = await octokit.rest.checks.create({
-    owner,
-    repo,
-    name: options.name,
-    head_sha: headSha,
-    status: "completed",
-    conclusion: options.conclusion,
-    output: {
-      title: options.title,
-      summary: options.summary,
-      annotations: first
-    }
-  });
-  for (const batch of rest) {
-    await octokit.rest.checks.update({
-      owner,
-      repo,
-      check_run_id: created.data.id,
-      output: { title: options.title, summary: options.summary, annotations: batch }
-    });
-  }
-  info(`Published ${options.annotations.length} annotation(s) to check run "${options.name}".`);
 }
 
 const ALIAS = Symbol.for('yaml.alias');
@@ -96849,7 +96757,6 @@ async function run() {
     warning(`exclude-rules entry '${id}' has no dots; --exclude-rule matches the full rule id, so this drops nothing.`);
   }
   const maxRows = Number(getInput("comment-max-rows") || "50");
-  const checkName = getInput("check-name") || "OpenGrep";
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const jsonOutput = path$2.join(temp, "opengrep.json");
   const sarifOutput = path$2.join(temp, "opengrep.sarif");
@@ -96931,22 +96838,9 @@ async function run() {
   setOutput("findings-count", String(summary.total));
   setOutput("markdown", markdown);
   setOutput("skipped", "false");
-  if (token) {
-    try {
-      await publishCheckRun({
-        token,
-        name: checkName,
-        title: `${summary.total} finding(s)`,
-        summary: markdown,
-        annotations: toAnnotations(report.results ?? []),
-        conclusion: blocking > 0 ? "failure" : "success"
-      });
-    } catch (error) {
-      warning(`Could not publish annotations: ${error.message}`);
-    }
-  } else {
-    info("No github-token supplied, skipping check run annotations.");
-  }
+  const annotationsFile = path$2.join(temp, "opengrep-annotations.json");
+  await fs$1.writeFile(annotationsFile, JSON.stringify(toAnnotations(report.results ?? [])));
+  setOutput("annotations-file", annotationsFile);
   if (blocking > 0) {
     setFailed(`OpenGrep found ${blocking} finding(s) at or above ${failOn}.`);
   }

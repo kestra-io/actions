@@ -40739,6 +40739,9 @@ class CommentUpdate {
   repo;
   prId;
   fetchUnreleasedCommits;
+  checkRun;
+  checkAnnotations;
+  skipFailure;
   constructor() {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
@@ -40750,6 +40753,9 @@ class CommentUpdate {
     this.addSummary = getBooleanInput("add-summary");
     this.files = getMultilineInput("files");
     this.fetchUnreleasedCommits = getBooleanInput("fetch-unreleased-commits");
+    this.checkRun = getBooleanInput("check-run");
+    this.checkAnnotations = getInput("check-annotations");
+    this.skipFailure = getBooleanInput("skip-failure");
     this.nunjucks = new nunjucks.Environment();
     this.nunjucks.addFilter("prettyDate", humanReadableDate).addFilter("prettySize", humanReadableSize);
     const ownerOverride = getInput("owner");
@@ -40897,15 +40903,70 @@ ${commentContent}`
 ${s}`);
     return s;
   }
+  _checkConclusion(result) {
+    switch (result.trim().toLowerCase()) {
+      case "success":
+        return "success";
+      case "failure":
+        return this.skipFailure ? "neutral" : "failure";
+      case "empty":
+        return "skipped";
+      default:
+        return "neutral";
+    }
+  }
+  async _publishCheckRun(summary, result, body) {
+    const headSha = context.payload.pull_request?.head?.sha ?? context.sha;
+    const name = this.title.replace(/^[^\p{L}\p{N}]+/u, "");
+    const output = {
+      title: `${name} (${summary})`,
+      // The API rejects a summary over 65535 characters
+      summary: body.length > 65e3 ? `${body.slice(0, 65e3)}
+
+_\u2026 truncated_` : body
+    };
+    const annotations = this.checkAnnotations ? JSON.parse(fs.readFileSync(this.checkAnnotations, { encoding: "utf8" })) : [];
+    const [first = [], ...rest] = Array.from(
+      { length: Math.ceil(annotations.length / 50) },
+      (_, i) => annotations.slice(i * 50, (i + 1) * 50)
+    );
+    const created = await this.octokit.rest.checks.create({
+      owner: this.owner,
+      repo: this.repo,
+      name,
+      head_sha: headSha,
+      status: "completed",
+      conclusion: this._checkConclusion(result),
+      output: { ...output, annotations: first }
+    });
+    for (const batch of rest) {
+      await this.octokit.rest.checks.update({
+        owner: this.owner,
+        repo: this.repo,
+        check_run_id: created.data.id,
+        output: { ...output, annotations: batch }
+      });
+    }
+  }
   async run() {
     const data = await this._buildData();
     const renderer = await this._renderTemplate(data);
     const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : "";
     this.boldTitle = this._boldTitle(result);
-    this.summarySuffix = this._summarySuffix(
-      this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ""
-    );
-    await this._addComment(renderer);
+    const titleSummary = this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : "";
+    this.summarySuffix = this._summarySuffix(titleSummary);
+    if (this.checkRun && titleSummary) {
+      try {
+        await this._publishCheckRun(titleSummary, result, renderer);
+      } catch (error) {
+        warning(`Could not publish the check run: ${error.message}`);
+      }
+    }
+    if (Number.isNaN(this.prId) || this.prId === void 0) {
+      info("No pull request to comment on, skipping the comment");
+    } else {
+      await this._addComment(renderer);
+    }
     if (this.addSummary && renderer.trim() !== "") {
       summary.addRaw(this._sectionContent(renderer), true).write();
     }

@@ -31,6 +31,9 @@ class CommentUpdate {
     private readonly repo: string;
     private readonly prId: number;
     private readonly fetchUnreleasedCommits: boolean;
+    private readonly checkRun: boolean;
+    private readonly checkAnnotations: string;
+    private readonly skipFailure: boolean;
 
     constructor() {
         this.octokit = github.getOctokit(core.getInput('github-token'));
@@ -46,6 +49,9 @@ class CommentUpdate {
         this.addSummary = core.getBooleanInput('add-summary');
         this.files = core.getMultilineInput('files');
         this.fetchUnreleasedCommits = core.getBooleanInput('fetch-unreleased-commits');
+        this.checkRun = core.getBooleanInput('check-run');
+        this.checkAnnotations = core.getInput('check-annotations');
+        this.skipFailure = core.getBooleanInput('skip-failure');
 
         this.nunjucks = new nunjucks.Environment();
         this.nunjucks
@@ -224,17 +230,82 @@ class CommentUpdate {
         return s
     }
 
+    _checkConclusion(result: string): string {
+        switch (result.trim().toLowerCase()) {
+            case 'success':
+                return 'success';
+            case 'failure':
+                return this.skipFailure ? 'neutral' : 'failure';
+            case 'empty':
+                return 'skipped';
+            default:
+                return 'neutral';
+        }
+    }
+
+    async _publishCheckRun(summary: string, result: string, body: string): Promise<void> {
+        // On a pull_request event the workflow runs against a synthetic merge commit, not the head the pull request shows
+        const headSha = github.context.payload.pull_request?.head?.sha ?? github.context.sha;
+        // Same header as the comment, without its leading emoji
+        const name = this.title.replace(/^[^\p{L}\p{N}]+/u, '');
+        const output = {
+            title: `${name} (${summary})`,
+            // The API rejects a summary over 65535 characters
+            summary: body.length > 65000 ? `${body.slice(0, 65000)}\n\n_… truncated_` : body
+        };
+
+        const annotations: any[] = this.checkAnnotations
+            ? JSON.parse(fs.readFileSync(this.checkAnnotations, { encoding: 'utf8' }))
+            : [];
+        // The Checks API takes at most 50 annotations per request: the first goes with the create, the rest with updates
+        const [first = [], ...rest] = Array.from(
+            {length: Math.ceil(annotations.length / 50)},
+            (_, i) => annotations.slice(i * 50, (i + 1) * 50)
+        );
+
+        const created = await this.octokit.rest.checks.create({
+            owner: this.owner,
+            repo: this.repo,
+            name,
+            head_sha: headSha,
+            status: 'completed',
+            conclusion: this._checkConclusion(result) as any,
+            output: {...output, annotations: first}
+        });
+
+        for (const batch of rest) {
+            await this.octokit.rest.checks.update({
+                owner: this.owner,
+                repo: this.repo,
+                check_run_id: created.data.id,
+                output: {...output, annotations: batch}
+            });
+        }
+    }
+
     async run(): Promise<void> {
         const data = await this._buildData();
         const renderer: string = await this._renderTemplate(data);
 
         const result = this.resultTemplate ? this.nunjucks.renderString(this.resultTemplate, data).trim() : '';
         this.boldTitle = this._boldTitle(result);
-        this.summarySuffix = this._summarySuffix(
-            this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : ''
-        );
+        const titleSummary = this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : '';
+        this.summarySuffix = this._summarySuffix(titleSummary);
 
-        await this._addComment(renderer);
+        if (this.checkRun && titleSummary) {
+            try {
+                await this._publishCheckRun(titleSummary, result, renderer);
+            } catch (error) {
+                // A missing checks:write permission must not fail the step that already commented
+                core.warning(`Could not publish the check run: ${(error as Error).message}`);
+            }
+        }
+
+        if (Number.isNaN(this.prId) || this.prId === undefined) {
+            core.info('No pull request to comment on, skipping the comment');
+        } else {
+            await this._addComment(renderer);
+        }
 
         if (this.addSummary && renderer.trim() !== '') {
             core.summary.addRaw(this._sectionContent(renderer), true).write();

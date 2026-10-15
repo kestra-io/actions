@@ -20,6 +20,8 @@ runs:
       uses: kestra-io/actions/actions/comment-update@main
       continue-on-error: true
       with:
+        # Its own check run is published elsewhere, or none is wanted
+        check-run: 'false'
         github-token: ${{ fromJson(inputs.secrets).GITHUB_TOKEN }}
         title: "📦 Artifacts"
         title-summary: "1 jar"

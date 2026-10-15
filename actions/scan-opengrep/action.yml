@@ -1,5 +1,5 @@
 name: OpenGrep Scan
-description: Static analysis with OpenGrep, reported as check run annotations
+description: Static analysis with OpenGrep, reported as check run annotations, published by comment-update
 
 runs:
   using: node24
@@ -7,7 +7,7 @@ runs:
 
 inputs:
   github-token:
-    description: Token used to publish the check run annotations. Leave empty to skip annotations
+    description: Token used to query the OpenGrep releases API
     required: false
     default: ''
 
@@ -56,17 +56,15 @@ inputs:
     required: false
     default: '50'
 
-  check-name:
-    description: Name of the check run the annotations are attached to
-    required: false
-    default: 'OpenGrep'
-
 outputs:
   json-file:
     description: Absolute path to the OpenGrep JSON report
 
   sarif-file:
     description: Absolute path to the OpenGrep SARIF report
+
+  annotations-file:
+    description: Absolute path to the check run annotations as JSON, for comment-update's check-annotations input
 
   comment-file:
     description: Absolute path to the flattened findings used to render the pull request comment

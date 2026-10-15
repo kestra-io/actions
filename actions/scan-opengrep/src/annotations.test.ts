@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  ANNOTATIONS_PER_REQUEST,
-  annotationBatches,
-  chunk,
   MAX_ANNOTATIONS,
   toAnnotation,
   toAnnotations
@@ -63,24 +60,4 @@ test('toAnnotations caps the list at what GitHub will store', () => {
 
 test('toAnnotations honours an explicit cap', () => {
   assert.equal(toAnnotations([result('ERROR'), result('ERROR')], 1).length, 1)
-})
-
-test('chunk splits evenly and keeps a short final chunk', () => {
-  assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]])
-})
-
-test('chunk returns nothing for an empty list and rejects a non-positive size', () => {
-  assert.deepEqual(chunk([], 10), [])
-  assert.throws(() => chunk([1], 0), /chunk size must be positive/)
-})
-
-test('annotationBatches respects the 50-per-request Checks API limit', () => {
-  const annotations = toAnnotations(Array.from({ length: 120 }, () => result('WARNING')))
-  const batches = annotationBatches(annotations)
-  assert.deepEqual(batches.map(b => b.length), [50, 50, 20])
-  assert.equal(batches[0]!.length, ANNOTATIONS_PER_REQUEST)
-})
-
-test('annotationBatches still yields one empty batch, so a clean scan publishes a check run', () => {
-  assert.deepEqual(annotationBatches([]), [[]])
 })

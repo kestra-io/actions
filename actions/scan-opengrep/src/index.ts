@@ -5,7 +5,6 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { toAnnotations } from './annotations.js'
 import { resolveBaseline } from './baseline.js'
-import { publishCheckRun } from './checks.js'
 import { actionRepoRoot, loadConfig, resolveSettings, shortRuleIds } from './config.js'
 import {
   blockingCount,
@@ -57,7 +56,6 @@ async function run(): Promise<void> {
   }
 
   const maxRows = Number(core.getInput('comment-max-rows') || '50')
-  const checkName = core.getInput('check-name') || 'OpenGrep'
 
   const temp = process.env.RUNNER_TEMP ?? process.cwd()
   const jsonOutput = path.join(temp, 'opengrep.json')
@@ -155,8 +153,8 @@ async function run(): Promise<void> {
     artifactName: ARTIFACT_NAME
   })
 
-  // No core.summary write here: the pull request comment (comment-update, driven by
-  // opengrep-comment.json) and the check run summary below already carry this markdown.
+  // No core.summary write here: the pull request comment and the check run (comment-update, driven by
+  // opengrep-comment.json and opengrep-annotations.json) already carry this markdown.
   await fs.writeFile(path.join(temp, 'opengrep-comment.json'), JSON.stringify(model, null, 2))
 
   const blocking = blockingCount(summary, failOn)
@@ -169,24 +167,9 @@ async function run(): Promise<void> {
   core.setOutput('markdown', markdown)
   core.setOutput('skipped', 'false')
 
-  if (token) {
-    try {
-      await publishCheckRun({
-        token,
-        name: checkName,
-        title: `${summary.total} finding(s)`,
-        summary: markdown,
-        annotations: toAnnotations(report.results ?? []),
-        conclusion: blocking > 0 ? 'failure' : 'success'
-      })
-    } catch (error) {
-      // Annotations are a reporting nicety; the summary, outputs and artifact already carry the
-      // findings, so a missing checks:write permission must not fail an otherwise clean scan.
-      core.warning(`Could not publish annotations: ${(error as Error).message}`)
-    }
-  } else {
-    core.info('No github-token supplied, skipping check run annotations.')
-  }
+  const annotationsFile = path.join(temp, 'opengrep-annotations.json')
+  await fs.writeFile(annotationsFile, JSON.stringify(toAnnotations(report.results ?? [])))
+  core.setOutput('annotations-file', annotationsFile)
 
   // Last, so every report above is published before this can end the step.
   if (blocking > 0) {

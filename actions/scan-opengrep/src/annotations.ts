@@ -14,11 +14,10 @@ export interface Annotation {
 }
 
 /**
- * The Checks API accepts at most 50 annotations per request, and GitHub stops storing them past
- * 1000 on a single check run. Both limits are why this exists instead of `::warning` workflow
- * commands, which are capped at 10 per step and 50 per job — unusable for a full-tree scan.
+ * GitHub stops storing annotations past 1000 on a single check run, which is why these go to a check
+ * run (published by comment-update) instead of `::warning` workflow commands, capped at 10 per step
+ * and 50 per job — unusable for a full-tree scan.
  */
-export const ANNOTATIONS_PER_REQUEST = 50
 export const MAX_ANNOTATIONS = 1000
 
 const LEVELS: Record<Severity, AnnotationLevel> = {
@@ -51,20 +50,4 @@ export function toAnnotation(result: OpengrepResult): Annotation {
 
 export function toAnnotations(results: OpengrepResult[], max = MAX_ANNOTATIONS): Annotation[] {
   return results.slice(0, max).map(toAnnotation)
-}
-
-export function chunk<T>(items: T[], size: number): T[][] {
-  if (size <= 0) throw new Error(`chunk size must be positive, got ${size}`)
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
-  return chunks
-}
-
-/**
- * An empty annotation list still needs one request, so the check run exists and reports "no
- * findings" rather than silently not appearing.
- */
-export function annotationBatches(annotations: Annotation[]): Annotation[][] {
-  const batches = chunk(annotations, ANNOTATIONS_PER_REQUEST)
-  return batches.length > 0 ? batches : [[]]
 }

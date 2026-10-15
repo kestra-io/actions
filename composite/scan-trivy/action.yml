@@ -15,6 +15,11 @@ inputs:
     description: 'The file or directory to scan, e.g. ./ui/package-lock.json or build/reports/cyclonedx/bom.json'
     required: true
 
+  github-token:
+    description: 'Token used to publish the check run'
+    required: false
+    default: ${{ github.token }}
+
   elastic-endpoint:
     description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
     required: false
@@ -89,6 +94,43 @@ runs:
         trivy convert --quiet --format sarif \
           --output "${{ github.workspace }}/trivy-result.sarif" \
           "${{ github.workspace }}/trivy-result.json"
+
+    - name: Trivy - Prepare check run
+      id: findings
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      run: |
+        jq '[.Results[]? | .Target as $target | .Vulnerabilities[]? | {severity: .Severity, id: .VulnerabilityID, package: .PkgName, installed: .InstalledVersion, fixed: (.FixedVersion // ""), target: $target}]
+          | {total: length, findings: .[0:50]}' "${{ github.workspace }}/trivy-result.json" > "${RUNNER_TEMP}/trivy-comment.json"
+        echo "total=$(jq .total "${RUNNER_TEMP}/trivy-comment.json")" >> "$GITHUB_OUTPUT"
+
+    # Default branch and releases/* only, so there is no pull request to comment on: this publishes the check run.
+    - name: Trivy - Publish check run
+      if: ${{ !cancelled() && steps.findings.outputs.total != '' }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        title: "Trivy"
+        skip-failure: 'true'
+        result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
+        title-summary: ${{ format('{0} vulnerabilities', steps.findings.outputs.total) }}
+        add-summary: 'false'
+        files: |
+          ${{ runner.temp }}/trivy-comment.json
+        template: |
+          {% if files[0] and files[0].total > 0 %}
+          | Severity | Id | Package | Installed | Fixed |
+          | :--- | :--- | :--- | :--- | :--- |
+          {%- for finding in files[0].findings %}
+          | {{ finding.severity }} | {{ finding.id }} | `{{ finding.package }}` | {{ finding.installed }} | {{ finding.fixed }} |
+          {%- endfor %}
+          {% if files[0].total > 50 %}
+          _… and {{ files[0].total - 50 }} more._
+          {% endif %}
+          {% else %}
+          No vulnerability found.
+          {% endif %}
 
     - name: Trivy - Report findings to Elastic
       if: ${{ !cancelled() && inputs.elastic-endpoint != '' && steps.trivy.outcome == 'success' }}
