@@ -251,7 +251,8 @@ class CommentUpdate {
             status: 'completed',
             conclusion: this._checkConclusion(result) as any,
             output: {
-                title: summary,
+                // Same header as the comment, without its leading emoji
+                title: `${this.title.replace(/^[^\p{L}\p{N}]+/u, '')} (${summary})`,
                 // The API rejects a summary over 65535 characters
                 summary: body.length > 65000 ? `${body.slice(0, 65000)}\n\n_… truncated_` : body
             }

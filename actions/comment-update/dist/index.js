@@ -40921,7 +40921,8 @@ ${s}`);
       status: "completed",
       conclusion: this._checkConclusion(result),
       output: {
-        title: summary,
+        // Same header as the comment, without its leading emoji
+        title: `${this.title.replace(/^[^\p{L}\p{N}]+/u, "")} (${summary})`,
         // The API rejects a summary over 65535 characters
         summary: body.length > 65e3 ? `${body.slice(0, 65e3)}
 
