@@ -20,11 +20,6 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-  check-failed-conclusion:
-    description: 'Conclusion of the check run when a vulnerability is found: neutral, failure or action_required'
-    required: false
-    default: 'neutral'
-
   elastic-endpoint:
     description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
     required: false
@@ -118,7 +113,6 @@ runs:
         github-token: ${{ inputs.github-token }}
         title: "Trivy"
         check-name: Trivy
-        check-failed-conclusion: ${{ inputs.check-failed-conclusion }}
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} vulnerabilities', steps.findings.outputs.total) }}
         add-summary: 'false'

@@ -40740,7 +40740,6 @@ class CommentUpdate {
   prId;
   fetchUnreleasedCommits;
   checkName;
-  checkFailedConclusion;
   constructor() {
     this.octokit = getOctokit(getInput("github-token"));
     this.title = getInput("title");
@@ -40753,7 +40752,6 @@ class CommentUpdate {
     this.files = getMultilineInput("files");
     this.fetchUnreleasedCommits = getBooleanInput("fetch-unreleased-commits");
     this.checkName = getInput("check-name");
-    this.checkFailedConclusion = getInput("check-failed-conclusion") || "failure";
     this.nunjucks = new nunjucks.Environment();
     this.nunjucks.addFilter("prettyDate", humanReadableDate).addFilter("prettySize", humanReadableSize);
     const ownerOverride = getInput("owner");
@@ -40906,7 +40904,9 @@ ${s}`);
       case "success":
         return "success";
       case "failure":
-        return this.checkFailedConclusion;
+        return "failure";
+      case "empty":
+        return "skipped";
       default:
         return "neutral";
     }

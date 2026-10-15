@@ -32,7 +32,6 @@ class CommentUpdate {
     private readonly prId: number;
     private readonly fetchUnreleasedCommits: boolean;
     private readonly checkName: string;
-    private readonly checkFailedConclusion: string;
 
     constructor() {
         this.octokit = github.getOctokit(core.getInput('github-token'));
@@ -49,7 +48,6 @@ class CommentUpdate {
         this.files = core.getMultilineInput('files');
         this.fetchUnreleasedCommits = core.getBooleanInput('fetch-unreleased-commits');
         this.checkName = core.getInput('check-name');
-        this.checkFailedConclusion = core.getInput('check-failed-conclusion') || 'failure';
 
         this.nunjucks = new nunjucks.Environment();
         this.nunjucks
@@ -233,7 +231,9 @@ class CommentUpdate {
             case 'success':
                 return 'success';
             case 'failure':
-                return this.checkFailedConclusion;
+                return 'failure';
+            case 'empty':
+                return 'skipped';
             default:
                 return 'neutral';
         }

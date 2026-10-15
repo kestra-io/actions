@@ -25,11 +25,6 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-  check-failed-conclusion:
-    description: 'Conclusion of the check run when a secret is found: neutral, failure or action_required'
-    required: false
-    default: 'neutral'
-
   elastic-endpoint:
     description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
     required: false
@@ -161,7 +156,6 @@ runs:
         github-token: ${{ inputs.github-token }}
         title: "🐷 TruffleHog"
         check-name: TruffleHog
-        check-failed-conclusion: ${{ inputs.check-failed-conclusion }}
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} secrets', steps.findings.outputs.total) }}
         files: |
