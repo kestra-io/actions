@@ -97,7 +97,6 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "📊 Coverage — ${{ inputs.component }}"
-        check-run: 'true'
         # Not `skipped`: that's also 'true' on every dry run, which is now the normal case for a
         # pull request. documents-count == 0 is the real "no coverage data" signal.
         result: ${{ steps.coverage.outputs['documents-count'] == '0' && 'empty' || (github.event_name == 'pull_request' && (startsWith(steps.coverage.outputs.delta, '-') && 'warning' || 'success') || (steps.coverage.outputs.line-rate >= 75 && 'success' || 'warning')) }}
