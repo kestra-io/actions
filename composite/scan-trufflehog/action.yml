@@ -25,11 +25,6 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-  check-name:
-    description: 'Name of the check run'
-    required: false
-    default: 'TruffleHog'
-
   check-failed-conclusion:
     description: 'Conclusion of the check run when a secret is found: neutral, failure or action_required'
     required: false
@@ -165,7 +160,7 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "🐷 TruffleHog"
-        check-name: ${{ inputs.check-name }}
+        check-name: TruffleHog
         check-failed-conclusion: ${{ inputs.check-failed-conclusion }}
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} secrets', steps.findings.outputs.total) }}

@@ -27,11 +27,6 @@ inputs:
     required: false
     default: ''
 
-  check-name:
-    description: 'Name of the check run, defaults to "Coverage - <component>"'
-    required: false
-    default: ''
-
   namespace:
     description: 'Data stream namespace'
     required: false
@@ -102,7 +97,7 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "📊 Coverage — ${{ inputs.component }}"
-        check-name: ${{ inputs.check-name != '' && inputs.check-name || format('Coverage - {0}', inputs.component) }}
+        check-name: ${{ format('Coverage - {0}', inputs.component) }}
         # Not `skipped`: that's also 'true' on every dry run, which is now the normal case for a
         # pull request. documents-count == 0 is the real "no coverage data" signal.
         result: ${{ steps.coverage.outputs['documents-count'] == '0' && 'empty' || (startsWith(steps.coverage.outputs.delta, '-') && 'warning' || 'success') }}

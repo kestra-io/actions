@@ -20,11 +20,6 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-  check-name:
-    description: 'Name of the check run'
-    required: false
-    default: 'Trivy'
-
   check-failed-conclusion:
     description: 'Conclusion of the check run when a vulnerability is found: neutral, failure or action_required'
     required: false
@@ -122,7 +117,7 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "Trivy"
-        check-name: ${{ inputs.check-name }}
+        check-name: Trivy
         check-failed-conclusion: ${{ inputs.check-failed-conclusion }}
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} vulnerabilities', steps.findings.outputs.total) }}
