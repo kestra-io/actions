@@ -1,0 +1,48 @@
+name: Security scan
+
+on:
+  workflow_call:
+    inputs:
+      ee:
+        description: "Scan kestra-ee instead of kestra: its UI lives in ui-ee, and kestra OSS is checked out next to it for the Gradle build"
+        required: false
+        type: boolean
+        default: false
+      metadata:
+        description: "Newline separated key=value pairs added to every finding of every scanner. A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      OTLP_ENDPOINT:
+        required: false
+      OTLP_HEADERS:
+        required: false
+      GCP_SERVICE_ACCOUNT:
+        required: false
+      GOOGLE_SERVICE_ACCOUNT:
+        description: "Only read for kestra-ee, by its Gradle build"
+        required: false
+
+concurrency:
+  group: kestra-security-scan-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  packages: read
+
+jobs:
+  scan:
+    name: Security scan
+    uses: kestra-io/actions/.github/workflows/security-scan.yml@main
+    with:
+      components: |
+        frontend=${{ inputs.ee && 'ui-ee' || 'ui' }}/**
+        backend=**
+      npm-lockfile: ${{ inputs.ee && 'ui-ee' || 'ui' }}/package-lock.json
+      kestra-ee: ${{ inputs.ee }}
+      metadata: ${{ inputs.metadata }}
+    secrets: inherit

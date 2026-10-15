@@ -1,0 +1,176 @@
+name: Security scan
+
+# Trivy (Java SBOM and npm lockfile), OpenGrep and TruffleHog in their own job, so each CI calls one
+# workflow instead of repeating the scan steps. Each scanner gates itself on the branch: Trivy only
+# runs on the default branch and releases/*, OpenGrep and TruffleHog run everywhere and ship to
+# Elastic on the default branch only.
+
+on:
+  workflow_call:
+    inputs:
+      components:
+        description: >-
+          Newline separated component=glob pairs matched against each finding's file, first match wins,
+          e.g. frontend=ui/** then backend=**, or plugin=** for a single component. A finding matching
+          no glob gets no component
+        required: true
+        type: string
+      java-sbom-path:
+        description: "SBOM written by `./gradlew cyclonedxBom`, generated and scanned with Trivy. Skipped when empty"
+        required: false
+        type: string
+        default: 'build/sbom/java.json'
+      java-version:
+        description: "Java version used to generate the SBOM"
+        required: false
+        type: string
+        default: '25'
+      npm-lockfile:
+        description: "package-lock.json to scan with Trivy. Skipped when empty or missing"
+        required: false
+        type: string
+        default: ''
+      metadata:
+        description: "Newline separated key=value pairs added to every finding of every scanner. A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
+      kestra-ee:
+        description: "Check out kestra OSS next to the repository, as the kestra-ee Gradle build includes its projects"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      OTLP_ENDPOINT:
+        required: false
+      OTLP_HEADERS:
+        required: false
+      GCP_SERVICE_ACCOUNT:
+        required: false
+      GOOGLE_SERVICE_ACCOUNT:
+        description: "Base64 service account the kestra-ee Gradle build reads its private Maven repository with"
+        required: false
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  packages: read
+
+jobs:
+  scan:
+    name: Security scan
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
+    env:
+      OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+      SBOM_ENABLED: ${{ inputs.java-sbom-path != '' && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
+    steps:
+      - name: Setup - OpenTelemetry
+        uses: kestra-io/actions/actions/otel-instrument@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          host-metrics-enabled: 'true'
+          gradle-tracing-enabled: ${{ inputs.java-sbom-path != '' }}
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
+
+      # fetch-depth: 0 so OpenGrep and TruffleHog can diff a pull request against its base.
+      - name: Checkout - Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Checkout - OSS
+        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' }}
+        uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+
+      # Out of the workspace, where settings.gradle expects it, and so OpenGrep and TruffleHog don't scan OSS too.
+      - name: Checkout - Move OSS next to the repository
+        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' }}
+        shell: bash
+        run: mv kestra ../kestra
+
+      - name: Setup - Build
+        if: ${{ env.SBOM_ENABLED == 'true' }}
+        uses: kestra-io/actions/composite/setup-build@main
+        with:
+          java-enabled: true
+          java-version: ${{ inputs.java-version }}
+
+      # Route Gradle Maven reads through the GCP maven-remote caching proxy (avoids Maven Central 429s)
+      - name: Setup - Maven proxy
+        if: ${{ env.SBOM_ENABLED == 'true' }}
+        uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+        with:
+          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # CycloneDX SBOM of the runtime classpath, written by io.kestra.gradle.repository-conventions.
+      # continue-on-error so a repository on an older version, without the task, doesn't fail the build.
+      # The service account goes to RUNNER_TEMP, never the workspace TruffleHog scans.
+      - name: Trivy - Generate CycloneDX
+        id: sbom
+        if: ${{ env.SBOM_ENABLED == 'true' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "${GOOGLE_SERVICE_ACCOUNT}" ]; then
+            trap 'rm -f "${RUNNER_TEMP}/gcp-service-account.json"' EXIT
+            echo "${GOOGLE_SERVICE_ACCOUNT}" | base64 -d > "${RUNNER_TEMP}/gcp-service-account.json"
+            export GOOGLE_APPLICATION_CREDENTIALS="${RUNNER_TEMP}/gcp-service-account.json"
+          fi
+          ./gradlew cyclonedxBom --console=plain
+
+      - name: Trivy - Scan Java dependencies
+        id: trivy
+        if: ${{ !cancelled() && steps.sbom.outcome == 'success' && hashFiles(inputs.java-sbom-path) != '' }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-type: sbom
+          scan-path: ${{ inputs.java-sbom-path }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            ${{ inputs.metadata }}
+            target=java-dependencies
+          components: ${{ inputs.components }}
+
+      - name: Trivy - Scan npm dependencies
+        id: trivy-npm
+        if: ${{ !cancelled() && inputs.npm-lockfile != '' && hashFiles(inputs.npm-lockfile) != '' }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-path: ${{ inputs.npm-lockfile }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            ${{ inputs.metadata }}
+            target=npm-dependencies
+          components: ${{ inputs.components }}
+
+      - name: OpenGrep - Static analysis
+        id: opengrep
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-opengrep@main
+        with:
+          github-token: ${{ github.token }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: ${{ inputs.metadata }}
+          components: ${{ inputs.components }}
+
+      # Secret scan. Diff on a pull request, the whole tree otherwise.
+      - name: TruffleHog - Secret scan
+        if: ${{ !cancelled() }}
+        uses: kestra-io/actions/composite/scan-trufflehog@main
+        with:
+          github-token: ${{ github.token }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: ${{ inputs.metadata }}
+          components: ${{ inputs.components }}

@@ -68,6 +68,23 @@ inputs:
     required: false
     default: ''
 
+  components:
+    description: >-
+      Newline separated component=glob pairs matched against each finding's repository relative
+      file, the first match winning (frontend=ui/** then backend=**). The match sets
+      labels.component, overriding a component= in metadata; a finding with no file or no match
+      keeps the metadata one. Lets one scan of a repository holding several components label each
+      finding with its own
+    required: false
+    default: ''
+
+  components-path:
+    description: >-
+      Match this path against components instead of each finding's file. For a report whose
+      findings carry no source path, e.g. Trivy, whose target is an ecosystem: pass the scanned file
+    required: false
+    default: ''
+
   tags:
     description: Comma separated values for the ECS tags field, added to every document
     required: false
