@@ -40739,7 +40739,8 @@ class CommentUpdate {
   repo;
   prId;
   fetchUnreleasedCommits;
-  checkName;
+  checkRun;
+  checkAnnotations;
   skipFailure;
   constructor() {
     this.octokit = getOctokit(getInput("github-token"));
@@ -40752,7 +40753,8 @@ class CommentUpdate {
     this.addSummary = getBooleanInput("add-summary");
     this.files = getMultilineInput("files");
     this.fetchUnreleasedCommits = getBooleanInput("fetch-unreleased-commits");
-    this.checkName = getInput("check-name");
+    this.checkRun = getBooleanInput("check-run");
+    this.checkAnnotations = getInput("check-annotations");
     this.skipFailure = getBooleanInput("skip-failure");
     this.nunjucks = new nunjucks.Environment();
     this.nunjucks.addFilter("prettyDate", humanReadableDate).addFilter("prettySize", humanReadableSize);
@@ -40915,22 +40917,36 @@ ${s}`);
   }
   async _publishCheckRun(summary, result, body) {
     const headSha = context.payload.pull_request?.head?.sha ?? context.sha;
-    await this.octokit.rest.checks.create({
+    const name = this.title.replace(/^[^\p{L}\p{N}]+/u, "");
+    const output = {
+      title: `${name} (${summary})`,
+      // The API rejects a summary over 65535 characters
+      summary: body.length > 65e3 ? `${body.slice(0, 65e3)}
+
+_\u2026 truncated_` : body
+    };
+    const annotations = this.checkAnnotations ? JSON.parse(fs.readFileSync(this.checkAnnotations, { encoding: "utf8" })) : [];
+    const [first = [], ...rest] = Array.from(
+      { length: Math.ceil(annotations.length / 50) },
+      (_, i) => annotations.slice(i * 50, (i + 1) * 50)
+    );
+    const created = await this.octokit.rest.checks.create({
       owner: this.owner,
       repo: this.repo,
-      name: this.checkName,
+      name,
       head_sha: headSha,
       status: "completed",
       conclusion: this._checkConclusion(result),
-      output: {
-        // Same header as the comment, without its leading emoji
-        title: `${this.title.replace(/^[^\p{L}\p{N}]+/u, "")} (${summary})`,
-        // The API rejects a summary over 65535 characters
-        summary: body.length > 65e3 ? `${body.slice(0, 65e3)}
-
-_\u2026 truncated_` : body
-      }
+      output: { ...output, annotations: first }
     });
+    for (const batch of rest) {
+      await this.octokit.rest.checks.update({
+        owner: this.owner,
+        repo: this.repo,
+        check_run_id: created.data.id,
+        output: { ...output, annotations: batch }
+      });
+    }
   }
   async run() {
     const data = await this._buildData();
@@ -40939,7 +40955,7 @@ _\u2026 truncated_` : body
     this.boldTitle = this._boldTitle(result);
     const titleSummary = this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : "";
     this.summarySuffix = this._summarySuffix(titleSummary);
-    if (this.checkName && titleSummary) {
+    if (this.checkRun && titleSummary) {
       try {
         await this._publishCheckRun(titleSummary, result, renderer);
       } catch (error) {

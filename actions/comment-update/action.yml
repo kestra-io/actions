@@ -26,8 +26,13 @@ inputs:
     description: The handlebars template to use for the comment
     required: true
 
-  check-name:
-    description: 'Also publish a check run with this name when title-summary is not empty: the summary as title, the rendered comment as body, the conclusion derived from `result` (success, failure, warning is neutral, empty is skipped). Leave empty to skip. Works without a pull request, then only the check run is published'
+  check-run:
+    description: 'Also publish a check run when title-summary is not empty: named after the title without its leading emoji, the summary in its title, the rendered comment as body, the conclusion derived from `result` (success, failure, warning is neutral, empty is skipped). Works without a pull request, then only the check run is published'
+    required: false
+    default: 'false'
+
+  check-annotations:
+    description: 'Path to a JSON array of check run annotations (path, start_line, end_line, annotation_level, message, title), attached to the check run. Needs check-run'
     required: false
 
   skip-failure:

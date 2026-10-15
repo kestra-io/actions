@@ -31,7 +31,8 @@ class CommentUpdate {
     private readonly repo: string;
     private readonly prId: number;
     private readonly fetchUnreleasedCommits: boolean;
-    private readonly checkName: string;
+    private readonly checkRun: boolean;
+    private readonly checkAnnotations: string;
     private readonly skipFailure: boolean;
 
     constructor() {
@@ -48,7 +49,8 @@ class CommentUpdate {
         this.addSummary = core.getBooleanInput('add-summary');
         this.files = core.getMultilineInput('files');
         this.fetchUnreleasedCommits = core.getBooleanInput('fetch-unreleased-commits');
-        this.checkName = core.getInput('check-name');
+        this.checkRun = core.getBooleanInput('check-run');
+        this.checkAnnotations = core.getInput('check-annotations');
         this.skipFailure = core.getBooleanInput('skip-failure');
 
         this.nunjucks = new nunjucks.Environment();
@@ -244,21 +246,41 @@ class CommentUpdate {
     async _publishCheckRun(summary: string, result: string, body: string): Promise<void> {
         // On a pull_request event the workflow runs against a synthetic merge commit, not the head the pull request shows
         const headSha = github.context.payload.pull_request?.head?.sha ?? github.context.sha;
+        // Same header as the comment, without its leading emoji
+        const name = this.title.replace(/^[^\p{L}\p{N}]+/u, '');
+        const output = {
+            title: `${name} (${summary})`,
+            // The API rejects a summary over 65535 characters
+            summary: body.length > 65000 ? `${body.slice(0, 65000)}\n\n_… truncated_` : body
+        };
 
-        await this.octokit.rest.checks.create({
+        const annotations: any[] = this.checkAnnotations
+            ? JSON.parse(fs.readFileSync(this.checkAnnotations, { encoding: 'utf8' }))
+            : [];
+        // The Checks API takes at most 50 annotations per request: the first goes with the create, the rest with updates
+        const [first = [], ...rest] = Array.from(
+            {length: Math.ceil(annotations.length / 50)},
+            (_, i) => annotations.slice(i * 50, (i + 1) * 50)
+        );
+
+        const created = await this.octokit.rest.checks.create({
             owner: this.owner,
             repo: this.repo,
-            name: this.checkName,
+            name,
             head_sha: headSha,
             status: 'completed',
             conclusion: this._checkConclusion(result) as any,
-            output: {
-                // Same header as the comment, without its leading emoji
-                title: `${this.title.replace(/^[^\p{L}\p{N}]+/u, '')} (${summary})`,
-                // The API rejects a summary over 65535 characters
-                summary: body.length > 65000 ? `${body.slice(0, 65000)}\n\n_… truncated_` : body
-            }
+            output: {...output, annotations: first}
         });
+
+        for (const batch of rest) {
+            await this.octokit.rest.checks.update({
+                owner: this.owner,
+                repo: this.repo,
+                check_run_id: created.data.id,
+                output: {...output, annotations: batch}
+            });
+        }
     }
 
     async run(): Promise<void> {
@@ -270,7 +292,7 @@ class CommentUpdate {
         const titleSummary = this.titleSummaryTemplate ? this.nunjucks.renderString(this.titleSummaryTemplate, data).trim() : '';
         this.summarySuffix = this._summarySuffix(titleSummary);
 
-        if (this.checkName && titleSummary) {
+        if (this.checkRun && titleSummary) {
             try {
                 await this._publishCheckRun(titleSummary, result, renderer);
             } catch (error) {

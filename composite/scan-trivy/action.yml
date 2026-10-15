@@ -112,7 +112,7 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "Trivy"
-        check-name: Trivy
+        check-run: 'true'
         skip-failure: 'true'
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} vulnerabilities', steps.findings.outputs.total) }}

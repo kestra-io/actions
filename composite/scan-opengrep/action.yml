@@ -1,5 +1,5 @@
 name: 'OpenGrep Scan'
-description: 'Static analysis with OpenGrep, reported as check annotations, a pull request comment, an artifact and Elastic on the default branch'
+description: 'Static analysis with OpenGrep, reported as a check run with annotations, a pull request comment, an artifact and Elastic on the default branch'
 
 # Thin wiring only. Everything with logic in it — install, cache, rule resolution, the scan, rule
 # id normalisation, the summary and the gate — lives in actions/scan-opengrep, where it is unit
@@ -111,12 +111,14 @@ runs:
     # Reports run even when the gate above failed the scan step: that is exactly when someone
     # needs to see what was found.
     - name: OpenGrep - Comment pull request
-      if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+      if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
       continue-on-error: true
       uses: kestra-io/actions/actions/comment-update@main
       with:
         github-token: ${{ inputs.github-token }}
         title: "🔎 OpenGrep"
+        check-run: 'true'
+        check-annotations: ${{ steps.scan.outputs.annotations-file }}
         result: ${{ steps.scan.outputs.findings-count == '' && 'empty' || (steps.scan.outcome == 'failure' && 'failure' || (steps.scan.outputs.findings-count > 0 && 'warning' || 'success')) }}
         title-summary: ${{ steps.scan.outputs.findings-count != '' && format('{0} findings', steps.scan.outputs.findings-count) || '' }}
         files: |

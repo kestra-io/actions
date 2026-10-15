@@ -155,7 +155,7 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         title: "🐷 TruffleHog"
-        check-name: TruffleHog
+        check-run: 'true'
         skip-failure: 'true'
         result: ${{ steps.findings.outputs.total > 0 && 'failure' || 'success' }}
         title-summary: ${{ format('{0} secrets', steps.findings.outputs.total) }}
