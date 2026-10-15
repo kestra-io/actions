@@ -30,6 +30,11 @@ on:
         required: false
         type: string
         default: ''
+      metadata:
+        description: "Newline separated key=value pairs added to every finding of every scanner. A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
       kestra-ee:
         description: "Check out kestra OSS next to the repository, as the kestra-ee Gradle build includes its projects"
         required: false
@@ -139,6 +144,7 @@ jobs:
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
+            ${{ inputs.metadata }}
             target=java-dependencies
           components: ${{ inputs.components }}
 
@@ -151,6 +157,7 @@ jobs:
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: |
+            ${{ inputs.metadata }}
             target=npm-dependencies
           components: ${{ inputs.components }}
 
@@ -162,6 +169,7 @@ jobs:
           github-token: ${{ github.token }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
 
       # Secret scan. Diff on a pull request, the whole tree otherwise.
@@ -172,4 +180,5 @@ jobs:
           github-token: ${{ github.token }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}

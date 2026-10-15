@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      metadata:
+        description: "Newline separated key=value pairs added to every finding of every scanner. A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
     secrets:
       OTLP_ENDPOINT:
         required: false
@@ -45,4 +50,5 @@ jobs:
         backend=**
       npm-lockfile: ${{ inputs.ee && 'ui-ee' || 'ui' }}/package-lock.json
       kestra-ee: ${{ inputs.ee }}
+      metadata: ${{ inputs.metadata }}
     secrets: inherit

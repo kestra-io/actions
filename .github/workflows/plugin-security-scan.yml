@@ -5,6 +5,12 @@ name: Plugin security scan
 
 on:
   workflow_call:
+    inputs:
+      metadata:
+        description: "Newline separated key=value pairs added to every finding of every scanner. A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
     secrets:
       OTLP_ENDPOINT:
         required: false
@@ -26,4 +32,5 @@ jobs:
     with:
       components: plugin=**
       npm-lockfile: ui/package-lock.json
+      metadata: ${{ inputs.metadata }}
     secrets: inherit
