@@ -32370,6 +32370,85 @@ function rationaleOf(description) {
   return opening?.[3]?.trim() || void 0;
 }
 
+function isTrivyReport(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const report = value;
+  return Array.isArray(report.Results) && typeof report.SchemaVersion === "number";
+}
+function primaryScore(cvss, severitySource) {
+  if (!cvss) return {};
+  const order = [severitySource, "nvd", ...Object.keys(cvss)].filter((vendor) => Boolean(vendor));
+  for (const vendor of order) {
+    const entry = cvss[vendor];
+    if (!entry) continue;
+    if (typeof entry.V3Score === "number") return { score: entry.V3Score, version: scoreVersion(entry.V3Vector) ?? "3.1" };
+    if (typeof entry.V2Score === "number") return { score: entry.V2Score, version: "2.0" };
+  }
+  return {};
+}
+function levelOf(severity) {
+  return severity === "Critical" || severity === "High" ? "error" : severity === "Unknown" ? "none" : "warning";
+}
+function toFinding$1(report, result, vulnerability) {
+  const { score, version } = primaryScore(vulnerability.CVSS, vulnerability.SeveritySource);
+  const severity = severityFromWord(vulnerability.Severity) ?? (score === void 0 ? "Unknown" : severityFromScore(score));
+  return {
+    tool: "Trivy",
+    toolVersion: report.Trivy?.Version ?? "",
+    ruleId: vulnerability.VulnerabilityID ?? "unknown",
+    ruleName: result.Class ?? "",
+    // Trivy's JSON has no SARIF level; derive one so the field means the same thing either way.
+    level: levelOf(severity),
+    severity,
+    score,
+    scoreVersion: score === void 0 ? void 0 : version,
+    title: vulnerability.Title ?? vulnerability.VulnerabilityID ?? "",
+    description: vulnerability.Description ?? "",
+    helpUri: vulnerability.PrimaryURL,
+    tags: [result.Type, result.Class].filter((tag) => Boolean(tag)),
+    cwes: cweIds(vulnerability.CweIDs ?? []),
+    file: result.Target,
+    packageName: vulnerability.PkgName,
+    packageVersion: vulnerability.InstalledVersion,
+    packageFixedVersion: vulnerability.FixedVersion,
+    dataSource: vulnerability.DataSource,
+    publishedDate: vulnerability.PublishedDate,
+    lastModifiedDate: vulnerability.LastModifiedDate,
+    cvss: vulnerability.CVSS,
+    references: vulnerability.References,
+    purl: vulnerability.PkgIdentifier?.PURL,
+    fixStatus: vulnerability.Status
+  };
+}
+const LICENSE_TOOL = "Trivy License";
+function toLicenseFinding(report, result, license) {
+  const severity = severityFromWord(license.Severity) ?? "Unknown";
+  const name = license.Name ?? "unknown";
+  const category = license.Category ?? "";
+  return {
+    tool: LICENSE_TOOL,
+    toolVersion: report.Trivy?.Version ?? "",
+    ruleId: name,
+    ruleName: result.Class ?? "",
+    level: levelOf(severity),
+    severity,
+    title: `${name} license`,
+    description: `${license.PkgName ?? license.FilePath ?? "A dependency"} is licensed under ${name}${category ? `, classified ${category}` : ""}`,
+    helpUri: license.Link,
+    tags: [result.Type, result.Class, license.Category].filter((tag) => Boolean(tag)),
+    cwes: [],
+    file: license.FilePath || result.Target,
+    packageName: license.PkgName
+  };
+}
+function flattenTrivy(report) {
+  return (report.Results ?? []).flatMap((result) => [
+    ...(result.Vulnerabilities ?? []).map((vulnerability) => toFinding$1(report, result, vulnerability)),
+    // Low is the permissive licenses (MIT, Apache, ...): one finding per dependency, never actionable.
+    ...(result.Licenses ?? []).filter((license) => severityFromWord(license.Severity) !== "Low").map((license) => toLicenseFinding(report, result, license))
+  ]);
+}
+
 const SEVERITY_SCORE = { Critical: 99, High: 73, Medium: 47, Low: 21, Unknown: 0 };
 function enumerationOf(ruleId) {
   if (/^CVE-/i.test(ruleId)) return "CVE";
@@ -32560,7 +32639,7 @@ function toDocument(finding, context) {
       // Set only for a real CVE. A GHSA-only advisory and a static analysis rule both leave it
       // empty, which is why nothing downstream should key on it — `vulnerability.id` always exists.
       cve: enumeration === "CVE" ? finding.ruleId : void 0,
-      category: finding.packageName ? "Package Vulnerability" : "Static Analysis",
+      category: finding.tool === LICENSE_TOOL ? "License" : finding.packageName ? "Package Vulnerability" : "Static Analysis",
       classification: finding.score !== void 0 ? "CVSS" : void 0,
       enumeration,
       cwe: finding.cwes,
@@ -32674,7 +32753,7 @@ function resolveRule(run, result) {
   if (typeof result.ruleIndex === "number" && rules[result.ruleIndex]) return rules[result.ruleIndex];
   return rules.find((rule) => rule.id === result.ruleId);
 }
-function toFinding$1(run, result) {
+function toFinding(run, result) {
   const driver = run.tool?.driver ?? {};
   const rule = resolveRule(run, result);
   const properties = { ...rule?.properties ?? {}, ...result.properties ?? {} };
@@ -32712,60 +32791,7 @@ function toFinding$1(run, result) {
   };
 }
 function flatten(log) {
-  return (log.runs ?? []).flatMap((run) => (run.results ?? []).map((result) => toFinding$1(run, result)));
-}
-
-function isTrivyReport(value) {
-  if (typeof value !== "object" || value === null) return false;
-  const report = value;
-  return Array.isArray(report.Results) && typeof report.SchemaVersion === "number";
-}
-function primaryScore(cvss, severitySource) {
-  if (!cvss) return {};
-  const order = [severitySource, "nvd", ...Object.keys(cvss)].filter((vendor) => Boolean(vendor));
-  for (const vendor of order) {
-    const entry = cvss[vendor];
-    if (!entry) continue;
-    if (typeof entry.V3Score === "number") return { score: entry.V3Score, version: scoreVersion(entry.V3Vector) ?? "3.1" };
-    if (typeof entry.V2Score === "number") return { score: entry.V2Score, version: "2.0" };
-  }
-  return {};
-}
-function toFinding(report, result, vulnerability) {
-  const { score, version } = primaryScore(vulnerability.CVSS, vulnerability.SeveritySource);
-  const severity = severityFromWord(vulnerability.Severity) ?? (score === void 0 ? "Unknown" : severityFromScore(score));
-  return {
-    tool: "Trivy",
-    toolVersion: report.Trivy?.Version ?? "",
-    ruleId: vulnerability.VulnerabilityID ?? "unknown",
-    ruleName: result.Class ?? "",
-    // Trivy's JSON has no SARIF level; derive one so the field means the same thing either way.
-    level: severity === "Critical" || severity === "High" ? "error" : severity === "Unknown" ? "none" : "warning",
-    severity,
-    score,
-    scoreVersion: score === void 0 ? void 0 : version,
-    title: vulnerability.Title ?? vulnerability.VulnerabilityID ?? "",
-    description: vulnerability.Description ?? "",
-    helpUri: vulnerability.PrimaryURL,
-    tags: [result.Type, result.Class].filter((tag) => Boolean(tag)),
-    cwes: cweIds(vulnerability.CweIDs ?? []),
-    file: result.Target,
-    packageName: vulnerability.PkgName,
-    packageVersion: vulnerability.InstalledVersion,
-    packageFixedVersion: vulnerability.FixedVersion,
-    dataSource: vulnerability.DataSource,
-    publishedDate: vulnerability.PublishedDate,
-    lastModifiedDate: vulnerability.LastModifiedDate,
-    cvss: vulnerability.CVSS,
-    references: vulnerability.References,
-    purl: vulnerability.PkgIdentifier?.PURL,
-    fixStatus: vulnerability.Status
-  };
-}
-function flattenTrivy(report) {
-  return (report.Results ?? []).flatMap(
-    (result) => (result.Vulnerabilities ?? []).map((vulnerability) => toFinding(report, result, vulnerability))
-  );
+  return (log.runs ?? []).flatMap((run) => (run.results ?? []).map((result) => toFinding(run, result)));
 }
 
 function isTrufflehogLine(value) {

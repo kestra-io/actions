@@ -9,6 +9,7 @@ import {
   type Finding,
   type Severity
 } from './finding.js'
+import { LICENSE_TOOL } from './trivy.js'
 
 /**
  * Turns a Finding into an ECS document shaped the way Elastic's security views read vulnerability
@@ -281,7 +282,7 @@ export function toDocument(finding: Finding, context: DocumentContext): Record<s
       // Set only for a real CVE. A GHSA-only advisory and a static analysis rule both leave it
       // empty, which is why nothing downstream should key on it — `vulnerability.id` always exists.
       cve: enumeration === 'CVE' ? finding.ruleId : undefined,
-      category: finding.packageName ? 'Package Vulnerability' : 'Static Analysis',
+      category: finding.tool === LICENSE_TOOL ? 'License' : finding.packageName ? 'Package Vulnerability' : 'Static Analysis',
       classification: finding.score !== undefined ? 'CVSS' : undefined,
       enumeration,
       cwe: finding.cwes,

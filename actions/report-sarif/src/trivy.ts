@@ -13,7 +13,8 @@ import {
   severityFromScore,
   severityFromWord,
   type CvssScore,
-  type Finding
+  type Finding,
+  type Severity
 } from './finding.js'
 
 export interface TrivyVulnerability {
@@ -36,11 +37,22 @@ export interface TrivyVulnerability {
   CVSS?: Record<string, CvssScore>
 }
 
+export interface TrivyLicense {
+  Severity?: string
+  Category?: string
+  PkgName?: string
+  FilePath?: string
+  Name?: string
+  Confidence?: number
+  Link?: string
+}
+
 export interface TrivyResult {
   Target?: string
   Class?: string
   Type?: string
   Vulnerabilities?: TrivyVulnerability[]
+  Licenses?: TrivyLicense[]
 }
 
 export interface TrivyReport {
@@ -77,6 +89,10 @@ export function primaryScore(
   return {}
 }
 
+function levelOf(severity: Severity): Finding['level'] {
+  return severity === 'Critical' || severity === 'High' ? 'error' : severity === 'Unknown' ? 'none' : 'warning'
+}
+
 function toFinding(report: TrivyReport, result: TrivyResult, vulnerability: TrivyVulnerability): Finding {
   const { score, version } = primaryScore(vulnerability.CVSS, vulnerability.SeveritySource)
   const severity = severityFromWord(vulnerability.Severity) ?? (score === undefined ? 'Unknown' : severityFromScore(score))
@@ -87,7 +103,7 @@ function toFinding(report: TrivyReport, result: TrivyResult, vulnerability: Triv
     ruleId: vulnerability.VulnerabilityID ?? 'unknown',
     ruleName: result.Class ?? '',
     // Trivy's JSON has no SARIF level; derive one so the field means the same thing either way.
-    level: severity === 'Critical' || severity === 'High' ? 'error' : severity === 'Unknown' ? 'none' : 'warning',
+    level: levelOf(severity),
     severity,
     score,
     scoreVersion: score === undefined ? undefined : version,
@@ -110,8 +126,37 @@ function toFinding(report: TrivyReport, result: TrivyResult, vulnerability: Triv
   }
 }
 
+/** Vendor of license findings, kept apart from the CVEs in `logs-trivy-*` through `scanner.vendor`. */
+export const LICENSE_TOOL = 'Trivy License'
+
+function toLicenseFinding(report: TrivyReport, result: TrivyResult, license: TrivyLicense): Finding {
+  const severity = severityFromWord(license.Severity) ?? 'Unknown'
+  const name = license.Name ?? 'unknown'
+  const category = license.Category ?? ''
+
+  return {
+    tool: LICENSE_TOOL,
+    toolVersion: report.Trivy?.Version ?? '',
+    ruleId: name,
+    ruleName: result.Class ?? '',
+    level: levelOf(severity),
+    severity,
+    title: `${name} license`,
+    description: `${license.PkgName ?? license.FilePath ?? 'A dependency'} is licensed under ${name}${category ? `, classified ${category}` : ''}`,
+    helpUri: license.Link,
+    tags: [result.Type, result.Class, license.Category].filter((tag): tag is string => Boolean(tag)),
+    cwes: [],
+    file: license.FilePath || result.Target,
+    packageName: license.PkgName
+  }
+}
+
 export function flattenTrivy(report: TrivyReport): Finding[] {
-  return (report.Results ?? []).flatMap(result =>
-    (result.Vulnerabilities ?? []).map(vulnerability => toFinding(report, result, vulnerability))
-  )
+  return (report.Results ?? []).flatMap(result => [
+    ...(result.Vulnerabilities ?? []).map(vulnerability => toFinding(report, result, vulnerability)),
+    // Low is the permissive licenses (MIT, Apache, ...): one finding per dependency, never actionable.
+    ...(result.Licenses ?? [])
+      .filter(license => severityFromWord(license.Severity) !== 'Low')
+      .map(license => toLicenseFinding(report, result, license))
+  ])
 }

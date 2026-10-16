@@ -315,3 +315,23 @@ test('a finding with no target falls back to the repository itself', () => {
   assert.equal(document.resource.type, 'github-repository')
   assert.equal(document.resource.sub_type, 'repository')
 })
+
+test('a license finding is vendored as Trivy License and categorised as a license', () => {
+  const license: Finding = {
+    ...finding,
+    tool: 'Trivy License',
+    ruleId: 'GPL-3.0',
+    ruleName: 'license',
+    severity: 'High',
+    score: undefined,
+    scoreVersion: undefined,
+    cwes: [],
+    packageName: 'io.foo:bar'
+  }
+  const document = toDocument(license, context) as any
+  assert.equal(document.vulnerability.scanner.vendor, 'Trivy License')
+  assert.equal(document.observer.vendor, 'Trivy License')
+  assert.equal(document.vulnerability.category, 'License')
+  assert.equal(document.vulnerability.cve, undefined)
+  assert.equal(document.data_stream.dataset, 'trivy')
+})

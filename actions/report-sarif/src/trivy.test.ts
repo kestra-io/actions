@@ -113,3 +113,33 @@ test('a result with no vulnerabilities yields nothing', () => {
   assert.deepEqual(flattenTrivy({ SchemaVersion: 2, Results: [{ Target: 'pom.xml' }] }), [])
   assert.deepEqual(flattenTrivy({ SchemaVersion: 2 }), [])
 })
+
+test('license findings ship as Trivy License, permissive ones are dropped', () => {
+  const licenses: TrivyReport = {
+    SchemaVersion: 2,
+    Trivy: { Version: '0.70.0' },
+    Results: [
+      {
+        Target: 'Java',
+        Class: 'license',
+        Licenses: [
+          { Severity: 'HIGH', Category: 'restricted', PkgName: 'io.foo:bar', Name: 'GPL-3.0', Link: 'https://spdx.org/licenses/GPL-3.0.html' },
+          { Severity: 'LOW', Category: 'notice', PkgName: 'io.foo:baz', Name: 'MIT' }
+        ]
+      },
+      ...report.Results!
+    ]
+  }
+  const findings = flattenTrivy(licenses)
+  assert.equal(findings.length, 2, 'the MIT license is dropped, the CVE is kept')
+
+  const license = findings.find(finding => finding.tool === 'Trivy License')!
+  assert.equal(license.ruleId, 'GPL-3.0')
+  assert.equal(license.severity, 'High')
+  assert.equal(license.level, 'error')
+  assert.equal(license.packageName, 'io.foo:bar')
+  assert.equal(license.file, 'Java')
+  assert.equal(license.helpUri, 'https://spdx.org/licenses/GPL-3.0.html')
+  assert.deepEqual(license.tags, ['license', 'restricted'])
+  assert.equal(findings.find(finding => finding.tool === 'Trivy')?.ruleId, 'CVE-2026-42583')
+})
