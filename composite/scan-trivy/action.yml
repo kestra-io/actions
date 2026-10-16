@@ -1,5 +1,5 @@
 name: 'Trivy Scan'
-description: 'Scan dependencies with trivy on the default branch and releases/*, shipped to Elastic'
+description: 'Scan dependencies for vulnerabilities and licenses with trivy on the default branch and releases/*, shipped to Elastic'
 
 # Scans only where the findings are kept: the default branch and releases/*. A pull request or a
 # feature branch is not scanned, so it neither comments nor writes to Elastic. The branch is part of
@@ -75,6 +75,7 @@ runs:
       with:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-path }}
+        scanners: 'vuln,license'
         format: 'json'
         output: ${{ github.workspace }}/trivy-result.json
 
@@ -130,6 +131,43 @@ runs:
           {% endif %}
           {% else %}
           No vulnerability found.
+          {% endif %}
+
+    # Permissive (Low) licenses are left out, as they are in the Elastic report.
+    - name: Trivy - Prepare license check run
+      id: licenses
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      run: |
+        jq '[.Results[]? | .Target as $target | .Licenses[]? | select(.Severity != "LOW") | {severity: .Severity, name: .Name, category: (.Category // ""), package: (.PkgName // .FilePath // ""), target: $target}]
+          | {total: length, findings: .[0:50]}' "${{ github.workspace }}/trivy-result.json" > "${RUNNER_TEMP}/trivy-license-comment.json"
+        echo "total=$(jq .total "${RUNNER_TEMP}/trivy-license-comment.json")" >> "$GITHUB_OUTPUT"
+
+    - name: Trivy - Publish license check run
+      if: ${{ !cancelled() && steps.licenses.outputs.total != '' }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        title: "Trivy License"
+        skip-failure: 'true'
+        result: ${{ steps.licenses.outputs.total > 0 && 'failure' || 'success' }}
+        title-summary: ${{ format('{0} licenses', steps.licenses.outputs.total) }}
+        add-summary: 'false'
+        files: |
+          ${{ runner.temp }}/trivy-license-comment.json
+        template: |
+          {% if files[0] and files[0].total > 0 %}
+          | Severity | License | Category | Package |
+          | :--- | :--- | :--- | :--- |
+          {%- for finding in files[0].findings %}
+          | {{ finding.severity }} | {{ finding.name }} | {{ finding.category }} | `{{ finding.package }}` |
+          {%- endfor %}
+          {% if files[0].total > 50 %}
+          _… and {{ files[0].total - 50 }} more._
+          {% endif %}
+          {% else %}
+          No license issue found.
           {% endif %}
 
     - name: Trivy - Report findings to Elastic
