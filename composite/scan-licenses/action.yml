@@ -1,0 +1,82 @@
+name: 'License Scan'
+description: 'Check the dependency licenses of a Gradle or npm license report, fail on a denied or unknown license and ship the findings to Elastic on the default branch and releases/*'
+
+# The check runs on every event, so a pull request can be gated on it. Only the shipping to Elastic is
+# limited to the default branch and releases/*, where the findings are kept, like composite/scan-trivy.
+#
+# The report is produced by the caller, which already has the toolchain installed:
+#   Gradle: ./gradlew licenseReport (com.jaredsburrows.license, jsonReport), build/reports/licenses/licenseReport.json
+#   npm:    npx license-compliance --report detailed --production --format json > licenses.json
+#
+# check-licenses.py classifies each license against a deny-list (CRITICAL), an allow-list and an
+# unknown bucket (HIGH). Reviewed exceptions live in its ALLOWED_DEPENDENCIES.
+
+inputs:
+  report:
+    description: 'The JSON license report to check, e.g. build/reports/licenses/licenseReport.json or the license-compliance output. The format is detected from its entries'
+    required: true
+
+  fail-on-findings:
+    description: 'Fail the step when a dependency has a denied (CRITICAL) or an unknown (HIGH) license. Set to false to only report'
+    required: false
+    default: 'true'
+
+  elastic-endpoint:
+    description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
+    required: false
+    default: ''
+
+  elastic-headers:
+    description: 'Elastic ingest headers, the OTLP_HEADERS secret'
+    required: false
+    default: ''
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every finding, e.g. component=backend. service.name defaults to the repository name and can be overridden here. A dotted key is written at that path, an undotted one lands under labels.'
+    required: false
+    default: ''
+
+  dry-run:
+    description: 'Build the Elastic payload without sending it'
+    required: false
+    default: 'false'
+
+outputs:
+  sarif-file:
+    description: 'Absolute path to the findings as SARIF 2.1.0, with the dependencies accepted by exception left out'
+    value: ${{ github.workspace }}/license-check.sarif
+
+runs:
+  using: composite
+  steps:
+    - name: Licenses - Check the report
+      id: check
+      shell: bash
+      continue-on-error: true
+      env:
+        REPORT: ${{ inputs.report }}
+        SCRIPT: ${{ github.action_path }}/check-licenses.py
+      run: |
+        python3 "$SCRIPT" "$REPORT" --sarif "${{ github.workspace }}/license-check.sarif" --sarif-omit-accepted
+
+    - name: Licenses - Report findings to Elastic
+      if: ${{ !cancelled() && inputs.elastic-endpoint != '' && hashFiles('license-check.sarif') != '' && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/report-sarif@main
+      with:
+        sarif-files: ${{ github.workspace }}/license-check.sarif
+        type: vulnerabilities
+        elastic-endpoint: ${{ inputs.elastic-endpoint }}
+        elastic-headers: ${{ inputs.elastic-headers }}
+        dry-run: ${{ inputs.dry-run }}
+        metadata: |
+          service.name=${{ github.event.repository.name }}
+          ${{ inputs.metadata }}
+
+    # After the shipping, so a failing check still reaches Elastic.
+    - name: Licenses - Fail on findings
+      if: ${{ steps.check.outcome == 'failure' && inputs.fail-on-findings == 'true' }}
+      shell: bash
+      run: |
+        echo "::error::A dependency has a denied or an unknown license, see the check step above."
+        exit 1
