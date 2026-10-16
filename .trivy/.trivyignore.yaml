@@ -4,22 +4,38 @@
 # and GPL with the classpath exception are fine for a dependency that is linked, not modified.
 # GPL-2.0-only, GPL-3.0, AGPL and unknown licenses are deliberately absent, so they keep being reported.
 #
-# Trivy matches an id against the license name it found. It maps the names it recognizes to SPDX,
-# but a name read from an SBOM as free text stays as written, so those are listed as they appear.
+# Trivy matches an id against the license name it found, exactly. It maps the names it recognizes to
+# SPDX, but a name read from an SBOM as free text stays as written, so those are listed as they appear.
+# An entry takes no purls: Trivy only matches those for vulnerabilities, a license is matched on its
+# name and file path, so a single package cannot be excepted here.
 #
 # A repository with no .trivy/.trivyignore.yaml of its own falls back to *this* file, which the
 # action reads from its own checkout. Copy it to change anything: it replaces this one, it does not
 # extend it.
 
 licenses:
+  # Weak copyleft, file level
+  - id: MPL-1.0
   - id: MPL-1.1
   - id: MPL-2.0
+  - id: Mozilla Public License 2.0
   - id: Mozilla Public License Version 2.0
   - id: EPL-1.0
   - id: EPL-2.0
   - id: EPL 1.0
+  - id: EPL 2.0
+  - id: Eclipse Public License 1.0
+  - id: Eclipse Public License 2.0
+  - id: Eclipse Public License - v 1.0
+  - id: Eclipse Public License - v 2.0
+  - id: Eclipse Public License v2.0
   - id: CDDL-1.0
   - id: CDDL-1.1
+  - id: Common Development and Distribution License
+  - id: Common Development and Distribution License 1.0
+  - id: Common Development and Distribution License 1.1
+
+  # LGPL, a dynamically linked library
   - id: LGPL-2.0-only
   - id: LGPL-2.0-or-later
   - id: LGPL-2.1-only
@@ -27,5 +43,24 @@ licenses:
   - id: LGPL-3.0-only
   - id: LGPL-3.0-or-later
   - id: GNU Lesser General Public License
+  - id: GNU Lesser General Public License v2.1
+  - id: GNU Lesser General Public License v3.0
+  - id: GNU Library General Public License
+
+  # GPL with a linking exception
   - id: GPL-2.0-with-classpath-exception
   - id: GPL-2.0-only WITH Classpath-exception-2.0
+  - id: GPL-2.0-or-later WITH Classpath-exception-2.0
+  - id: GPL2 w/ CPE
+
+  # Permissive licenses Trivy cannot classify when the name is free text
+  - id: EDL 1.0
+  - id: Eclipse Distribution License - v 1.0
+  - id: Eclipse Distribution License v. 1.0
+  - id: Bouncy Castle Licence
+  - id: The Bouncy Castle License
+  - id: Go License
+  - id: Public Domain
+  - id: Python-2.0
+  - id: PSF-2.0
+  - id: BlueOak-1.0.0
