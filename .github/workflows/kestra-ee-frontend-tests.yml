@@ -129,11 +129,12 @@ jobs:
 
       # oxlint-action runs `git fetch origin <base>` at the workspace root, which holds two checkouts
       # but no repo. Give it one whose origin is the local EE clone until the action scopes that fetch.
+      # base.ref rather than github.base_ref: the action reads the former, and in a stacked PR the two differ.
       - name: Oxlint - Root git repo for the action's base fetch
         if: ${{ github.event_name == 'pull_request' }}
         shell: bash
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           git -C kestra-ee branch -f "$BASE_REF" HEAD
           rm -rf .git
