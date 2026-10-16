@@ -65,6 +65,21 @@ runs:
       run: |
         mkdir -p ${{ github.workspace }}/trivy-tmp
 
+    # Same rule as OpenGrep: the repository's own file replaces ours instead of extending it.
+    - name: Trivy - Resolve the ignore file
+      id: ignore
+      if: ${{ (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
+      shell: bash
+      run: |
+        own="${GITHUB_WORKSPACE}/.trivy/.trivyignore.yaml"
+        if [ -f "${own}" ]; then
+          file="${own}"
+        else
+          file="$(realpath "${{ github.action_path }}/../../.trivy/.trivyignore.yaml")"
+          echo "Ignore file: none in .trivy, using the kestra-io/actions default"
+        fi
+        echo "file=${file}" >> "$GITHUB_OUTPUT"
+
     - name: Trivy - Run Trivy scanner
       if: ${{ (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -76,6 +91,7 @@ runs:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-path }}
         scanners: 'vuln,license'
+        trivyignores: ${{ steps.ignore.outputs.file }}
         format: 'json'
         output: ${{ github.workspace }}/trivy-result.json
 
