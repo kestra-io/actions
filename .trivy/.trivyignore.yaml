@@ -1,0 +1,31 @@
+# Trivy ignore file for composite/scan-trivy.
+#
+# Only `licenses` is used here: the licenses we depend on knowingly. Weak copyleft (MPL, EPL, LGPL)
+# and GPL with the classpath exception are fine for a dependency that is linked, not modified.
+# GPL-2.0-only, GPL-3.0, AGPL and unknown licenses are deliberately absent, so they keep being reported.
+#
+# Trivy matches an id against the license name it found. It maps the names it recognizes to SPDX,
+# but a name read from an SBOM as free text stays as written, so those are listed as they appear.
+#
+# A repository with no .trivy/.trivyignore.yaml of its own falls back to *this* file, which the
+# action reads from its own checkout. Copy it to change anything: it replaces this one, it does not
+# extend it.
+
+licenses:
+  - id: MPL-1.1
+  - id: MPL-2.0
+  - id: Mozilla Public License Version 2.0
+  - id: EPL-1.0
+  - id: EPL-2.0
+  - id: EPL 1.0
+  - id: CDDL-1.0
+  - id: CDDL-1.1
+  - id: LGPL-2.0-only
+  - id: LGPL-2.0-or-later
+  - id: LGPL-2.1-only
+  - id: LGPL-2.1-or-later
+  - id: LGPL-3.0-only
+  - id: LGPL-3.0-or-later
+  - id: GNU Lesser General Public License
+  - id: GPL-2.0-with-classpath-exception
+  - id: GPL-2.0-only WITH Classpath-exception-2.0
