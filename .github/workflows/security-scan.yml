@@ -58,12 +58,14 @@ permissions:
   pull-requests: write
   packages: read
 
+env:
+  OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+
 jobs:
   scan:
     name: Security scan
     runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     env:
-      OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
       SBOM_ENABLED: ${{ inputs.java-sbom-path != '' && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
     steps:
       - name: Setup - OpenTelemetry
@@ -175,3 +177,19 @@ jobs:
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
+
+  otel-export-trace:
+    if: always()
+    name: OpenTelemetry Export Trace
+    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
+    needs: [scan]
+    steps:
+      - name: OpenTelemetry - Export trace
+        uses: kestra-io/actions/actions/otel-export-trace@main
+        if: ${{ env.OTLP_ENDPOINT != '' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          otlp-headers: "${{ secrets.OTLP_HEADERS }}"
+          logs-enabled: 'true'
+          service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
