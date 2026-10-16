@@ -116,6 +116,10 @@ a `component` of `backend`, `frontend` or `plugin`. Static analysis and
 dependency CVEs land in the same data stream, which is the point: one view over
 both, split by `vulnerability.scanner.vendor` when you want them apart.
 
+Trivy's license findings ride in the same scan and stream with the vendor `Trivy License`
+(`vulnerability.category: License`, the license name as `vulnerability.id`). Permissive
+licenses (Low) are dropped.
+
 `composite/scan-trivy` scans once and renders twice — the pull request comment
 keeps reading the JSON, and `trivy convert` re-renders that same report as the
 SARIF this action ships, rather than paying for a second scan.
