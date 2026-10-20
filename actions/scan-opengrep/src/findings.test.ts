@@ -90,6 +90,19 @@ test('normaliseSarif rewrites ids in both results and the driver rule list', () 
   assert.equal(normalised.runs[0].tool.driver.rules[0].id, 'java.x')
 })
 
+test('normaliseReport drops findings silenced by a nosemgrep comment', () => {
+  const ignored: OpengrepResult = { ...result('WARNING', 'a'), extra: { severity: 'WARNING', message: 'm', is_ignored: true } }
+  const normalised = normaliseReport({ results: [ignored, result('WARNING', 'b')] }, '')
+  assert.deepEqual(normalised.results?.map(r => r.check_id), ['b'])
+})
+
+test('normaliseSarif drops suppressed results', () => {
+  const sarif = {
+    runs: [{ results: [{ ruleId: 'a', suppressions: [{ kind: 'inSource' }] }, { ruleId: 'b' }] }]
+  }
+  assert.deepEqual(normaliseSarif(sarif, '').runs[0].results.map((r: any) => r.ruleId), ['b'])
+})
+
 test('normaliseSarif tolerates a SARIF document with no runs', () => {
   assert.doesNotThrow(() => normaliseSarif({}, '/tmp/og-rules'))
 })
