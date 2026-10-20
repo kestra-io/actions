@@ -7,7 +7,7 @@ export interface OpengrepResult {
   path: string
   start: { line: number; col?: number }
   end?: { line: number; col?: number }
-  extra: { severity: Severity; message: string; lines?: string }
+  extra: { severity: Severity; message: string; lines?: string; is_ignored?: boolean }
 }
 
 export interface OpengrepError {
@@ -65,17 +65,25 @@ export function normaliseReport(report: OpengrepReport, rulesRoot: string): Open
   const prefixes = rulePrefixes(rulesRoot)
   return {
     ...report,
-    results: (report.results ?? []).map(result => ({
-      ...result,
-      check_id: normaliseRuleId(result.check_id, prefixes)
-    }))
+    results: (report.results ?? [])
+      .filter(result => !result.extra.is_ignored)
+      .map(result => ({
+        ...result,
+        check_id: normaliseRuleId(result.check_id, prefixes)
+      }))
   }
 }
 
-/** SARIF carries rule ids in two places; both need the same treatment. */
+/**
+ * SARIF carries rule ids in two places; both need the same treatment. Findings silenced with a
+ * `nosemgrep` comment come back marked `suppressions` rather than dropped, so they go here.
+ */
 export function normaliseSarif(sarif: any, rulesRoot: string): any {
   const prefixes = rulePrefixes(rulesRoot)
   for (const run of sarif?.runs ?? []) {
+    if (Array.isArray(run?.results)) {
+      run.results = run.results.filter((result: any) => !result?.suppressions?.length)
+    }
     for (const result of run?.results ?? []) {
       if (typeof result.ruleId === 'string') result.ruleId = normaliseRuleId(result.ruleId, prefixes)
     }

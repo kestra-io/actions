@@ -41952,7 +41952,7 @@ function normaliseReport(report, rulesRoot) {
   const prefixes = rulePrefixes(rulesRoot);
   return {
     ...report,
-    results: (report.results ?? []).map((result) => ({
+    results: (report.results ?? []).filter((result) => !result.extra.is_ignored).map((result) => ({
       ...result,
       check_id: normaliseRuleId(result.check_id, prefixes)
     }))
@@ -41961,6 +41961,9 @@ function normaliseReport(report, rulesRoot) {
 function normaliseSarif(sarif, rulesRoot) {
   const prefixes = rulePrefixes(rulesRoot);
   for (const run of sarif?.runs ?? []) {
+    if (Array.isArray(run?.results)) {
+      run.results = run.results.filter((result) => !result?.suppressions?.length);
+    }
     for (const result of run?.results ?? []) {
       if (typeof result.ruleId === "string") result.ruleId = normaliseRuleId(result.ruleId, prefixes);
     }
