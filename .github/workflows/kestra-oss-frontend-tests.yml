@@ -121,7 +121,7 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
-          # fail_level matches oxlint below, which also fails on error; eslint only comments.
+          # fail_level matches oxlint and eslint below, which also fail on error.
           # nofilter: the dead tokens it finds sit on lines no PR touches (kestra-io/kestra#18777).
           - name: Npm - lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
@@ -153,6 +153,8 @@ jobs:
               github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
               reporter: github-pr-review
               workdir: ui
+              # The token rule moved here from stylelint; warnings such as comma-dangle still only comment.
+              fail_level: error
 
       # Coverage
       - name: Coverage - Report
