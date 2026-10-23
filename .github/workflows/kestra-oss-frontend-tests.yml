@@ -182,6 +182,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_AUTH_TOKEN }}
           title: Frontend Tests
+          report-names: |
+            Frontend Tests (Unit)
+            Frontend Tests (Storybook)
           report-paths: |
             ui/test-report.junit.xml
             ui/test-report.storybook.junit.xml

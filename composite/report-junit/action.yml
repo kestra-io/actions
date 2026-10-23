@@ -14,6 +14,11 @@ inputs:
     description: 'Name of the check run and of the pull request comment section, e.g. "Backend Tests"'
     required: true
 
+  report-names:
+    description: 'One check run and summary row name per report-paths line, e.g. "Frontend Tests (Unit)". Defaults to title'
+    required: false
+    default: ''
+
 outputs:
   total:
     description: 'Number of tests found, empty when no report matched'
@@ -43,7 +48,7 @@ runs:
         NODE_OPTIONS: "--max-old-space-size=4096"
       with:
         token: ${{ inputs.github-token }}
-        check_name: ${{ inputs.title }}
+        check_name: ${{ inputs.report-names || inputs.title }}
         report_paths: ${{ inputs.report-paths }}
         fail_on_failure: 'false'
         require_tests: 'false'
