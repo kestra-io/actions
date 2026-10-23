@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildRuleset } from './rules.js'
-import { assertNotFlag, buildScanArgs, parseMode, parseSeverities, resolveMode } from './scan.js'
+import { assertNotFlag, buildScanArgs, parseMode, parsePositiveInt, parseSeverities, resolveMode } from './scan.js'
 
 const ruleset = buildRuleset(['p/java'], null)
 const base = {
@@ -55,6 +55,27 @@ test('buildScanArgs omits --baseline-commit when there is no baseline', () => {
 test('buildScanArgs adds --baseline-commit for a diff scan', () => {
   const args = buildScanArgs({ ...base, baseline: 'abc123' })
   assert.equal(args[args.indexOf('--baseline-commit') + 1], 'abc123')
+})
+
+test('buildScanArgs leaves --jobs and --max-memory to opengrep when unset', () => {
+  const args = buildScanArgs(base)
+  assert.equal(args.includes('--jobs'), false)
+  assert.equal(args.includes('--max-memory'), false)
+})
+
+test('buildScanArgs passes --jobs and --max-memory, before the scan path', () => {
+  const args = buildScanArgs({ ...base, jobs: 2, maxMemory: 1500 })
+  assert.equal(args[args.indexOf('--jobs') + 1], '2')
+  assert.equal(args[args.indexOf('--max-memory') + 1], '1500')
+  assert.equal(args.at(-1), '.')
+})
+
+test('parsePositiveInt reads an empty input as unset and rejects anything but a positive whole number', () => {
+  assert.equal(parsePositiveInt('', 'jobs'), undefined)
+  assert.equal(parsePositiveInt('2', 'jobs'), 2)
+  assert.throws(() => parsePositiveInt('0', 'jobs'), /Invalid jobs '0'/)
+  assert.throws(() => parsePositiveInt('1.5', 'max-memory'), /Invalid max-memory '1.5'/)
+  assert.throws(() => parsePositiveInt('-1', 'jobs'), /Invalid jobs '-1'/)
 })
 
 test('buildScanArgs keeps --no-error so the report is always written', () => {

@@ -46,6 +46,16 @@ inputs:
     required: false
     default: "."
 
+  jobs:
+    description: "OpenGrep workers (--jobs). Empty leaves opengrep's default, one per CPU"
+    required: false
+    default: ''
+
+  max-memory:
+    description: 'Memory cap in MB for one file × rule (--max-memory). Empty leaves no cap'
+    required: false
+    default: ''
+
   elastic-endpoint:
     description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
     required: false
@@ -107,6 +117,8 @@ runs:
         severity: ${{ inputs.severity }}
         fail-on-severity: ${{ inputs.fail-on-severity }}
         scan-path: ${{ inputs.scan-path }}
+        jobs: ${{ inputs.jobs }}
+        max-memory: ${{ inputs.max-memory }}
 
     # Reports run even when the gate above failed the scan step: that is exactly when someone
     # needs to see what was found.

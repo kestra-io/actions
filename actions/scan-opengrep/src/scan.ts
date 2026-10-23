@@ -22,6 +22,9 @@ export interface ScanArgsOptions {
   readonly baseline?: string
   readonly excludeRules?: string[]
   readonly excludePaths?: string[]
+  // resource limits, left to opengrep's defaults when unset (one job per CPU, no memory cap)
+  readonly jobs?: number
+  readonly maxMemory?: number
 }
 
 /**
@@ -61,9 +64,23 @@ export function buildScanArgs(options: ScanArgsOptions): string[] {
   for (const rule of options.excludeRules ?? []) args.push('--exclude-rule', assertNotFlag(rule, 'exclude-rules entry'))
   for (const pattern of options.excludePaths ?? []) args.push('--exclude', assertNotFlag(pattern, 'exclude-paths entry'))
   if (baseline) args.push('--baseline-commit', baseline)
+  if (options.jobs) args.push('--jobs', String(options.jobs))
+  if (options.maxMemory) args.push('--max-memory', String(options.maxMemory))
   args.push('--no-error', '--quiet', assertNotFlag(scanPath, 'scan-path'))
 
   return args
+}
+
+/**
+ * A positive whole number from an action input, or undefined when it is empty. A full scan of a big
+ * repository on a 4 GB runner killed the runner (kestra-ee, "runner lost communication"): the
+ * workflow caps opengrep's workers and memory there.
+ */
+export function parsePositiveInt(value: string, field: string): number | undefined {
+  if (value.trim() === '') return undefined
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`Invalid ${field} '${value}': expected a positive whole number.`)
+  return parsed
 }
 
 export function parseSeverities(input: string): string[] {
