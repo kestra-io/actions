@@ -21,7 +21,7 @@ import { installOpengrep } from './install.js'
 import { buildCommentModel, renderStepSummary } from './report.js'
 import { buildRuleset, resolveRulesets } from './rules.js'
 import { stringify as stringifyYaml } from 'yaml'
-import { buildScanArgs, parseMode, parseSeverities, resolveMode } from './scan.js'
+import { buildScanArgs, parseMode, parsePositiveInt, parseSeverities, resolveMode } from './scan.js'
 import { REGISTRY_HOST } from './version.js'
 
 const ARTIFACT_NAME = 'opengrep-report'
@@ -56,6 +56,8 @@ async function run(): Promise<void> {
   }
 
   const maxRows = Number(core.getInput('comment-max-rows') || '50')
+  const jobs = parsePositiveInt(core.getInput('jobs'), 'jobs')
+  const maxMemory = parsePositiveInt(core.getInput('max-memory'), 'max-memory')
 
   const temp = process.env.RUNNER_TEMP ?? process.cwd()
   const jsonOutput = path.join(temp, 'opengrep.json')
@@ -102,7 +104,9 @@ async function run(): Promise<void> {
       sarifOutput,
       baseline: baseline ?? undefined,
       excludeRules: settings.excludeRules,
-      excludePaths: settings.excludePaths
+      excludePaths: settings.excludePaths,
+      jobs,
+      maxMemory
     }),
     { ignoreReturnCode: true }
   )

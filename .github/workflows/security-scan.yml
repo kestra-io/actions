@@ -113,6 +113,8 @@ jobs:
       # CycloneDX SBOM of the runtime classpath, written by io.kestra.gradle.repository-conventions.
       # continue-on-error so a repository on an older version, without the task, doesn't fail the build.
       # The service account goes to RUNNER_TEMP, never the workspace TruffleHog scans.
+      # The Gradle daemon is stopped afterwards: on the 4 GB private runner its memory, added to a full
+      # OpenGrep scan, killed the runner ("lost communication", kestra-ee develop pushes, 13 runs in 60).
       - name: Trivy - Generate CycloneDX
         id: sbom
         if: ${{ env.SBOM_ENABLED == 'true' }}
@@ -127,7 +129,10 @@ jobs:
             echo "${GOOGLE_SERVICE_ACCOUNT}" | base64 -d > "${RUNNER_TEMP}/gcp-service-account.json"
             export GOOGLE_APPLICATION_CREDENTIALS="${RUNNER_TEMP}/gcp-service-account.json"
           fi
-          ./gradlew cyclonedxBom --console=plain
+          status=0
+          ./gradlew cyclonedxBom --console=plain || status=$?
+          ./gradlew --stop --console=plain || true
+          exit $status
 
       - name: Trivy - Scan Java dependencies
         id: trivy
@@ -162,6 +167,9 @@ jobs:
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ github.token }}
+          # 2 workers and a per-file cap on the 4 GB private runner, opengrep's defaults elsewhere
+          jobs: ${{ github.event.repository.private && '2' || '' }}
+          max-memory: ${{ github.event.repository.private && '1500' || '' }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: ${{ inputs.metadata }}

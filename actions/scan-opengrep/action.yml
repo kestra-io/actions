@@ -49,6 +49,18 @@ inputs:
     required: false
     default: '.'
 
+  jobs:
+    description: >-
+      OpenGrep workers (--jobs). Empty leaves opengrep's default, one per CPU. Each worker holds its own
+      memory: lower it on a small runner
+    required: false
+    default: ''
+
+  max-memory:
+    description: Memory cap in MB for one file × rule (--max-memory). Empty leaves opengrep's default, no cap
+    required: false
+    default: ''
+
 
 
   comment-max-rows:

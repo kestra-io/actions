@@ -96720,8 +96720,16 @@ function buildScanArgs(options) {
   for (const rule of options.excludeRules ?? []) args.push("--exclude-rule", assertNotFlag(rule, "exclude-rules entry"));
   for (const pattern of options.excludePaths ?? []) args.push("--exclude", assertNotFlag(pattern, "exclude-paths entry"));
   if (baseline) args.push("--baseline-commit", baseline);
+  if (options.jobs) args.push("--jobs", String(options.jobs));
+  if (options.maxMemory) args.push("--max-memory", String(options.maxMemory));
   args.push("--no-error", "--quiet", assertNotFlag(scanPath, "scan-path"));
   return args;
+}
+function parsePositiveInt(value, field) {
+  if (value.trim() === "") return void 0;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`Invalid ${field} '${value}': expected a positive whole number.`);
+  return parsed;
 }
 function parseSeverities(input) {
   const allowed = ["ERROR", "WARNING", "INFO"];
@@ -96760,6 +96768,8 @@ async function run() {
     warning(`exclude-rules entry '${id}' has no dots; --exclude-rule matches the full rule id, so this drops nothing.`);
   }
   const maxRows = Number(getInput("comment-max-rows") || "50");
+  const jobs = parsePositiveInt(getInput("jobs"), "jobs");
+  const maxMemory = parsePositiveInt(getInput("max-memory"), "max-memory");
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const jsonOutput = path$2.join(temp, "opengrep.json");
   const sarifOutput = path$2.join(temp, "opengrep.sarif");
@@ -96795,7 +96805,9 @@ async function run() {
       sarifOutput,
       baseline: baseline ?? void 0,
       excludeRules: settings.excludeRules,
-      excludePaths: settings.excludePaths
+      excludePaths: settings.excludePaths,
+      jobs,
+      maxMemory
     }),
     { ignoreReturnCode: true }
   );
