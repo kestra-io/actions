@@ -222,6 +222,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           title: Frontend Tests
+          report-names: |
+            Frontend Tests (Unit)
+            Frontend Tests (Storybook)
           report-paths: |
             kestra-ee/ui-ee/test-report.junit.xml
             kestra-ee/ui-ee/test-report.storybook.junit.xml
