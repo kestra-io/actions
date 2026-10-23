@@ -54,7 +54,7 @@ runs:
           BRANCH_SHA=$(git ls-remote "$OSS_REMOTE" "refs/heads/$HEAD_REF" | cut -f1)
         fi
         if [[ -n "$BRANCH_SHA" ]]; then
-          OSS_PR_REF=$(git ls-remote "$OSS_REMOTE" 'refs/pull/*/head' | grep "^$BRANCH_SHA" | sort -t'/' -k3 -n -r | head -1 | awk '{print $2}')
+          OSS_PR_REF=$(git ls-remote "$OSS_REMOTE" 'refs/pull/*/head' | { grep "^$BRANCH_SHA" || [ $? -eq 1 ]; } | sort -t'/' -k3 -n -r | head -1 | awk '{print $2}')
           if [[ -n "$OSS_PR_REF" ]]; then
             OSS_PR_NUMBER=$(echo "$OSS_PR_REF" | sed 's|refs/pull/||;s|/head||')
             if [[ -n "$(git ls-remote "$OSS_REMOTE" "refs/pull/$OSS_PR_NUMBER/merge")" ]]; then
