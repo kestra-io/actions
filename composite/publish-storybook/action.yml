@@ -1,0 +1,48 @@
+name: 'Publish Storybook'
+description: 'Build a Storybook and publish it to the internal GCS bucket, on the main branches only'
+
+inputs:
+  working-directory:
+    description: 'Directory holding the Storybook package.json'
+    required: true
+
+  destination:
+    description: 'Path inside the bucket, e.g. "kestra-io/kestra/ui"; index.html ends up at its root'
+    required: true
+
+  google-service-account:
+    description: 'Google service account credentials JSON, publishing is skipped when empty'
+    required: false
+    default: ''
+
+  bucket:
+    description: 'Target GCS bucket'
+    required: false
+    default: 'internal-kestra-host'
+
+runs:
+  using: composite
+  steps:
+    - name: Storybook - Build
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm run build-storybook -- --output-dir storybook-static
+
+    - name: Storybook - GCP auth
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
+      uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
+      with:
+        credentials_json: '${{ inputs.google-service-account }}'
+
+    - name: Storybook - Setup Cloud SDK
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
+      uses: 'google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db' # v3.0.1
+
+    - name: Storybook - Upload
+      if: ${{ job.status == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && inputs.google-service-account != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TARGET: gs://${{ inputs.bucket }}/${{ inputs.destination }}
+      run: gcloud storage rsync --recursive --delete-unmatched-destination-objects storybook-static "$TARGET"
