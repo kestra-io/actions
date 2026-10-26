@@ -6,6 +6,9 @@ on:
       GITHUB_AUTH_TOKEN:
         description: "The GitHub Token."
         required: true
+      GOOGLE_SERVICE_ACCOUNT:
+        description: 'Google Service Account, used to publish Storybook to the internal bucket'
+        required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
         required: false
@@ -94,3 +97,13 @@ jobs:
       - name: Run storybook component tests
         working-directory: ui/packages/design-system
         run: npm run test:storybook
+
+      # Only after every test above passed, on the main branches
+      - name: Storybook - Publish
+        if: ${{ success() }}
+        continue-on-error: true
+        uses: kestra-io/actions/composite/publish-storybook@main
+        with:
+          working-directory: ui/packages/design-system
+          destination: kestra-io/kestra/design-system
+          google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
