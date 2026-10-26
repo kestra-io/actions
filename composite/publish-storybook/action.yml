@@ -7,7 +7,7 @@ inputs:
     required: true
 
   destination:
-    description: 'Path inside the bucket, e.g. "kestra-io/kestra/ui"; index.html ends up at its root'
+    description: 'Path inside the bucket, e.g. "kestra-io/kestra/storybook/ui"; index.html ends up at its root'
     required: true
 
   google-service-account:

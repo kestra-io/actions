@@ -105,5 +105,5 @@ jobs:
         uses: kestra-io/actions/composite/publish-storybook@main
         with:
           working-directory: ui/packages/design-system
-          destination: kestra-io/kestra/design-system
+          destination: kestra-io/kestra/storybook/design-system
           google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}

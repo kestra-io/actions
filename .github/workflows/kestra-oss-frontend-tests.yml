@@ -209,5 +209,5 @@ jobs:
         uses: kestra-io/actions/composite/publish-storybook@main
         with:
           working-directory: ui
-          destination: kestra-io/kestra/ui
+          destination: kestra-io/kestra/storybook/ui
           google-service-account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
