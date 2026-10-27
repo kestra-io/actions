@@ -27,9 +27,7 @@ env:
 jobs:
   test:
     name: Frontend - Tests
-    # Pinned: the Storybook browser tests on releases/v2.0.x (vitest 4.1, playwright 1.61) lose their
-    # connection to the dev server on ubuntu-26.04, which ubuntu-latest is migrating to until 2026-11-19.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
