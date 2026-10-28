@@ -151,3 +151,25 @@ jobs:
             ```bash
             docker run --pull=always --rm -it -p 8080:8080 --user=root -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp ${{ env.GITHUB_IMAGE_PATH }}:${{ github.event.pull_request.number }} server local
             ```
+
+  # ********************************************************************************************************************
+  # Vulnerability scan of the PR image
+  # ********************************************************************************************************************
+  # Dry run: a PR image is not shipped, so nothing reaches Elastic (the tower tracks shipped tags
+  # only); the counts land in the job log and step summary. A PR comment can come later.
+  scan-image:
+    name: Scan docker image
+    needs: docker
+    if: ${{ !cancelled() && needs.docker.result == 'success' }}
+    uses: ./.github/workflows/image-security-scan.yml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      images: ghcr.io/kestra-io/kestra-ee-pr:${{ github.event.pull_request.number }}
+      dry-run: true
+      metadata: |
+        trigger=pull_request
+    secrets:
+      OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
+      OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}

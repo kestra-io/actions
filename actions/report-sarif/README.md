@@ -145,10 +145,18 @@ Two more things happen in image mode:
   ```
 
   `images` takes bare names (every tag of that row in `images.yml`) and
-  `image:tag` refs (that tag exactly). The owner squad always comes from
-  `images.yml`, so the tower's image → squad table has one source to mirror.
-  A publish job that still holds its registry login can call
-  `composite/scan-image` directly instead.
+  `image:tag` refs. A ref whose tag is not listed for that image in
+  `images.yml` is **skipped** (scanned for the log only under `dry-run`): the
+  tower keeps one state per image × tag and only the tags the daily sweep
+  rescans can ever be marked fixed, so a publish of `v1.3.45` refreshes the
+  moving tags it retagged (`v1.3`, `latest`, `develop`) and never adds a
+  `v1.3.45` scope. The owner squad always comes from `images.yml`, so the
+  tower's image → squad table has one source to mirror. A publish job that
+  still holds its registry login can call `composite/scan-image` directly
+  instead; it runs this action from its own commit, not from `main`.
+  Wired today: `kestra-ee-pullrequest-publish-docker.yml` (the PR image,
+  dry run), `kestra-ee-publish-docker.yml` and `kestra-oss-publish-docker.yml`
+  (the moving tags a release or develop publish retagged).
 
 Whichever way in, the documents are the same: `github.*` is the run that
 scanned (a publish run's branch and event, or the sweep's), and consumers

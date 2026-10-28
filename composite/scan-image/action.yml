@@ -17,6 +17,11 @@ description: 'Scan one container image for vulnerabilities with Trivy and ship t
 # docker/login-action with GITHUB_TOKEN (packages: read), Artifact Registry its usual auth. The
 # owner squad is not looked up here (images.yml is read by the workflow, not by this composite):
 # pass `owner=<squad>` in metadata or leave it to the tower's own image → squad table.
+#
+# report-sarif runs from the SAME commit as this composite (node on its dist/index.js under
+# github.action_path), not from @main: a branch of this repo exercises its own report-sarif, and a
+# caller pinning scan-image to a sha gets the matching document shape. A `uses:` can't express
+# that (a local path resolves against the caller's workspace, a remote ref is fixed text).
 
 inputs:
   image-ref:
@@ -105,19 +110,30 @@ runs:
         echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
         echo "line=$line" >> "$GITHUB_OUTPUT"
 
+    # report-sarif needs node >= 22; the runner's default node may be older.
+    - name: Node - Setup
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: '24'
+
     # Image mode: resource = the image, one scan_completed summary document even when nothing was
-    # found, unfixed OS package CVEs left out. See actions/report-sarif/README.md.
+    # found, unfixed OS package CVEs left out. See actions/report-sarif/README.md. Inputs go through
+    # the INPUT_<NAME> environment the actions toolkit reads, outputs through GITHUB_OUTPUT as usual.
     - name: Elastic - Report findings
       id: report
       if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
-      uses: kestra-io/actions/actions/report-sarif@main
-      with:
-        sarif-files: ${{ steps.paths.outputs.json }}
-        type: vulnerabilities
-        image-ref: ${{ inputs.image-ref }}
-        elastic-endpoint: ${{ inputs.elastic-endpoint }}
-        elastic-headers: ${{ inputs.elastic-headers }}
-        dry-run: ${{ inputs.dry-run }}
-        metadata: |
+      shell: bash
+      env:
+        INPUT_SARIF-FILES: ${{ steps.paths.outputs.json }}
+        INPUT_TYPE: vulnerabilities
+        INPUT_IMAGE-REF: ${{ inputs.image-ref }}
+        INPUT_ELASTIC-ENDPOINT: ${{ inputs.elastic-endpoint }}
+        INPUT_ELASTIC-HEADERS: ${{ inputs.elastic-headers }}
+        INPUT_DRY-RUN: ${{ inputs.dry-run }}
+        INPUT_METADATA: |
           target=container-image
           ${{ inputs.metadata }}
+      run: |
+        set -euo pipefail
+        node "${{ github.action_path }}/../../actions/report-sarif/dist/index.js"

@@ -20,9 +20,12 @@ name: Image security scan
 #           images: docker.io/kestra/kestra:${{ needs.docker.outputs.tag }},docker.io/kestra/kestra:latest
 #         secrets: inherit
 #
-#   `images` takes bare names (every tag of that row in images.yml) and `image:tag` refs (that tag
-#   exactly; the owner squad still comes from images.yml, unknown images are warned about and
-#   scanned with no owner). Candidates in this repo: kestra-oss-publish-docker.yml (job `docker`,
+#   `images` takes bare names (every tag of that row in images.yml) and `image:tag` refs. A ref
+#   whose tag is NOT listed for that image in images.yml is skipped with a warning (scanned but
+#   shipped nowhere when dry-run is on): the tower keeps one state per image × tag and only the
+#   tags the daily sweep rescans can ever be marked fixed, so a publish of v1.3.45 refreshes the
+#   moving tags it retagged (v1.3, latest, develop), never adds a v1.3.45 scope. Images not in
+#   images.yml follow the same rule (dry-run only, no owner). Candidates in this repo: kestra-oss-publish-docker.yml (job `docker`,
 #   pushes kestra/kestra:<tag>, latest, latest-lts) and kestra-ee-publish-docker.yml (job `docker`,
 #   ghcr.io/kestra-io/kestra-ee + Artifact Registry); in their own repos: kestra-io/kestractl
 #   release.yml, kestra-io/api.kestra.io main.yml, kestra-io/console main.yml,
@@ -110,6 +113,7 @@ jobs:
         id: matrix
         env:
           FILTER: ${{ inputs.images }}
+          DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
           # yq (mikefarah) ships with the ubuntu runner; python3 does the rest with the stdlib only.
@@ -126,6 +130,7 @@ jobs:
               slash, colon = ref.rfind("/"), ref.rfind(":")
               return (ref[:colon], ref[colon + 1:]) if colon > slash else (ref, None)
 
+          dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
           rows, warnings = [], []
           wanted = [s.strip() for s in os.environ.get("FILTER", "").split(",") if s.strip()]
           if not wanted:  # the daily sweep: every enabled row, every tag
@@ -140,10 +145,14 @@ jobs:
                       warnings.append(f"{name}: not in images.yml, no tag to scan")
                       continue
                   tags = [str(t) for t in row["tags"]]
-              else:  # an exact ref, scanned whatever images.yml says about the tag
+              else:  # an exact ref: only a tag the daily sweep tracks, unless nothing is shipped anyway
+                  tracked = row is not None and tag in [str(t) for t in row["tags"]]
+                  if not tracked and not dry_run:
+                      warnings.append(f"{name}:{tag}: not a tag listed in images.yml, skipped (the tower tracks only those)")
+                      continue
+                  if not tracked:
+                      warnings.append(f"{name}:{tag}: not a tag listed in images.yml, scanned for the log only (dry run)")
                   tags = [tag]
-                  if row is None:
-                      warnings.append(f"{name}: not in images.yml, scanned with no owner")
               for t in tags:
                   rows.append({"image": name, "tag": t, "owner": (row or {}).get("owner", ""),
                                "service": name.rsplit("/", 1)[-1]})
@@ -170,14 +179,13 @@ jobs:
       max-parallel: 4
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
     steps:
-      # Same commit as the workflow file, so a branch of this repo tests its own composite.
+      # Same commit as the workflow file, so a branch of this repo tests its own composite and
+      # report-sarif (the composite runs actions/report-sarif from its own checkout).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kestra-io/actions
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-          sparse-checkout: composite/scan-image
-          sparse-checkout-cone-mode: false
 
       # Private org images (kestra-ee) are readable by the workflow token; public ones don't mind.
       - name: Docker - Login to GHCR
