@@ -56,6 +56,11 @@ export interface Finding {
   readonly remediation?: string
   readonly purl?: string
   readonly fixStatus?: string
+  /** Native Trivy report only: the result `Type` (ubuntu, jar, python-pkg...) and `Class` (os-pkgs, lang-pkgs). */
+  readonly ecosystem?: string
+  readonly resultClass?: string
+  /** Native Trivy report only: where inside the scanned artifact the package sits (a jar path in an image). */
+  readonly packagePath?: string
 }
 
 /** Producers spell the severity word however they like, so match on the upper cased form. */

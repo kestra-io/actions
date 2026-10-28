@@ -91,6 +91,42 @@ misconfiguration adds `directory`, `file`, `line`, `language` and a permalink to
 the line, and a vulnerability adds `target`. `resource.id` is
 `sha256(repository, target)` either way, so it is stable across runs.
 
+### Container images
+
+Set `image-ref` (e.g. `docker.io/kestra/kestra:latest`) when the report is a
+`trivy image` scan. The image then stands in for the repository:
+
+| Field | Value |
+| :--- | :--- |
+| `resource.type` / `.repository` | `container-image` / the image name without the tag (`docker.io/kestra/kestra`) |
+| `resource.name` / `.sub_type` | `<image> (<tag>) / <Trivy target>` / the Trivy result type (`ubuntu`, `jar`, `python-pkg`…) |
+| `resource.id` | `sha256(image, tag, result type)`, one resource per image × tag × type |
+| `container.image.name` / `.tag` / `.hash.all` | the image, its tag, and the sha256 digest the tag resolved to at scan time |
+| `package.path` | which jar or site-packages entry inside the image carries the package |
+| `service.name` | the image's last path segment (`kestra`), unless `metadata` sets it |
+| `labels.component` | `image`, unless `metadata` or `components` sets it |
+| `event.id` | `sha256(image, tag, tool, rule, result type, package)`: keyed on the **tag**, not the digest, so `latest` moving to a new build is the same finding still open (or fixed) rather than a new one |
+| `github.*` | the workflow run that scanned the image, as usual |
+
+Two more things happen in image mode:
+
+- **Unfixed OS packages are left out.** An image carries the distribution's
+  whole backlog of CVEs without a fix (hundreds on a Debian base), and nothing
+  short of changing the base image can act on them. Only `Class: os-pkgs`
+  results without a `FixedVersion` are dropped; language packages keep every
+  finding. The count left out is logged.
+- **One `scan_completed` summary document per report**, shipped even when the
+  scan found nothing: `event.action: scan_completed`, `event.outcome: success`,
+  `container.image.*`, `resource` of type `container-image` with no `sub_type`,
+  `message: "Trivy scanned <image>:<tag>: N vulnerabilities"`. A clean scan
+  otherwise leaves no trace in the stream, and a consumer keeping one state per
+  image × tag could not tell "clean" from "not scanned". It carries no
+  `vulnerability.id`, so a Findings view keyed on it ignores it.
+
+`image-ref` is only accepted with `type: vulnerabilities`. The images Kestra
+ships and their tags are listed in the repository's `images.yml`, scanned by
+`.github/workflows/image-security-scan.yml`.
+
 ## One data stream per scanner
 
 `logs-<tool>-<namespace>`, the tool being the first word of the SARIF driver
@@ -210,6 +246,7 @@ One document per SARIF result, in ECS:
 | `user.name` / `.id` | the triggering actor, falling back to the actor |
 | `organization.name` / `.id` | the repository owner |
 | `event.id` | `sha256(repository, branch, tool, rule, file, line, package)` |
+| `container.image.*`, `package.path` | image scans only (`image-ref`), see above |
 | `github.*` | everything the runner knows about the run that observed the finding |
 | `sarif.*` | the raw `level`, `ruleId`, `ruleName`, `fingerprint`, `snippet` and region, kept for anything the ECS fields flatten away |
 

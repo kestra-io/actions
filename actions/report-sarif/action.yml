@@ -68,6 +68,18 @@ inputs:
     required: false
     default: ''
 
+  image-ref:
+    description: >-
+      Set for a container image scan (`trivy image`), e.g. docker.io/kestra/kestra:latest. The image then
+      stands in for the repository: resource.type container-image, resource.repository the image name,
+      container.image.{name,tag,hash} filled, event.id keyed on image × tag (not digest), service.name
+      the image's last path segment and labels.component image unless metadata says otherwise. OS package
+      vulnerabilities without a fix are left out, and one scan_completed summary document is shipped per
+      report even when nothing was found, so a consumer can tell a clean scan from a missing one.
+      Only with type vulnerabilities
+    required: false
+    default: ''
+
   components:
     description: >-
       Newline separated component=glob pairs matched against each finding's repository relative
