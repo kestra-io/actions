@@ -166,6 +166,8 @@ jobs:
       contents: read
       packages: read
     with:
+      # TRIAL of kestra-io/actions#359: drop this line (default main) before merging.
+      actions-ref: feat/image-security-scan
       images: ghcr.io/kestra-io/kestra-ee-pr:${{ github.event.pull_request.number }}
       dry-run: true
       metadata: |

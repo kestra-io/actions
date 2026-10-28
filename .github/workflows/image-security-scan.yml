@@ -73,6 +73,11 @@ on:
         required: false
         type: boolean
         default: false
+      actions-ref:
+        description: "Ref of kestra-io/actions to read images.yml and composite/scan-image from. Leave the default unless testing a branch of this repo: then pass the same ref as the `uses:`"
+        required: false
+        type: string
+        default: main
     secrets:
       OTLP_ENDPOINT:
         description: "Elastic ingest endpoint; `secrets: inherit` passes the org one"
@@ -99,15 +104,14 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       count: ${{ steps.matrix.outputs.count }}
     steps:
-      # The caller's checkout is not this repo's: images.yml comes from kestra-io/actions, at the
-      # commit this workflow file was taken from, whatever repository the workflow is called from.
-      # job_workflow_sha is that commit when called as a reusable workflow (workflow_sha is the
-      # CALLER's commit there, which this repo doesn't have); on a direct dispatch it is unset and
-      # github.sha is the dispatched commit of this repo.
+      # The caller's checkout is not this repo's: images.yml comes from kestra-io/actions, at
+      # `actions-ref` when called (no context exposes the called workflow's own commit through a
+      # nested call: workflow_sha and job_workflow_sha are both the CALLER's), at github.sha on a
+      # direct dispatch (then it is this repo's dispatched commit).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kestra-io/actions
-          ref: ${{ github.job_workflow_sha || github.sha }}
+          ref: ${{ inputs.actions-ref || github.sha }}
           persist-credentials: false
           sparse-checkout: images.yml
           sparse-checkout-cone-mode: false
@@ -182,12 +186,12 @@ jobs:
       max-parallel: 4
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
     steps:
-      # Same commit as the workflow file, so a branch of this repo tests its own composite and
-      # report-sarif (the composite runs actions/report-sarif from its own checkout).
+      # Same ref as above, so a branch of this repo tests its own composite and report-sarif (the
+      # composite runs actions/report-sarif from its own checkout).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kestra-io/actions
-          ref: ${{ github.job_workflow_sha || github.sha }}
+          ref: ${{ inputs.actions-ref || github.sha }}
           persist-credentials: false
 
       # Private org images (kestra-ee) are readable by the workflow token; public ones don't mind.
