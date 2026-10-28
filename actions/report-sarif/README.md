@@ -123,9 +123,38 @@ Two more things happen in image mode:
   image × tag could not tell "clean" from "not scanned". It carries no
   `vulnerability.id`, so a Findings view keyed on it ignores it.
 
-`image-ref` is only accepted with `type: vulnerabilities`. The images Kestra
-ships and their tags are listed in the repository's `images.yml`, scanned by
-`.github/workflows/image-security-scan.yml`.
+`image-ref` is only accepted with `type: vulnerabilities`.
+
+#### Where image scans come from
+
+- **`composite/scan-image`** runs `trivy image` on one `image-ref` and calls
+  this action in image mode. Registry login is the caller's job.
+- **`.github/workflows/image-security-scan.yml`** expands `images.yml` (the
+  images Kestra ships, their tags and owner squad) into a matrix of
+  `scan-image` calls. `workflow_dispatch` is the daily sweep the security
+  controller tower dispatches; `workflow_call` lets a publish workflow scan
+  exactly what it pushed:
+
+  ```yaml
+  scan-images:
+    needs: docker
+    uses: kestra-io/actions/.github/workflows/image-security-scan.yml@main
+    with:
+      images: docker.io/kestra/kestra:${{ needs.docker.outputs.tag }},docker.io/kestra/kestra:latest
+    secrets: inherit
+  ```
+
+  `images` takes bare names (every tag of that row in `images.yml`) and
+  `image:tag` refs (that tag exactly). The owner squad always comes from
+  `images.yml`, so the tower's image → squad table has one source to mirror.
+  A publish job that still holds its registry login can call
+  `composite/scan-image` directly instead.
+
+Whichever way in, the documents are the same: `github.*` is the run that
+scanned (a publish run's branch and event, or the sweep's), and consumers
+scope image findings on `container.image.name`, `container.image.tag` and
+`resource.sub_type`, never on `github.refName`. The `scan_completed` summary
+is emitted per image × tag in both cases.
 
 ## One data stream per scanner
 

@@ -1,0 +1,123 @@
+name: 'Container image scan'
+description: 'Scan one container image for vulnerabilities with Trivy and ship the findings to Elastic (logs-trivy-gha) in report-sarif image mode'
+
+# One image × tag per call. Used by .github/workflows/image-security-scan.yml (the daily matrix the
+# security controller tower dispatches) and meant to be called straight from a publish job that has
+# just pushed an image and still holds the registry login:
+#
+#   - uses: kestra-io/actions/composite/scan-image@main
+#     with:
+#       image-ref: docker.io/kestra/kestra:${{ steps.vars.outputs.tag }}
+#       elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+#       elastic-headers: ${{ secrets.OTLP_HEADERS }}
+#       metadata: |
+#         owner=core-squad
+#
+# Registry login is the caller's job: a public image needs none, a private GHCR one a
+# docker/login-action with GITHUB_TOKEN (packages: read), Artifact Registry its usual auth. The
+# owner squad is not looked up here (images.yml is read by the workflow, not by this composite):
+# pass `owner=<squad>` in metadata or leave it to the tower's own image → squad table.
+
+inputs:
+  image-ref:
+    description: 'The image to scan, with its tag: docker.io/kestra/kestra:latest (a bare name means latest; @sha256:… works too)'
+    required: true
+
+  elastic-endpoint:
+    description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
+    required: false
+    default: ''
+
+  elastic-headers:
+    description: 'Elastic ingest headers, the OTLP_HEADERS secret'
+    required: false
+    default: ''
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every finding (owner=core-squad, request_id=…). A dotted key is written at that path, an undotted one lands under labels. service.name defaults to the image short name, component to image'
+    required: false
+    default: ''
+
+  dry-run:
+    description: 'Build the Elastic payload without sending it'
+    required: false
+    default: 'false'
+
+  timeout:
+    description: 'Trivy timeout; a full kestra image with every plugin takes a few minutes'
+    required: false
+    default: '20m'
+
+outputs:
+  json-file:
+    description: 'Absolute path to the Trivy JSON report, the one shipped to Elastic'
+    value: ${{ steps.paths.outputs.json }}
+
+  documents-count:
+    description: 'Documents built for Elastic: the findings kept plus the scan_completed summary (0 when the scan itself failed)'
+    value: ${{ steps.report.outputs.documents-count }}
+
+  summary:
+    description: 'One line: "<image>: N vulnerabilities (CRITICAL x, HIGH y, …)" as Trivy counted them, before the unfixed-OS filter'
+    value: ${{ steps.summary.outputs.line }}
+
+runs:
+  using: composite
+  steps:
+    - name: Trivy - Report paths
+      id: paths
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+      run: |
+        set -euo pipefail
+        # One report per image in the workspace, so several calls in one job don't overwrite each other.
+        slug="$(printf '%s' "$IMAGE_REF" | tr -c 'A-Za-z0-9._-' '_')"
+        echo "json=${GITHUB_WORKSPACE}/trivy-image-${slug}.json" >> "$GITHUB_OUTPUT"
+        mkdir -p "${GITHUB_WORKSPACE}/.trivy-cache"
+
+    - name: Trivy - Scan the image
+      id: trivy
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      env:
+        TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
+      with:
+        scan-type: image
+        image-ref: ${{ inputs.image-ref }}
+        scanners: vuln
+        format: json
+        output: ${{ steps.paths.outputs.json }}
+        timeout: ${{ inputs.timeout }}
+
+    - name: Trivy - Summary
+      id: summary
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+        JSON: ${{ steps.paths.outputs.json }}
+      run: |
+        set -euo pipefail
+        line="$(jq -r --arg ref "$IMAGE_REF" '
+          [.Results[]? | .Vulnerabilities[]?] as $v
+          | "\($ref): \($v | length) vulnerabilities" + (if ($v | length) > 0 then " (" + ([$v[].Severity] | group_by(.) | map("\(.[0]) \(length)") | join(", ")) + ")" else "" end)
+        ' "$JSON")"
+        echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
+        echo "line=$line" >> "$GITHUB_OUTPUT"
+
+    # Image mode: resource = the image, one scan_completed summary document even when nothing was
+    # found, unfixed OS package CVEs left out. See actions/report-sarif/README.md.
+    - name: Elastic - Report findings
+      id: report
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      uses: kestra-io/actions/actions/report-sarif@main
+      with:
+        sarif-files: ${{ steps.paths.outputs.json }}
+        type: vulnerabilities
+        image-ref: ${{ inputs.image-ref }}
+        elastic-endpoint: ${{ inputs.elastic-endpoint }}
+        elastic-headers: ${{ inputs.elastic-headers }}
+        dry-run: ${{ inputs.dry-run }}
+        metadata: |
+          target=container-image
+          ${{ inputs.metadata }}
