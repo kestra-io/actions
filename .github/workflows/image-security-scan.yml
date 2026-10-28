@@ -101,10 +101,13 @@ jobs:
     steps:
       # The caller's checkout is not this repo's: images.yml comes from kestra-io/actions, at the
       # commit this workflow file was taken from, whatever repository the workflow is called from.
+      # job_workflow_sha is that commit when called as a reusable workflow (workflow_sha is the
+      # CALLER's commit there, which this repo doesn't have); on a direct dispatch it is unset and
+      # github.sha is the dispatched commit of this repo.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kestra-io/actions
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ github.job_workflow_sha || github.sha }}
           persist-credentials: false
           sparse-checkout: images.yml
           sparse-checkout-cone-mode: false
@@ -184,7 +187,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kestra-io/actions
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ github.job_workflow_sha || github.sha }}
           persist-credentials: false
 
       # Private org images (kestra-ee) are readable by the workflow token; public ones don't mind.
