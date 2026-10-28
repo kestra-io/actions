@@ -1,0 +1,142 @@
+name: Image security scan
+
+# Scans the container images Kestra ships (images.yml) with Trivy and reports every vulnerability to
+# Elastic (logs-trivy-gha) through actions/report-sarif in image mode, one scan_completed summary per
+# image × tag included, so the security controller tower (kestra-io/security-controller-tower) can
+# keep one issue per vulnerable package per image and prove clean scans.
+#
+# No schedule here on purpose: the tower dispatches it daily (ADR-0001 there: the tower owns the scan
+# schedule), passing `metadata` with its request id. Run it by hand from the Actions tab to test.
+#
+# Private GHCR images are pulled with GITHUB_TOKEN (packages: read). A registry.kestra.io row in
+# images.yml would need a docker/login-action step with a customer license credential first.
+
+on:
+  workflow_dispatch:
+    inputs:
+      metadata:
+        description: "Newline separated key=value pairs added to every finding (request_id=…, trigger=kestra). A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
+      images:
+        description: "Comma separated image names to scan (e.g. docker.io/kestra/kestra,ghcr.io/kestra-io/pydata); empty = every enabled image"
+        required: false
+        type: string
+        default: ''
+      dry-run:
+        description: "Build the Elastic payload without sending it"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  matrix:
+    name: Images to scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      count: ${{ steps.matrix.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: images.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Images - Expand images.yml into a matrix
+        id: matrix
+        env:
+          FILTER: ${{ inputs.images }}
+        run: |
+          set -euo pipefail
+          # yq (mikefarah) ships with the ubuntu runner; python3 does the rest with the stdlib only.
+          yq -o=json '.images' images.yml > "$RUNNER_TEMP/images.json"
+          python3 - "$RUNNER_TEMP/images.json" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, sys
+          wanted = {s.strip() for s in os.environ.get("FILTER", "").split(",") if s.strip()}
+          rows = []
+          for row in json.load(open(sys.argv[1])):
+              if row.get("enabled", True) is False or (wanted and row["image"] not in wanted):
+                  continue
+              for tag in row["tags"]:
+                  rows.append({"image": row["image"], "tag": str(tag), "owner": row["owner"],
+                               "service": row["image"].rsplit("/", 1)[-1]})
+          unknown = wanted - {r["image"] for r in rows}
+          if unknown:
+              print(f"::warning::not in images.yml or disabled: {', '.join(sorted(unknown))}", file=sys.stderr)
+          print("matrix=" + json.dumps({"include": rows}))
+          print(f"count={len(rows)}")
+          print(f"{len(rows)} image × tag rows", file=sys.stderr)
+          PY
+
+  scan:
+    name: ${{ matrix.image }}:${{ matrix.tag }}
+    needs: matrix
+    if: ${{ needs.matrix.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Private org images (kestra-ee) are readable by the workflow token; public ones don't mind.
+      - name: Docker - Login to GHCR
+        if: ${{ startsWith(matrix.image, 'ghcr.io/') }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy - Scan the image
+        id: trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}:${{ matrix.tag }}
+          scanners: vuln
+          format: json
+          output: ${{ github.workspace }}/trivy-image.json
+          timeout: 20m
+
+      - name: Trivy - Summary
+        if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          jq -r --arg ref "${{ matrix.image }}:${{ matrix.tag }}" '
+            [.Results[]? | .Vulnerabilities[]?] as $v
+            | "\($ref): \($v | length) vulnerabilities (" + ([$v[].Severity] | group_by(.) | map("\(.[0]) \(length)") | join(", ")) + ")"
+          ' "${{ github.workspace }}/trivy-image.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Elastic - Report findings
+        if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+        uses: ./actions/report-sarif
+        with:
+          sarif-files: ${{ github.workspace }}/trivy-image.json
+          type: vulnerabilities
+          image-ref: ${{ matrix.image }}:${{ matrix.tag }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          dry-run: ${{ inputs.dry-run }}
+          metadata: |
+            service.name=${{ matrix.service }}
+            owner=${{ matrix.owner }}
+            target=container-image
+            ${{ inputs.metadata }}
