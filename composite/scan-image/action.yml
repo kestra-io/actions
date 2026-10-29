@@ -81,12 +81,30 @@ runs:
         echo "json=${GITHUB_WORKSPACE}/trivy-image-${slug}.json" >> "$GITHUB_OUTPUT"
         mkdir -p "${GITHUB_WORKSPACE}/.trivy-cache"
 
+    # Pulled through the docker daemon first: Trivy then reads the layers locally instead of
+    # streaming them from the registry, which hit HTTP/2 PROTOCOL_ERRORs from GHCR on the big
+    # kestra-ee image (8 min in, every time). Needs the caller's registry login for private images.
+    - name: Docker - Pull the image
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+      run: |
+        set -euo pipefail
+        for attempt in 1 2 3; do
+          docker pull --quiet "$IMAGE_REF" && exit 0
+          echo "docker pull failed (attempt $attempt), retrying in 20 s"
+          sleep 20
+        done
+        exit 1
+
     - name: Trivy - Scan the image
       id: trivy
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       env:
         TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
       with:
+        # trivy-action's default binary lags; pin what the tower's POC validated the report shape on.
+        version: v0.72.0
         scan-type: image
         image-ref: ${{ inputs.image-ref }}
         scanners: vuln
