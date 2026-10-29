@@ -32,7 +32,9 @@ name: Image security scan
 #   kestra-io/mcp-server-python main.yml, kestra-io/migration-assistant release.yml. A publish job
 #   that already holds the registry login can call composite/scan-image directly instead.
 #
-# Private GHCR images are pulled with GITHUB_TOKEN (packages: read). A registry.kestra.io row in
+# GHCR login uses GITHUB_TOKEN (packages: read): public images need nothing, a private one
+# (kestra-ee) must grant kestra-io/actions Read under its package's "Manage Actions access", or
+# this workflow must log in with the KestraBot App token instead. A registry.kestra.io row in
 # images.yml would need a docker/login-action step with a customer license credential first.
 #
 # Documents from a publish-triggered run carry that run's github.* (refName = the publishing
@@ -131,16 +133,20 @@ jobs:
           enabled = lambda row: row.get("enabled", True) is not False  # noqa: E731
 
           def split_ref(ref):
-              """docker.io/kestra/kestra:latest -> (name, tag); a bare name -> (name, None); a port is not a tag."""
+              """docker.io/kestra/kestra:latest -> (name, tag); a bare name -> (name, None); a port is not a tag;
+              name@sha256:x -> (name, "@sha256:x") so the digest ref is passed through as is."""
               if "@" in ref:
-                  return ref.split("@", 1)[0], ref.split("@", 1)[1]
+                  return ref.split("@", 1)[0], "@" + ref.split("@", 1)[1]
               slash, colon = ref.rfind("/"), ref.rfind(":")
               return (ref[:colon], ref[colon + 1:]) if colon > slash else (ref, None)
 
           dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
           rows, warnings = [], []
-          wanted = [s.strip() for s in os.environ.get("FILTER", "").split(",") if s.strip()]
-          if not wanted:  # the daily sweep: every enabled row, every tag
+          raw = os.environ.get("FILTER", "")
+          wanted = [s.strip() for s in raw.split(",") if s.strip()]
+          if not wanted and raw.strip():
+              warnings.append("images given but empty after trimming: nothing to scan (a full sweep needs an empty input)")
+          elif not wanted:  # the daily sweep: every enabled row, every tag
               for row in rows_by_image.values():
                   if enabled(row):
                       wanted.append(row["image"])
@@ -151,18 +157,21 @@ jobs:
                   if row is None:
                       warnings.append(f"{name}: not in images.yml, no tag to scan")
                       continue
+                  if not enabled(row):
+                      warnings.append(f"{name}: disabled in images.yml, skipped")
+                      continue
                   tags = [str(t) for t in row["tags"]]
               else:  # an exact ref: only a tag the daily sweep tracks, unless nothing is shipped anyway
                   tracked = row is not None and tag in [str(t) for t in row["tags"]]
                   if not tracked and not dry_run:
-                      warnings.append(f"{name}:{tag}: not a tag listed in images.yml, skipped (the tower tracks only those)")
+                      warnings.append(f"{entry}: not a tag listed in images.yml, skipped (the tower tracks only those)")
                       continue
                   if not tracked:
-                      warnings.append(f"{name}:{tag}: not a tag listed in images.yml, scanned for the log only (dry run)")
+                      warnings.append(f"{entry}: not a tag listed in images.yml, scanned for the log only (dry run)")
                   tags = [tag]
               for t in tags:
-                  rows.append({"image": name, "tag": t, "owner": (row or {}).get("owner", ""),
-                               "service": name.rsplit("/", 1)[-1]})
+                  rows.append({"image": name, "tag": t, "ref": name + (t if t.startswith("@") else ":" + t),
+                               "owner": (row or {}).get("owner", ""), "service": name.rsplit("/", 1)[-1]})
           seen, unique = set(), []
           for r in rows:
               if (r["image"], r["tag"]) not in seen:
@@ -176,7 +185,7 @@ jobs:
           PY
 
   scan:
-    name: ${{ matrix.image }}:${{ matrix.tag }}
+    name: ${{ matrix.ref }}
     needs: matrix
     if: ${{ needs.matrix.outputs.count != '0' }}
     runs-on: ubuntu-latest
@@ -194,7 +203,7 @@ jobs:
           ref: ${{ inputs.actions-ref || github.sha }}
           persist-credentials: false
 
-      # Private org images (kestra-ee) are readable by the workflow token; public ones don't mind.
+      # Public images don't mind; a private one must grant this repo access (see the header).
       - name: Docker - Login to GHCR
         if: ${{ startsWith(matrix.image, 'ghcr.io/') }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -206,7 +215,7 @@ jobs:
       - name: Trivy - Scan and report
         uses: ./composite/scan-image
         with:
-          image-ref: ${{ matrix.image }}:${{ matrix.tag }}
+          image-ref: ${{ matrix.ref }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           dry-run: ${{ inputs.dry-run }}

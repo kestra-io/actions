@@ -128,6 +128,26 @@ runs:
         echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
         echo "line=$line" >> "$GITHUB_OUTPUT"
 
+    # No endpoint = nothing to ship: report-sarif still builds the payload (dry run) instead of
+    # failing on its required input, and says so.
+    - name: Elastic - Shipping mode
+      id: mode
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      env:
+        DRY_RUN: ${{ inputs.dry-run }}
+        ENDPOINT: ${{ inputs.elastic-endpoint }}
+      run: |
+        set -euo pipefail
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "dry-run=true" >> "$GITHUB_OUTPUT"
+        elif [[ -z "$ENDPOINT" ]]; then
+          echo "::warning::no elastic-endpoint: the findings are built but not shipped (dry run)"
+          echo "dry-run=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "dry-run=false" >> "$GITHUB_OUTPUT"
+        fi
+
     # report-sarif needs node >= 22; the runner's default node may be older.
     - name: Node - Setup
       if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
@@ -148,7 +168,10 @@ runs:
         INPUT_IMAGE-REF: ${{ inputs.image-ref }}
         INPUT_ELASTIC-ENDPOINT: ${{ inputs.elastic-endpoint }}
         INPUT_ELASTIC-HEADERS: ${{ inputs.elastic-headers }}
-        INPUT_DRY-RUN: ${{ inputs.dry-run }}
+        INPUT_DRY-RUN: ${{ steps.mode.outputs.dry-run }}
+        # A failed bulk batch fails the job: the scan_completed summary rides in the last batch, and a
+        # partially shipped run that stays green would read as a clean scan downstream.
+        INPUT_FAIL-ON-ERROR: 'true'
         INPUT_METADATA: |
           target=container-image
           ${{ inputs.metadata }}

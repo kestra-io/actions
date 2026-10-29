@@ -7,7 +7,10 @@
 # `v1.3` is the moving tag of that line; `latest-lts` points at the same build as `latest` today, so it
 # is not it). Every other image ships `latest` only.
 #
-# Private GHCR images (kestra-ee) are pulled with the workflow's GITHUB_TOKEN (packages: read).
+# Private GHCR images (kestra-ee): the workflow logs in to ghcr.io with GITHUB_TOKEN, which can
+# only read a package that grants this repository access (kestra-ee package → Package settings →
+# Manage Actions access → add kestra-io/actions, Read); verified 2026-10-29: without it a
+# kestra-io/actions run gets READ DENIED. Alternative: log in with the KestraBot App token.
 # registry.kestra.io/docker/kestra-ee is the same build as ghcr.io/kestra-io/kestra-ee
 # (kestra-ee-publish-docker.yml pushes both), so the customer registry is not pulled.
 #
