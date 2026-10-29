@@ -158,7 +158,7 @@ Two more things happen in image mode:
   dry run), `kestra-ee-publish-docker.yml` (the Artifact Registry image) and
   `kestra-oss-publish-docker.yml` (the moving tags a release or develop
   publish retagged). A caller passes `OTLP_ENDPOINT` / `OTLP_HEADERS` to
-  ship and `GCP_SERVICE_ACCOUNT` for `*.docker.pkg.dev` images.
+  ship and `GCP_SERVICE_ACCOUNT` for `*-docker.pkg.dev` (Artifact Registry) images.
 
 Whichever way in, the documents are the same: `github.*` is the run that
 scanned (a publish run's branch and event, or the sweep's), and consumers

@@ -10,7 +10,7 @@
 # kestra-ee comes from GCP Artifact Registry (europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee,
 # the GCP_IMAGE_PATH kestra-ee-publish-docker.yml pushes): it is the build registry.kestra.io fronts
 # for customers. The workflow authenticates with the GCP_SERVICE_ACCOUNT org secret for any
-# *.docker.pkg.dev image. Not ghcr.io/kestra-io/kestra-ee: the same build, but GITHUB_TOKEN of a
+# *-docker.pkg.dev (Artifact Registry) image. Not ghcr.io/kestra-io/kestra-ee: the same build, but GITHUB_TOKEN of a
 # kestra-io/actions run can't read that private package (READ DENIED, 2026-10-29).
 # GHCR rows are public and pulled with GITHUB_TOKEN.
 #

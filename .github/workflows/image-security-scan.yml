@@ -33,7 +33,7 @@ name: Image security scan
 #   that already holds the registry login can call composite/scan-image directly instead.
 #
 # Registry access: ghcr.io rows log in with GITHUB_TOKEN (packages: read; public images), and
-# *.docker.pkg.dev rows (kestra-ee on Artifact Registry) authenticate with the GCP_SERVICE_ACCOUNT
+# *-docker.pkg.dev rows (Artifact Registry hosts are <region>-docker.pkg.dev, kestra-ee) authenticate with the GCP_SERVICE_ACCOUNT
 # org secret (google-github-actions/auth → oauth2accesstoken login), which a workflow_call caller
 # must pass (`secrets: inherit`, or GCP_SERVICE_ACCOUNT in its explicit list).
 #
@@ -88,7 +88,7 @@ on:
         description: "Elastic ingest headers"
         required: false
       GCP_SERVICE_ACCOUNT:
-        description: "GCP service account JSON, to pull *.docker.pkg.dev images (kestra-ee on Artifact Registry)"
+        description: "GCP service account JSON, to pull *-docker.pkg.dev images (kestra-ee on Artifact Registry)"
         required: false
 
 concurrency:
@@ -219,14 +219,14 @@ jobs:
       # Artifact Registry (kestra-ee): same auth + login pair as kestra-ee-publish-docker.yml.
       - name: GCP - Auth with github service account
         id: glogin
-        if: ${{ contains(matrix.image, '.docker.pkg.dev/') }}
+        if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           token_format: access_token
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Docker - Login to Artifact Registry
-        if: ${{ contains(matrix.image, '.docker.pkg.dev/') }}
+        if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ matrix.registry }}
