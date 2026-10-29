@@ -66,6 +66,7 @@ images:
   - image: ghcr.io/kestra-io/ml
     tags: [latest]
     owner: plugins-squad
+    enabled: false # anonymous pull answers 403 (private or missing package, 2026-10-29): grant this repo read access, then enable
   - image: ghcr.io/kestra-io/malloy
     tags: [latest]
     owner: plugins-squad
@@ -87,6 +88,7 @@ images:
   - image: ghcr.io/kestra-io/rust
     tags: [latest]
     owner: plugins-squad
+    enabled: false # arm64-only manifest, no linux/amd64 to scan on the runner (2026-10-29)
   - image: ghcr.io/kestra-io/powershell
     tags: [latest]
     owner: plugins-squad

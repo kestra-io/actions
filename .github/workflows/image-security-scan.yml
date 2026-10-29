@@ -92,8 +92,9 @@ on:
         required: false
 
 concurrency:
-  # One sweep at a time, but a publish-triggered scan must not cancel or wait on the sweep.
-  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'sweep' || github.run_id }}
+  # One sweep at a time, but a publish-triggered scan must not cancel or wait on the sweep. Under workflow_call
+  # github.event_name and github.repository are the CALLER's: a manually dispatched release is not a sweep.
+  group: ${{ github.workflow }}-${{ (github.repository == 'kestra-io/actions' && github.event_name == 'workflow_dispatch') && 'sweep' || github.run_id }}
   cancel-in-progress: false
 
 permissions:
@@ -194,6 +195,10 @@ jobs:
     if: ${{ needs.matrix.outputs.count != '0' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # A failed leg (registry flake, Trivy DB rate limit, Elastic 5xx) must never fail a caller's publish pipeline
+    # (kestra release-docker.yml would skip helm-release, main-build.yml its end job): the leg stays red in the
+    # run, the called workflow still concludes success. The tower's own sweep (dispatched here) keeps failing.
+    continue-on-error: ${{ !(github.repository == 'kestra-io/actions' && github.event_name == 'workflow_dispatch') }}
     strategy:
       fail-fast: false
       max-parallel: 4
