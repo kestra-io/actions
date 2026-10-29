@@ -1,0 +1,154 @@
+# Container images Kestra ships, scanned daily for vulnerabilities by image-security-scan.yml
+# (dispatched by the security controller tower, kestra-io/security-controller-tower) and reported to
+# Elastic (logs-trivy-gha) by actions/report-sarif in image mode. One row per image; every enabled
+# row × tag is one matrix job. `owner` is the squad the tower opens the issues on.
+#
+# Tags: kestra and kestra-ee follow the three lines customers run (develop, latest, the 1.3 LTS line:
+# `v1.3` is the moving tag of that line; `latest-lts` points at the same build as `latest` today, so it
+# is not it). Every other image ships `latest` only.
+#
+# kestra-ee comes from GCP Artifact Registry (europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee,
+# the GCP_IMAGE_PATH kestra-ee-publish-docker.yml pushes): it is the build registry.kestra.io fronts
+# for customers. The workflow authenticates with the GCP_SERVICE_ACCOUNT org secret for any
+# *-docker.pkg.dev (Artifact Registry) image. Not ghcr.io/kestra-io/kestra-ee: the same build, but GITHUB_TOKEN of a
+# kestra-io/actions run can't read that private package (READ DENIED, 2026-10-29).
+# GHCR rows are public and pulled with GITHUB_TOKEN.
+#
+# Out of scope on purpose: kestra-operator (no longer supported nor shipped), the dockerhub-proxy and
+# quay-proxy mirrors on Artifact Registry (upstream images we pull, not ship), per-version tags
+# (v1.3.45…) and -slim / -no-plugins variants (subsets of the full image).
+
+images:
+  - image: docker.io/kestra/kestra
+    tags: [develop, latest, v1.3]
+    owner: core-squad
+
+  - image: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
+    tags: [develop, latest, v1.3]
+    owner: core-squad
+
+  - image: docker.io/kestra/kestractl
+    tags: [latest, latest-static]
+    owner: plugins-squad
+
+  - image: ghcr.io/kestra-io/kestra-base
+    tags: [latest]
+    owner: cloud-squad
+
+  - image: ghcr.io/kestra-io/mcp-server-python
+    tags: [latest]
+    owner: plugins-squad
+
+  - image: ghcr.io/kestra-io/migration-assistant
+    tags: [latest]
+    owner: core-squad
+
+  - image: ghcr.io/kestra-io/aq
+    tags: [latest]
+    owner: core-squad
+
+  # Task-runner images (kestra-io/examples docker/, plugin-dbt, plugin-jdbc, plugin-scripts…)
+  - image: ghcr.io/kestra-io/pydata
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/kestrapy
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/polars
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/duckdb
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/rdata
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/ml
+    tags: [latest]
+    owner: plugins-squad
+    enabled: false # anonymous pull answers 403 (private or missing package, 2026-10-29): grant this repo read access, then enable
+  - image: ghcr.io/kestra-io/malloy
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/sqlmesh
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dlt
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/modal
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/aws
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/awsbatch
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/rust
+    tags: [latest]
+    owner: plugins-squad
+    enabled: false # arm64-only manifest, no linux/amd64 to scan on the runner (2026-10-29)
+  - image: ghcr.io/kestra-io/powershell
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/ghcli
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/snowflake-cli
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/databricks-sql-cli
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/liquibase
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/scrapy
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-fusion
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-postgres
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-bigquery
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-duckdb
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-snowflake
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-redshift
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-synapse
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-spark
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-fabric
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-dremio
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-trino
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-athena
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-databricks
+    tags: [latest]
+    owner: plugins-squad
+  - image: ghcr.io/kestra-io/dbt-clickhouse
+    tags: [latest]
+    owner: plugins-squad

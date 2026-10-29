@@ -1,0 +1,251 @@
+name: Image security scan
+
+# Scans the container images Kestra ships (images.yml) with Trivy and reports every vulnerability to
+# Elastic (logs-trivy-gha) through composite/scan-image → actions/report-sarif in image mode, one
+# scan_completed summary per image × tag included, so the security controller tower
+# (kestra-io/security-controller-tower) keeps one issue per vulnerable package per image and can
+# prove clean scans.
+#
+# Two ways in, no cron (the tower owns the schedule, ADR-0001 there):
+#
+# - workflow_dispatch: the tower's daily sweep over every enabled row of images.yml, passing its
+#   request id in `metadata`. Run it by hand from the Actions tab to test (`dry-run`).
+#
+# - workflow_call: a publish workflow scans exactly what it just pushed, as a job after the push:
+#
+#       scan-images:
+#         needs: docker
+#         uses: kestra-io/actions/.github/workflows/image-security-scan.yml@main
+#         with:
+#           images: docker.io/kestra/kestra:${{ needs.docker.outputs.tag }},docker.io/kestra/kestra:latest
+#         secrets: inherit
+#
+#   `images` takes bare names (every tag of that row in images.yml) and `image:tag` refs. A ref
+#   whose tag is NOT listed for that image in images.yml is skipped with a warning (scanned but
+#   shipped nowhere when dry-run is on): the tower keeps one state per image × tag and only the
+#   tags the daily sweep rescans can ever be marked fixed, so a publish of v1.3.45 refreshes the
+#   moving tags it retagged (v1.3, latest, develop), never adds a v1.3.45 scope. Images not in
+#   images.yml follow the same rule (dry-run only, no owner). Candidates in this repo: kestra-oss-publish-docker.yml (job `docker`,
+#   pushes kestra/kestra:<tag>, latest, latest-lts) and kestra-ee-publish-docker.yml (job `docker`,
+#   ghcr.io/kestra-io/kestra-ee + Artifact Registry); in their own repos: kestra-io/kestractl
+#   release.yml, kestra-io/api.kestra.io main.yml, kestra-io/console main.yml,
+#   kestra-io/mcp-server-python main.yml, kestra-io/migration-assistant release.yml. A publish job
+#   that already holds the registry login can call composite/scan-image directly instead.
+#
+# Registry access: ghcr.io rows log in with GITHUB_TOKEN (packages: read; public images), and
+# *-docker.pkg.dev rows (Artifact Registry hosts are <region>-docker.pkg.dev, kestra-ee) authenticate with the GCP_SERVICE_ACCOUNT
+# org secret (google-github-actions/auth → oauth2accesstoken login), which a workflow_call caller
+# must pass (`secrets: inherit`, or GCP_SERVICE_ACCOUNT in its explicit list).
+#
+# Documents from a publish-triggered run carry that run's github.* (refName = the publishing
+# branch, eventName push/release); the tower scopes image findings on container.image.name + tag +
+# resource.sub_type, never on github.refName, so both ways in produce the same state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      metadata:
+        description: "Newline separated key=value pairs added to every finding (request_id=…, trigger=kestra). A dotted key is written at that path, an undotted one lands under labels"
+        required: false
+        type: string
+        default: ''
+      images:
+        description: "Comma separated images: bare names (every tag listed in images.yml, e.g. docker.io/kestra/kestra) or image:tag refs; empty = every enabled image"
+        required: false
+        type: string
+        default: ''
+      dry-run:
+        description: "Build the Elastic payload without sending it"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      images:
+        description: "Comma separated images to scan: bare names (every tag in images.yml) or image:tag refs, typically the ones just pushed"
+        required: true
+        type: string
+      metadata:
+        description: "Newline separated key=value pairs added to every finding"
+        required: false
+        type: string
+        default: ''
+      dry-run:
+        description: "Build the Elastic payload without sending it"
+        required: false
+        type: boolean
+        default: false
+      actions-ref:
+        description: "Ref of kestra-io/actions to read images.yml and composite/scan-image from. Leave the default unless testing a branch of this repo: then pass the same ref as the `uses:`"
+        required: false
+        type: string
+        default: main
+    secrets:
+      OTLP_ENDPOINT:
+        description: "Elastic ingest endpoint; `secrets: inherit` passes the org one"
+        required: false
+      OTLP_HEADERS:
+        description: "Elastic ingest headers"
+        required: false
+      GCP_SERVICE_ACCOUNT:
+        description: "GCP service account JSON, to pull *-docker.pkg.dev images (kestra-ee on Artifact Registry)"
+        required: false
+
+concurrency:
+  # One sweep at a time, but a publish-triggered scan must not cancel or wait on the sweep. Under workflow_call
+  # github.event_name and github.repository are the CALLER's: a manually dispatched release is not a sweep.
+  group: ${{ github.workflow }}-${{ (github.repository == 'kestra-io/actions' && github.event_name == 'workflow_dispatch') && 'sweep' || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  matrix:
+    name: Images to scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      count: ${{ steps.matrix.outputs.count }}
+    steps:
+      # The caller's checkout is not this repo's: images.yml comes from kestra-io/actions, at
+      # `actions-ref` when called (no context exposes the called workflow's own commit through a
+      # nested call: workflow_sha and job_workflow_sha are both the CALLER's), at github.sha on a
+      # direct dispatch (then it is this repo's dispatched commit).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kestra-io/actions
+          ref: ${{ inputs.actions-ref || github.sha }}
+          persist-credentials: false
+          sparse-checkout: images.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Images - Expand images.yml into a matrix
+        id: matrix
+        env:
+          FILTER: ${{ inputs.images }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          # yq (mikefarah) ships with the ubuntu runner; python3 does the rest with the stdlib only.
+          yq -o=json '.images' images.yml > "$RUNNER_TEMP/images.json"
+          python3 - "$RUNNER_TEMP/images.json" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, sys
+          rows_by_image = {row["image"]: row for row in json.load(open(sys.argv[1]))}
+          enabled = lambda row: row.get("enabled", True) is not False  # noqa: E731
+
+          def split_ref(ref):
+              """docker.io/kestra/kestra:latest -> (name, tag); a bare name -> (name, None); a port is not a tag;
+              name@sha256:x -> (name, "@sha256:x") so the digest ref is passed through as is."""
+              if "@" in ref:
+                  return ref.split("@", 1)[0], "@" + ref.split("@", 1)[1]
+              slash, colon = ref.rfind("/"), ref.rfind(":")
+              return (ref[:colon], ref[colon + 1:]) if colon > slash else (ref, None)
+
+          dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
+          rows, warnings = [], []
+          raw = os.environ.get("FILTER", "")
+          wanted = [s.strip() for s in raw.split(",") if s.strip()]
+          if not wanted and raw.strip():
+              warnings.append("images given but empty after trimming: nothing to scan (a full sweep needs an empty input)")
+          elif not wanted:  # the daily sweep: every enabled row, every tag
+              for row in rows_by_image.values():
+                  if enabled(row):
+                      wanted.append(row["image"])
+          for entry in wanted:
+              name, tag = split_ref(entry)
+              row = rows_by_image.get(name)
+              if tag is None:  # a bare name: the tags images.yml lists for it
+                  if row is None:
+                      warnings.append(f"{name}: not in images.yml, no tag to scan")
+                      continue
+                  if not enabled(row):
+                      warnings.append(f"{name}: disabled in images.yml, skipped")
+                      continue
+                  tags = [str(t) for t in row["tags"]]
+              else:  # an exact ref: only a tag the daily sweep tracks, unless nothing is shipped anyway
+                  tracked = row is not None and tag in [str(t) for t in row["tags"]]
+                  if not tracked and not dry_run:
+                      warnings.append(f"{entry}: not a tag listed in images.yml, skipped (the tower tracks only those)")
+                      continue
+                  if not tracked:
+                      warnings.append(f"{entry}: not a tag listed in images.yml, scanned for the log only (dry run)")
+                  tags = [tag]
+              for t in tags:
+                  rows.append({"image": name, "tag": t, "ref": name + (t if t.startswith("@") else ":" + t),
+                               "registry": name.split("/", 1)[0], "owner": (row or {}).get("owner", ""),
+                               "service": name.rsplit("/", 1)[-1]})
+          seen, unique = set(), []
+          for r in rows:
+              if (r["image"], r["tag"]) not in seen:
+                  seen.add((r["image"], r["tag"]))
+                  unique.append(r)
+          for w in warnings:
+              print(f"::warning::{w}", file=sys.stderr)
+          print("matrix=" + json.dumps({"include": unique}))
+          print(f"count={len(unique)}")
+          print(f"{len(unique)} image × tag rows", file=sys.stderr)
+          PY
+
+  scan:
+    name: ${{ matrix.ref }}
+    needs: matrix
+    if: ${{ needs.matrix.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A failed leg (registry flake, Trivy DB rate limit, Elastic 5xx) must never fail a caller's publish pipeline
+    # (kestra release-docker.yml would skip helm-release, main-build.yml its end job): the leg stays red in the
+    # run, the called workflow still concludes success. The tower's own sweep (dispatched here) keeps failing.
+    continue-on-error: ${{ !(github.repository == 'kestra-io/actions' && github.event_name == 'workflow_dispatch') }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    steps:
+      # Same ref as above, so a branch of this repo tests its own composite and report-sarif (the
+      # composite runs actions/report-sarif from its own checkout).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kestra-io/actions
+          ref: ${{ inputs.actions-ref || github.sha }}
+          persist-credentials: false
+
+      # Public GHCR images; a private one would need its package to grant this repo access.
+      - name: Docker - Login to GHCR
+        if: ${{ startsWith(matrix.image, 'ghcr.io/') }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Artifact Registry (kestra-ee): same auth + login pair as kestra-ee-publish-docker.yml.
+      - name: GCP - Auth with github service account
+        id: glogin
+        if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Docker - Login to Artifact Registry
+        if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ matrix.registry }}
+          username: oauth2accesstoken
+          password: ${{ steps.glogin.outputs.access_token }}
+
+      - name: Trivy - Scan and report
+        uses: ./composite/scan-image
+        with:
+          image-ref: ${{ matrix.ref }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          dry-run: ${{ inputs.dry-run }}
+          metadata: |
+            service.name=${{ matrix.service }}
+            ${{ matrix.owner != '' && format('owner={0}', matrix.owner) || '' }}
+            ${{ inputs.metadata }}

@@ -91,6 +91,81 @@ misconfiguration adds `directory`, `file`, `line`, `language` and a permalink to
 the line, and a vulnerability adds `target`. `resource.id` is
 `sha256(repository, target)` either way, so it is stable across runs.
 
+### Container images
+
+Set `image-ref` (e.g. `docker.io/kestra/kestra:latest`) when the report is a
+`trivy image` scan. The image then stands in for the repository:
+
+| Field | Value |
+| :--- | :--- |
+| `resource.type` / `.repository` | `container-image` / the image name without the tag (`docker.io/kestra/kestra`) |
+| `resource.name` / `.sub_type` | `<image> (<tag>) / <Trivy target>` / the Trivy result type (`ubuntu`, `jar`, `python-pkg`…) |
+| `resource.id` | `sha256(image, tag, result type)`, one resource per image × tag × type |
+| `container.image.name` / `.tag` / `.hash.all` | the image, its tag, and the sha256 digest the tag resolved to at scan time |
+| `package.path` | which jar or site-packages entry inside the image carries the package |
+| `service.name` | the image's last path segment (`kestra`), unless `metadata` sets it |
+| `labels.component` | `image`, unless `metadata` or `components` sets it |
+| `event.id` | `sha256(image, tag, tool, rule, result type, package)`: keyed on the **tag**, not the digest, so `latest` moving to a new build is the same finding still open (or fixed) rather than a new one |
+| `github.*` | the workflow run that scanned the image, as usual |
+
+Two more things happen in image mode:
+
+- **Unfixed OS packages are left out.** An image carries the distribution's
+  whole backlog of CVEs without a fix (hundreds on a Debian base), and nothing
+  short of changing the base image can act on them. Only `Class: os-pkgs`
+  results without a `FixedVersion` are dropped; language packages keep every
+  finding. The count left out is logged.
+- **One `scan_completed` summary document per report**, shipped even when the
+  scan found nothing: `event.action: scan_completed`, `event.outcome: success`,
+  `container.image.*`, `resource` of type `container-image` with no `sub_type`,
+  `message: "Trivy scanned <image>:<tag>: N vulnerabilities"`. A clean scan
+  otherwise leaves no trace in the stream, and a consumer keeping one state per
+  image × tag could not tell "clean" from "not scanned". It carries no
+  `vulnerability.id`, so a Findings view keyed on it ignores it.
+
+`image-ref` is only accepted with `type: vulnerabilities`.
+
+#### Where image scans come from
+
+- **`composite/scan-image`** runs `trivy image` on one `image-ref` and calls
+  this action in image mode. Registry login is the caller's job.
+- **`.github/workflows/image-security-scan.yml`** expands `images.yml` (the
+  images Kestra ships, their tags and owner squad) into a matrix of
+  `scan-image` calls. `workflow_dispatch` is the daily sweep the security
+  controller tower dispatches; `workflow_call` lets a publish workflow scan
+  exactly what it pushed:
+
+  ```yaml
+  scan-images:
+    needs: docker
+    uses: kestra-io/actions/.github/workflows/image-security-scan.yml@main
+    with:
+      images: docker.io/kestra/kestra:${{ needs.docker.outputs.tag }},docker.io/kestra/kestra:latest
+    secrets: inherit
+  ```
+
+  `images` takes bare names (every tag of that row in `images.yml`) and
+  `image:tag` refs. A ref whose tag is not listed for that image in
+  `images.yml` is **skipped** (scanned for the log only under `dry-run`): the
+  tower keeps one state per image × tag and only the tags the daily sweep
+  rescans can ever be marked fixed, so a publish of `v1.3.45` refreshes the
+  moving tags it retagged (`v1.3`, `latest`, `develop`) and never adds a
+  `v1.3.45` scope. The owner squad always comes from `images.yml`, so the
+  tower's image → squad table has one source to mirror. A publish job that
+  still holds its registry login can call `composite/scan-image` directly
+  instead; it runs this action from its own commit, not from `main`.
+  Wired today: `kestra-ee-pullrequest-publish-docker.yml` (the PR image,
+  dry run), `kestra-ee-publish-docker.yml` (the Artifact Registry image) and
+  `kestra-oss-publish-docker.yml` (the moving tags a release or develop
+  publish retagged). A caller passes `OTLP_ENDPOINT` / `OTLP_HEADERS` to
+  ship and `GCP_SERVICE_ACCOUNT` for `*-docker.pkg.dev` (Artifact Registry) images.
+
+Whichever way in, the documents are the same: `github.*` is the run that
+scanned (a publish run's branch and event, or the sweep's), and consumers
+scope image findings on `container.image.name`, `container.image.tag` and
+`resource.sub_type`, never on `github.refName`. The `scan_completed` summary
+is emitted per image × tag in both cases.
+
 ## One data stream per scanner
 
 `logs-<tool>-<namespace>`, the tool being the first word of the SARIF driver
@@ -210,6 +285,7 @@ One document per SARIF result, in ECS:
 | `user.name` / `.id` | the triggering actor, falling back to the actor |
 | `organization.name` / `.id` | the repository owner |
 | `event.id` | `sha256(repository, branch, tool, rule, file, line, package)` |
+| `container.image.*`, `package.path` | image scans only (`image-ref`), see above |
 | `github.*` | everything the runner knows about the run that observed the finding |
 | `sarif.*` | the raw `level`, `ruleId`, `ruleName`, `fingerprint`, `snippet` and region, kept for anything the ECS fields flatten away |
 

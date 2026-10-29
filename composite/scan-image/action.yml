@@ -1,0 +1,180 @@
+name: 'Container image scan'
+description: 'Scan one container image for vulnerabilities with Trivy and ship the findings to Elastic (logs-trivy-gha) in report-sarif image mode'
+
+# One image × tag per call. Used by .github/workflows/image-security-scan.yml (the daily matrix the
+# security controller tower dispatches) and meant to be called straight from a publish job that has
+# just pushed an image and still holds the registry login:
+#
+#   - uses: kestra-io/actions/composite/scan-image@main
+#     with:
+#       image-ref: docker.io/kestra/kestra:${{ steps.vars.outputs.tag }}
+#       elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+#       elastic-headers: ${{ secrets.OTLP_HEADERS }}
+#       metadata: |
+#         owner=core-squad
+#
+# Registry login is the caller's job: a public image needs none, a private GHCR one a
+# docker/login-action with GITHUB_TOKEN (packages: read), Artifact Registry its usual auth. The
+# owner squad is not looked up here (images.yml is read by the workflow, not by this composite):
+# pass `owner=<squad>` in metadata or leave it to the tower's own image → squad table.
+#
+# report-sarif runs from the SAME commit as this composite (node on its dist/index.js under
+# github.action_path), not from @main: a branch of this repo exercises its own report-sarif, and a
+# caller pinning scan-image to a sha gets the matching document shape. A `uses:` can't express
+# that (a local path resolves against the caller's workspace, a remote ref is fixed text).
+
+inputs:
+  image-ref:
+    description: 'The image to scan, with its tag: docker.io/kestra/kestra:latest (a bare name means latest; @sha256:… works too)'
+    required: true
+
+  elastic-endpoint:
+    description: 'Elastic ingest endpoint, the OTLP_ENDPOINT secret. Leave empty to skip shipping'
+    required: false
+    default: ''
+
+  elastic-headers:
+    description: 'Elastic ingest headers, the OTLP_HEADERS secret'
+    required: false
+    default: ''
+
+  metadata:
+    description: 'Newline separated key=value pairs added to every finding (owner=core-squad, request_id=…). A dotted key is written at that path, an undotted one lands under labels. service.name defaults to the image short name, component to image'
+    required: false
+    default: ''
+
+  dry-run:
+    description: 'Build the Elastic payload without sending it'
+    required: false
+    default: 'false'
+
+  timeout:
+    description: 'Trivy timeout; a full kestra image with every plugin takes a few minutes'
+    required: false
+    default: '20m'
+
+outputs:
+  json-file:
+    description: 'Absolute path to the Trivy JSON report, the one shipped to Elastic'
+    value: ${{ steps.paths.outputs.json }}
+
+  documents-count:
+    description: 'Documents built for Elastic: the findings kept plus the scan_completed summary (0 when the scan itself failed)'
+    value: ${{ steps.report.outputs.documents-count }}
+
+  summary:
+    description: 'One line: "<image>: N vulnerabilities (CRITICAL x, HIGH y, …)" as Trivy counted them, before the unfixed-OS filter'
+    value: ${{ steps.summary.outputs.line }}
+
+runs:
+  using: composite
+  steps:
+    - name: Trivy - Report paths
+      id: paths
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+      run: |
+        set -euo pipefail
+        # One report per image in the workspace, so several calls in one job don't overwrite each other.
+        slug="$(printf '%s' "$IMAGE_REF" | tr -c 'A-Za-z0-9._-' '_')"
+        echo "json=${GITHUB_WORKSPACE}/trivy-image-${slug}.json" >> "$GITHUB_OUTPUT"
+        mkdir -p "${GITHUB_WORKSPACE}/.trivy-cache"
+
+    # Pulled through the docker daemon first: Trivy then reads the layers locally instead of
+    # streaming them from the registry, which hit HTTP/2 PROTOCOL_ERRORs from GHCR on the big
+    # kestra-ee image (8 min in, every time). Needs the caller's registry login for private images.
+    - name: Docker - Pull the image
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+      run: |
+        set -euo pipefail
+        for attempt in 1 2 3; do
+          docker pull --quiet "$IMAGE_REF" && exit 0
+          echo "docker pull failed (attempt $attempt), retrying in 20 s"
+          sleep 20
+        done
+        exit 1
+
+    - name: Trivy - Scan the image
+      id: trivy
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      env:
+        TRIVY_CACHE_DIR: ${{ github.workspace }}/.trivy-cache
+      with:
+        # trivy-action's default binary lags; pin what the tower's POC validated the report shape on.
+        version: v0.72.0
+        scan-type: image
+        image-ref: ${{ inputs.image-ref }}
+        scanners: vuln
+        format: json
+        output: ${{ steps.paths.outputs.json }}
+        timeout: ${{ inputs.timeout }}
+
+    - name: Trivy - Summary
+      id: summary
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+        JSON: ${{ steps.paths.outputs.json }}
+      run: |
+        set -euo pipefail
+        line="$(jq -r --arg ref "$IMAGE_REF" '
+          [.Results[]? | .Vulnerabilities[]?] as $v
+          | "\($ref): \($v | length) vulnerabilities" + (if ($v | length) > 0 then " (" + ([$v[].Severity] | group_by(.) | map("\(.[0]) \(length)") | join(", ")) + ")" else "" end)
+        ' "$JSON")"
+        echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
+        echo "line=$line" >> "$GITHUB_OUTPUT"
+
+    # No endpoint = nothing to ship: report-sarif still builds the payload (dry run) instead of
+    # failing on its required input, and says so.
+    - name: Elastic - Shipping mode
+      id: mode
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      env:
+        DRY_RUN: ${{ inputs.dry-run }}
+        ENDPOINT: ${{ inputs.elastic-endpoint }}
+      run: |
+        set -euo pipefail
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "dry-run=true" >> "$GITHUB_OUTPUT"
+        elif [[ -z "$ENDPOINT" ]]; then
+          echo "::warning::no elastic-endpoint: the findings are built but not shipped (dry run)"
+          echo "dry-run=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "dry-run=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # report-sarif needs node >= 22; the runner's default node may be older.
+    - name: Node - Setup
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: '24'
+
+    # Image mode: resource = the image, one scan_completed summary document even when nothing was
+    # found, unfixed OS package CVEs left out. See actions/report-sarif/README.md. Inputs go through
+    # the INPUT_<NAME> environment the actions toolkit reads, outputs through GITHUB_OUTPUT as usual.
+    - name: Elastic - Report findings
+      id: report
+      if: ${{ !cancelled() && steps.trivy.outcome == 'success' }}
+      shell: bash
+      env:
+        INPUT_SARIF-FILES: ${{ steps.paths.outputs.json }}
+        INPUT_TYPE: vulnerabilities
+        INPUT_IMAGE-REF: ${{ inputs.image-ref }}
+        INPUT_ELASTIC-ENDPOINT: ${{ inputs.elastic-endpoint }}
+        INPUT_ELASTIC-HEADERS: ${{ inputs.elastic-headers }}
+        INPUT_DRY-RUN: ${{ steps.mode.outputs.dry-run }}
+        # A failed bulk batch fails the job: the scan_completed summary rides in the last batch, and a
+        # partially shipped run that stays green would read as a clean scan downstream.
+        INPUT_FAIL-ON-ERROR: 'true'
+        INPUT_METADATA: |
+          target=container-image
+          ${{ inputs.metadata }}
+      run: |
+        set -euo pipefail
+        node "${{ github.action_path }}/../../actions/report-sarif/dist/index.js"
