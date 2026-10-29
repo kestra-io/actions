@@ -419,7 +419,8 @@ jobs:
   # ********************************************************************************************************************
   # Mirrors the retag steps of `docker` (default image only; -slim / deprecated aliases are out of
   # the tower's scope): a branch publish refreshes <branch>, a release its minor (v1.3), latest and
-  # latest-lts aliases when retagged. Tags not listed in images.yml are skipped by the scan
+  # latest-lts aliases when retagged, on Artifact Registry (what registry.kestra.io fronts; the GHCR
+  # copy is the same build). Tags not listed in images.yml are skipped by the scan
   # workflow, so only what the tower tracks is refreshed. Computed here rather than read from the
   # matrix job's outputs, which the last leg to finish would overwrite.
   image-refs:
@@ -432,7 +433,7 @@ jobs:
     steps:
       - id: refs
         env:
-          IMAGE: ghcr.io/kestra-io/kestra-ee
+          IMAGE: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
           RELEASE_TAG: ''
           RETAG_LATEST: ${{ inputs.retag-latest }}
           RETAG_LTS: ${{ inputs.retag-lts }}
@@ -467,6 +468,7 @@ jobs:
     secrets:
       OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
   end:
     runs-on: ubuntu-latest

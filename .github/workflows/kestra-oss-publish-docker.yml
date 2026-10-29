@@ -387,6 +387,7 @@ jobs:
     secrets:
       OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
   end:
     runs-on: ubuntu-latest

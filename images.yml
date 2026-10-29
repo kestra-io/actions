@@ -7,12 +7,12 @@
 # `v1.3` is the moving tag of that line; `latest-lts` points at the same build as `latest` today, so it
 # is not it). Every other image ships `latest` only.
 #
-# Private GHCR images (kestra-ee): the workflow logs in to ghcr.io with GITHUB_TOKEN, which can
-# only read a package that grants this repository access (kestra-ee package → Package settings →
-# Manage Actions access → add kestra-io/actions, Read); verified 2026-10-29: without it a
-# kestra-io/actions run gets READ DENIED. Alternative: log in with the KestraBot App token.
-# registry.kestra.io/docker/kestra-ee is the same build as ghcr.io/kestra-io/kestra-ee
-# (kestra-ee-publish-docker.yml pushes both), so the customer registry is not pulled.
+# kestra-ee comes from GCP Artifact Registry (europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee,
+# the GCP_IMAGE_PATH kestra-ee-publish-docker.yml pushes): it is the build registry.kestra.io fronts
+# for customers. The workflow authenticates with the GCP_SERVICE_ACCOUNT org secret for any
+# *.docker.pkg.dev image. Not ghcr.io/kestra-io/kestra-ee: the same build, but GITHUB_TOKEN of a
+# kestra-io/actions run can't read that private package (READ DENIED, 2026-10-29).
+# GHCR rows are public and pulled with GITHUB_TOKEN.
 #
 # Out of scope on purpose: kestra-operator (no longer supported nor shipped), the dockerhub-proxy and
 # quay-proxy mirrors on Artifact Registry (upstream images we pull, not ship), per-version tags
@@ -23,17 +23,9 @@ images:
     tags: [develop, latest, v1.3]
     owner: core-squad
 
-  - image: ghcr.io/kestra-io/kestra-ee
+  - image: europe-west1-docker.pkg.dev/kestra-host/docker/kestra-ee
     tags: [develop, latest, v1.3]
     owner: core-squad
-
-  # The customer registry fronting Artifact Registry docker/kestra-ee: same build as the GHCR row
-  # above. Needs a customer license credential in Actions (OTLP-style secret) to pull, see the tower
-  # plan (plans/container-image-scanning.md); enable it only if the GHCR row turns out to differ.
-  - image: registry.kestra.io/docker/kestra-ee
-    tags: [develop, latest, v1.3]
-    owner: core-squad
-    enabled: false
 
   - image: docker.io/kestra/kestractl
     tags: [latest, latest-static]

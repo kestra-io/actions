@@ -155,8 +155,10 @@ Two more things happen in image mode:
   still holds its registry login can call `composite/scan-image` directly
   instead; it runs this action from its own commit, not from `main`.
   Wired today: `kestra-ee-pullrequest-publish-docker.yml` (the PR image,
-  dry run), `kestra-ee-publish-docker.yml` and `kestra-oss-publish-docker.yml`
-  (the moving tags a release or develop publish retagged).
+  dry run), `kestra-ee-publish-docker.yml` (the Artifact Registry image) and
+  `kestra-oss-publish-docker.yml` (the moving tags a release or develop
+  publish retagged). A caller passes `OTLP_ENDPOINT` / `OTLP_HEADERS` to
+  ship and `GCP_SERVICE_ACCOUNT` for `*.docker.pkg.dev` images.
 
 Whichever way in, the documents are the same: `github.*` is the run that
 scanned (a publish run's branch and event, or the sweep's), and consumers
