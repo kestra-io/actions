@@ -460,8 +460,6 @@ jobs:
       contents: read
       packages: read
     with:
-      # TRIAL of kestra-io/actions#359: drop this line (default main) before merging.
-      actions-ref: feat/image-security-scan
       images: ${{ needs.image-refs.outputs.images }}
       dry-run: ${{ inputs.dry-run }}
       metadata: |
