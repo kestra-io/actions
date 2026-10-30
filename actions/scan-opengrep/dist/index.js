@@ -29538,6 +29538,20 @@ function getInput(name, options) {
     return val.trim();
 }
 /**
+ * Gets the values of an multiline input.  Each value is also trimmed.
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   string[]
+ *
+ */
+function getMultilineInput(name, options) {
+    const inputs = getInput(name)
+        .split('\n')
+        .filter(x => x !== '');
+    return inputs.map(input => input.trim());
+}
+/**
  * Sets the value of an output.
  *
  * @param     name     name of the output to set
@@ -96759,6 +96773,12 @@ async function run() {
   for (const id of shortRuleIds(settings.excludeRules)) {
     warning(`exclude-rules entry '${id}' has no dots; --exclude-rule matches the full rule id, so this drops nothing.`);
   }
+  const excludePaths = [
+    .../* @__PURE__ */ new Set([
+      ...settings.excludePaths,
+      ...getMultilineInput("exclude-path")
+    ])
+  ];
   const maxRows = Number(getInput("comment-max-rows") || "50");
   const temp = process.env.RUNNER_TEMP ?? process.cwd();
   const jsonOutput = path$2.join(temp, "opengrep.json");
@@ -96795,7 +96815,7 @@ async function run() {
       sarifOutput,
       baseline: baseline ?? void 0,
       excludeRules: settings.excludeRules,
-      excludePaths: settings.excludePaths
+      excludePaths
     }),
     { ignoreReturnCode: true }
   );

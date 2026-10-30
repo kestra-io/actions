@@ -36,6 +36,11 @@ inputs:
     required: false
     default: "ERROR,WARNING"
 
+  exclude-path:
+    description: 'Newline separated globs to skip, e.g. src/content/**'
+    required: false
+    default: ''
+
   fail-on-severity:
     description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
     required: false
@@ -106,6 +111,7 @@ runs:
         mode: ${{ inputs.mode }}
         severity: ${{ inputs.severity }}
         fail-on-severity: ${{ inputs.fail-on-severity }}
+        exclude-path: ${{ inputs.exclude-path }}
         scan-path: ${{ inputs.scan-path }}
 
     # Reports run even when the gate above failed the scan step: that is exactly when someone
