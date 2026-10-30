@@ -15,6 +15,11 @@ on:
           no glob gets no component
         required: true
         type: string
+      exclude-path:
+        description: "Newline separated globs of files OpenGrep and TruffleHog skip, e.g. src/content/**. Trivy is not affected"
+        required: false
+        type: string
+        default: ''
       java-sbom-path:
         description: "SBOM written by `./gradlew cyclonedxBom`, generated and scanned with Trivy. Skipped when empty"
         required: false
@@ -166,6 +171,7 @@ jobs:
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
+          exclude-path: ${{ inputs.exclude-path }}
 
       # Secret scan. Diff on a pull request, the whole tree otherwise.
       - name: TruffleHog - Secret scan
@@ -177,6 +183,7 @@ jobs:
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
+          exclude-path: ${{ inputs.exclude-path }}
 
   otel-export-trace:
     if: always()
