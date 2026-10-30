@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.x'
 
@@ -151,7 +151,7 @@ jobs:
           # on 2026-09-14. Keep it where it reports, skip it where it cannot.
           - name: Npm - lint (eslint)
             if: ${{ github.event_name == 'pull_request' }}
-            uses: reviewdog/action-eslint@b6303df522851d0e9abaea654da0222037d97e75 # v1.36.0
+            uses: reviewdog/action-eslint@3ee2a450da17e060b9dfa4bffd53976906c6b2b0 # v1.36.1
             with:
               github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
               reporter: github-pr-review
