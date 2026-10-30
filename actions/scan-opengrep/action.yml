@@ -39,6 +39,12 @@ inputs:
     required: false
     default: 'ERROR,WARNING'
 
+  exclude-path:
+    description: >-
+      Newline separated globs to skip, added to the exclude-paths of settings.yml, e.g. src/content/**
+    required: false
+    default: ''
+
   fail-on-severity:
     description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'
     required: false
