@@ -3,7 +3,7 @@ description: "Generates translations for the EE UI with Gemini on Vertex AI. Aut
 
 inputs:
   github-token:
-    description: 'GitHub Token'
+    description: 'Token that reads kestra-io/kestra and pushes the generated commit onto the PR branch. Pass a Kestra GitHub App token: a push made with GITHUB_TOKEN starts no workflow run, so the PR gets no checks on that commit.'
     required: true
   retranslate_modified_keys:
     description: 'If true, forces a full re-translation of every key, ignoring the fingerprints'
@@ -26,11 +26,13 @@ runs:
   using: composite
 
   steps:
+    # The token is what `git push` below authenticates with, so it has to be the one that triggers CI.
     - name: Checkout - EE
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: kestra-ee
         ref: ${{ github.head_ref }}
+        token: ${{ inputs.github-token }}
 
     # Which OSS to generate and check against: the same lookup `kestra-ee-checkout` does for the
     # frontend tests. A companion OSS branch of the same name wins (at its PR's simulated-merge ref
@@ -160,8 +162,8 @@ runs:
     - name: Set up Git
       shell: bash
       run: |
-        git config --global user.name "GitHub Action"
-        git config --global user.email "actions@github.com"
+        git config --global user.name "kestra-io"
+        git config --global user.email "hello@kestra.io"
 
     - name: Check for changes and commit
       env:
