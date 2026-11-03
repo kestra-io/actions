@@ -166,7 +166,8 @@ jobs:
       contents: read
       packages: read
     with:
-      images: ghcr.io/kestra-io/kestra-ee-pr:${{ github.event.pull_request.number }}
+      image: ghcr.io/kestra-io/kestra-ee-pr
+      tags: ${{ github.event.pull_request.number }}
       dry-run: true
       metadata: |
         trigger=pull_request

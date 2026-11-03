@@ -15,8 +15,8 @@ description: 'Scan one container image for vulnerabilities with Trivy and ship t
 #
 # Registry login is the caller's job: a public image needs none, a private GHCR one a
 # docker/login-action with GITHUB_TOKEN (packages: read), Artifact Registry its usual auth. The
-# owner squad is not looked up here (images.yml is read by the workflow, not by this composite):
-# pass `owner=<squad>` in metadata or leave it to the tower's own image → squad table.
+# owner squad is not looked up here: pass `owner=<squad>` in metadata (the workflow passes the one
+# the tower dispatched) or leave it to the tower's own image → squad table.
 #
 # report-sarif runs from the SAME commit as this composite (node on its dist/index.js under
 # github.action_path), not from @main: a branch of this repo exercises its own report-sarif, and a

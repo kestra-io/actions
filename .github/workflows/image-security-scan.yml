@@ -1,56 +1,50 @@
 name: Image security scan
 
-# Scans the container images Kestra ships (images.yml) with Trivy and reports every vulnerability to
+# Scans ONE container image, on the tags it is given, with Trivy and reports every vulnerability to
 # Elastic (logs-trivy-gha) through composite/scan-image → actions/report-sarif in image mode, one
-# scan_completed summary per image × tag included, so the security controller tower
+# scan_completed summary per tag included, so the security controller tower
 # (kestra-io/security-controller-tower) keeps one issue per vulnerable package per image and can
 # prove clean scans.
 #
-# Two ways in, no cron (the tower owns the schedule, ADR-0001 there):
+# This repo holds no list of images: which images Kestra ships, their tags and owning squad live in
+# the tower's `security.scanning/trigger_image_scan` flow (its `images` variable). Its daily sweep
+# (the only schedule, ADR-0001 there) loops over that list and dispatches this workflow once per
+# image, so only the tags the tower tracks are ever shipped. No cron here.
 #
-# - workflow_dispatch: the tower's daily sweep over every enabled row of images.yml, passing its
-#   request id in `metadata`. Run it by hand from the Actions tab to test (`dry-run`).
+# - workflow_dispatch: what the tower sends (`image`, `tags`, `owner`, its request id in
+#   `metadata`). Run it by hand from the Actions tab to test (`dry-run`).
 #
-# - workflow_call: a publish workflow scans exactly what it just pushed, as a job after the push:
+# - workflow_call: a caller scans an image it just built, e.g. the kestra-ee PR image in
+#   kestra-ee-pullrequest-publish-docker.yml, always with `dry-run: true`. A call that ships
+#   (dry-run false) must only pass tags the tower's list holds: the tower keeps one state per
+#   image × tag and only the tags its sweep rescans can ever be marked fixed.
 #
-#       scan-images:
-#         needs: docker
-#         uses: kestra-io/actions/.github/workflows/image-security-scan.yml@main
-#         with:
-#           images: docker.io/kestra/kestra:${{ needs.docker.outputs.tag }},docker.io/kestra/kestra:latest
-#         secrets: inherit
-#
-#   `images` takes bare names (every tag of that row in images.yml) and `image:tag` refs. A ref
-#   whose tag is NOT listed for that image in images.yml is skipped with a warning (scanned but
-#   shipped nowhere when dry-run is on): the tower keeps one state per image × tag and only the
-#   tags the daily sweep rescans can ever be marked fixed, so a publish of v1.3.45 refreshes the
-#   moving tags it retagged (v1.3, latest, develop), never adds a v1.3.45 scope. Images not in
-#   images.yml follow the same rule (dry-run only, no owner). Candidates in this repo: kestra-oss-publish-docker.yml (job `docker`,
-#   pushes kestra/kestra:<tag>, latest, latest-lts) and kestra-ee-publish-docker.yml (job `docker`,
-#   ghcr.io/kestra-io/kestra-ee + Artifact Registry); in their own repos: kestra-io/kestractl
-#   release.yml, kestra-io/api.kestra.io main.yml, kestra-io/console main.yml,
-#   kestra-io/mcp-server-python main.yml, kestra-io/migration-assistant release.yml. A publish job
-#   that already holds the registry login can call composite/scan-image directly instead.
-#
-# Registry access: ghcr.io rows log in with GITHUB_TOKEN (packages: read; public images), and
-# *-docker.pkg.dev rows (Artifact Registry hosts are <region>-docker.pkg.dev, kestra-ee) authenticate with the GCP_SERVICE_ACCOUNT
+# Registry access: ghcr.io images log in with GITHUB_TOKEN (packages: read; public images), and
+# *-docker.pkg.dev ones (Artifact Registry hosts are <region>-docker.pkg.dev, kestra-ee) authenticate with the GCP_SERVICE_ACCOUNT
 # org secret (google-github-actions/auth → oauth2accesstoken login), which a workflow_call caller
 # must pass (`secrets: inherit`, or GCP_SERVICE_ACCOUNT in its explicit list).
 #
-# Documents from a publish-triggered run carry that run's github.* (refName = the publishing
-# branch, eventName push/release); the tower scopes image findings on container.image.name + tag +
-# resource.sub_type, never on github.refName, so both ways in produce the same state.
+# The tower scopes image findings on container.image.name + tag + resource.sub_type, never on
+# github.refName, so the caller's github.* context doesn't matter.
 
 on:
   workflow_dispatch:
     inputs:
-      metadata:
-        description: "Newline separated key=value pairs added to every finding (request_id=…, trigger=kestra). A dotted key is written at that path, an undotted one lands under labels"
+      image:
+        description: "The image to scan, without tag: docker.io/kestra/kestra"
+        required: true
+        type: string
+      tags:
+        description: "Comma separated tags of that image: develop,latest,v1.3"
+        required: true
+        type: string
+      owner:
+        description: "Squad owning the image, stamped on every finding as labels.owner (core-squad, plugins-squad...)"
         required: false
         type: string
         default: ''
-      images:
-        description: "Comma separated images: bare names (every tag listed in images.yml, e.g. docker.io/kestra/kestra) or image:tag refs; empty = every enabled image"
+      metadata:
+        description: "Newline separated key=value pairs added to every finding (request_id=…, trigger=kestra). A dotted key is written at that path, an undotted one lands under labels"
         required: false
         type: string
         default: ''
@@ -61,10 +55,19 @@ on:
         default: false
   workflow_call:
     inputs:
-      images:
-        description: "Comma separated images to scan: bare names (every tag in images.yml) or image:tag refs, typically the ones just pushed"
+      image:
+        description: "The image to scan, without tag"
         required: true
         type: string
+      tags:
+        description: "Comma separated tags of that image"
+        required: true
+        type: string
+      owner:
+        description: "Squad owning the image, stamped on every finding as labels.owner"
+        required: false
+        type: string
+        default: ''
       metadata:
         description: "Newline separated key=value pairs added to every finding"
         required: false
@@ -76,7 +79,7 @@ on:
         type: boolean
         default: false
       actions-ref:
-        description: "Ref of kestra-io/actions to read images.yml and composite/scan-image from. Leave the default unless testing a branch of this repo: then pass the same ref as the `uses:`"
+        description: "Ref of kestra-io/actions to read composite/scan-image from. Leave the default unless testing a branch of this repo: then pass the same ref as the `uses:`"
         required: false
         type: string
         default: main
@@ -92,9 +95,9 @@ on:
         required: false
 
 concurrency:
-  # One sweep at a time, but a publish-triggered scan must not cancel or wait on the sweep. Under workflow_call
-  # github.event_name and github.repository are the CALLER's: a manually dispatched release is not a sweep.
-  group: ${{ github.workflow }}-${{ (github.repository == 'kestra-io/actions' && github.event_name == 'workflow_dispatch') && 'sweep' || github.run_id }}
+  # The tower dispatches one run per image: runs of the same image queue, different images run side by side. A
+  # caller's run never waits on them. Under workflow_call github.event_name and github.repository are the CALLER's.
+  group: ${{ github.workflow }}-${{ (github.repository == 'kestra-io/actions' && github.event_name == 'workflow_dispatch') && inputs.image || github.run_id }}
   cancel-in-progress: false
 
 permissions:
@@ -103,90 +106,36 @@ permissions:
 
 jobs:
   matrix:
-    name: Images to scan
+    name: Tags to scan
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       count: ${{ steps.matrix.outputs.count }}
     steps:
-      # The caller's checkout is not this repo's: images.yml comes from kestra-io/actions, at
-      # `actions-ref` when called (no context exposes the called workflow's own commit through a
-      # nested call: workflow_sha and job_workflow_sha are both the CALLER's), at github.sha on a
-      # direct dispatch (then it is this repo's dispatched commit).
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: kestra-io/actions
-          ref: ${{ inputs.actions-ref || github.sha }}
-          persist-credentials: false
-          sparse-checkout: images.yml
-          sparse-checkout-cone-mode: false
-
-      - name: Images - Expand images.yml into a matrix
+      - name: Images - One matrix row per tag
         id: matrix
         env:
-          FILTER: ${{ inputs.images }}
-          DRY_RUN: ${{ inputs.dry-run }}
+          IMAGE: ${{ inputs.image }}
+          TAGS: ${{ inputs.tags }}
+          OWNER: ${{ inputs.owner }}
         run: |
           set -euo pipefail
-          # yq (mikefarah) ships with the ubuntu runner; python3 does the rest with the stdlib only.
-          yq -o=json '.images' images.yml > "$RUNNER_TEMP/images.json"
-          python3 - "$RUNNER_TEMP/images.json" <<'PY' >> "$GITHUB_OUTPUT"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
-          rows_by_image = {row["image"]: row for row in json.load(open(sys.argv[1]))}
-          enabled = lambda row: row.get("enabled", True) is not False  # noqa: E731
-
-          def split_ref(ref):
-              """docker.io/kestra/kestra:latest -> (name, tag); a bare name -> (name, None); a port is not a tag;
-              name@sha256:x -> (name, "@sha256:x") so the digest ref is passed through as is."""
-              if "@" in ref:
-                  return ref.split("@", 1)[0], "@" + ref.split("@", 1)[1]
-              slash, colon = ref.rfind("/"), ref.rfind(":")
-              return (ref[:colon], ref[colon + 1:]) if colon > slash else (ref, None)
-
-          dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
-          rows, warnings = [], []
-          raw = os.environ.get("FILTER", "")
-          wanted = [s.strip() for s in raw.split(",") if s.strip()]
-          if not wanted and raw.strip():
-              warnings.append("images given but empty after trimming: nothing to scan (a full sweep needs an empty input)")
-          elif not wanted:  # the daily sweep: every enabled row, every tag
-              for row in rows_by_image.values():
-                  if enabled(row):
-                      wanted.append(row["image"])
-          for entry in wanted:
-              name, tag = split_ref(entry)
-              row = rows_by_image.get(name)
-              if tag is None:  # a bare name: the tags images.yml lists for it
-                  if row is None:
-                      warnings.append(f"{name}: not in images.yml, no tag to scan")
-                      continue
-                  if not enabled(row):
-                      warnings.append(f"{name}: disabled in images.yml, skipped")
-                      continue
-                  tags = [str(t) for t in row["tags"]]
-              else:  # an exact ref: only a tag the daily sweep tracks, unless nothing is shipped anyway
-                  tracked = row is not None and tag in [str(t) for t in row["tags"]]
-                  if not tracked and not dry_run:
-                      warnings.append(f"{entry}: not a tag listed in images.yml, skipped (the tower tracks only those)")
-                      continue
-                  if not tracked:
-                      warnings.append(f"{entry}: not a tag listed in images.yml, scanned for the log only (dry run)")
-                  tags = [tag]
-              for t in tags:
-                  rows.append({"image": name, "tag": t, "ref": name + (t if t.startswith("@") else ":" + t),
-                               "registry": name.split("/", 1)[0], "owner": (row or {}).get("owner", ""),
-                               "service": name.rsplit("/", 1)[-1]})
-          seen, unique = set(), []
-          for r in rows:
-              if (r["image"], r["tag"]) not in seen:
-                  seen.add((r["image"], r["tag"]))
-                  unique.append(r)
-          for w in warnings:
-              print(f"::warning::{w}", file=sys.stderr)
-          print("matrix=" + json.dumps({"include": unique}))
-          print(f"count={len(unique)}")
-          print(f"{len(unique)} image × tag rows", file=sys.stderr)
+          image = os.environ["IMAGE"].strip()
+          tags = list(dict.fromkeys(t.strip() for t in os.environ["TAGS"].split(",") if t.strip()))
+          slash, colon = image.rfind("/"), image.rfind(":")
+          if not image or "@" in image or colon > slash:
+              print(f"::error::image must be a name without tag or digest, got '{image}'", file=sys.stderr)
+              sys.exit(1)
+          if not tags:
+              print(f"::warning::{image}: no tag given, nothing to scan", file=sys.stderr)
+          rows = [{"image": image, "tag": t, "ref": f"{image}:{t}", "registry": image.split("/", 1)[0],
+                   "owner": os.environ.get("OWNER", "").strip(), "service": image.rsplit("/", 1)[-1]} for t in tags]
+          print("matrix=" + json.dumps({"include": rows}))
+          print(f"count={len(rows)}")
+          print(f"{image}: {len(rows)} tag(s)", file=sys.stderr)
           PY
 
   scan:

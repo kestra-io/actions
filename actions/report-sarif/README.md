@@ -129,39 +129,34 @@ Two more things happen in image mode:
 
 - **`composite/scan-image`** runs `trivy image` on one `image-ref` and calls
   this action in image mode. Registry login is the caller's job.
-- **`.github/workflows/image-security-scan.yml`** expands `images.yml` (the
-  images Kestra ships, their tags and owner squad) into a matrix of
-  `scan-image` calls. `workflow_dispatch` is the daily sweep the security
-  controller tower dispatches; `workflow_call` lets a publish workflow scan
-  exactly what it pushed:
+- **`.github/workflows/image-security-scan.yml`** scans ONE image on the
+  tags it is given (`image`, `tags`, `owner` inputs: one `scan-image` job per
+  tag). This repo holds no list of images: which images Kestra ships, their
+  tags and owner squad live in the security controller tower
+  (`security.scanning/trigger_image_scan`, its `images` variable), whose daily
+  sweep dispatches this workflow once per image. `workflow_call` lets a caller
+  scan an image it just built, dry run (the kestra-ee PR image in
+  `kestra-ee-pullrequest-publish-docker.yml`):
 
   ```yaml
-  scan-images:
+  scan-image:
     needs: docker
     uses: kestra-io/actions/.github/workflows/image-security-scan.yml@main
     with:
-      images: docker.io/kestra/kestra:${{ needs.docker.outputs.tag }},docker.io/kestra/kestra:latest
+      image: ghcr.io/kestra-io/kestra-ee-pr
+      tags: ${{ github.event.pull_request.number }}
+      dry-run: true
     secrets: inherit
   ```
 
-  `images` takes bare names (every tag of that row in `images.yml`) and
-  `image:tag` refs. A ref whose tag is not listed for that image in
-  `images.yml` is **skipped** (scanned for the log only under `dry-run`): the
-  tower keeps one state per image × tag and only the tags the daily sweep
-  rescans can ever be marked fixed, so a publish of `v1.3.45` refreshes the
-  moving tags it retagged (`v1.3`, `latest`, `develop`) and never adds a
-  `v1.3.45` scope. The owner squad always comes from `images.yml`, so the
-  tower's image → squad table has one source to mirror. A publish job that
-  still holds its registry login can call `composite/scan-image` directly
-  instead; it runs this action from its own commit, not from `main`.
-  Wired today: `kestra-ee-pullrequest-publish-docker.yml` (the PR image,
-  dry run), `kestra-ee-publish-docker.yml` (the Artifact Registry image) and
-  `kestra-oss-publish-docker.yml` (the moving tags a release or develop
-  publish retagged). A caller passes `OTLP_ENDPOINT` / `OTLP_HEADERS` to
-  ship and `GCP_SERVICE_ACCOUNT` for `*-docker.pkg.dev` (Artifact Registry) images.
+  A call that ships (dry-run false) must only pass tags the tower's list
+  holds: the tower keeps one state per image × tag and only the tags its sweep
+  rescans can ever be marked fixed. A caller passes `OTLP_ENDPOINT` /
+  `OTLP_HEADERS` to ship and `GCP_SERVICE_ACCOUNT` for `*-docker.pkg.dev`
+  (Artifact Registry) images.
 
 Whichever way in, the documents are the same: `github.*` is the run that
-scanned (a publish run's branch and event, or the sweep's), and consumers
+scanned (a caller's branch and event, or the tower's dispatch), and consumers
 scope image findings on `container.image.name`, `container.image.tag` and
 `resource.sub_type`, never on `github.refName`. The `scan_completed` summary
 is emitted per image × tag in both cases.
