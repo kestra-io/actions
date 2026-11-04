@@ -182,6 +182,7 @@ runs:
     - name: Check for changes and commit
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        HEAD_REF: ${{ github.head_ref }}
       shell: bash
       working-directory: kestra-ee
       run: |
@@ -207,4 +208,4 @@ runs:
           exit 0
         fi
         git commit -m "chore(core): localize to languages other than english" -m "Extended localization support by adding translations for multiple languages using English as the base. This enhances accessibility and usability for non-English-speaking users while keeping English as the source reference."
-        git push origin ${{ github.head_ref }}
+        git push origin "$HEAD_REF"
