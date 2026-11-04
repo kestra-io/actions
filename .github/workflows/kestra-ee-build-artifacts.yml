@@ -30,7 +30,12 @@ on:
         default: false
         required: false
       sbom:
-        description: 'Generate the CycloneDX SBOM (backend, EE UI and OSS UI dependencies merged, via `./gradlew sbom`), attest the executable with SLSA build provenance and with the SBOM, and upload the SBOM as the `sbom` artifact. The caller job must grant `id-token: write`, `attestations: write` and `actions: read`. Meant for tag builds.'
+        description: 'Generate the CycloneDX SBOM (backend, EE UI and OSS UI dependencies merged, via `./gradlew sbom`) and upload it as the `sbom` artifact. Meant for tag builds.'
+        type: boolean
+        default: false
+        required: false
+      attest:
+        description: 'With `sbom`, also attest the executable with SLSA build provenance and with the SBOM. Off by default: artifact attestations are not available for private repositories on our GitHub plan. The caller job must grant `id-token: write` and `attestations: write`.'
         type: boolean
         default: false
         required: false
@@ -141,13 +146,13 @@ jobs:
           mv build/sbom/kestra-sbom.json "build/sbom/$NAME"
 
       - name: SBOM - Attest SLSA build provenance
-        if: ${{ inputs.sbom }}
+        if: ${{ inputs.sbom && inputs.attest }}
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: kestra-ee/build/executable/*
 
       - name: SBOM - Attest CycloneDX SBOM
-        if: ${{ inputs.sbom }}
+        if: ${{ inputs.sbom && inputs.attest }}
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: kestra-ee/build/executable/*
