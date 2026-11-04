@@ -17,6 +17,12 @@ on:
       OTLP_HEADERS:
         description: 'OTLP headers for OpenTelemetry export'
         required: false
+      GH_BOT_APP_ID:
+        description: 'GitHub App Client ID, used for the OSS ref lookups (github.token without it)'
+        required: false
+      GH_BOT_PRIVATE_KEY:
+        description: 'GitHub App private key, used for the OSS ref lookups'
+        required: false
     inputs:
       java-version:
         description: "Java version"
@@ -50,6 +56,8 @@ jobs:
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
       OTLP_HEADERS: ${{ secrets.OTLP_HEADERS }}
+      GH_BOT_APP_ID: ${{ secrets.GH_BOT_APP_ID }}
+      GH_BOT_PRIVATE_KEY: ${{ secrets.GH_BOT_PRIVATE_KEY }}
     with:
       java-version: ${{ inputs.java-version }}
 
