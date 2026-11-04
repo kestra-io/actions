@@ -286,7 +286,7 @@ jobs:
 
       # Download executable from artifact
       - name: Artifacts - Download executable
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: exe
           path: build/executable
@@ -302,14 +302,14 @@ jobs:
       # (root cause of a ghcr.io "anonymous token" 403 push failure in
       # kestra-ee run 33312683568).
       - name: Docker - Login to GitHub registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker - Login to Google Cloud registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: europe-west1-docker.pkg.dev
           username: oauth2accesstoken
@@ -317,7 +317,7 @@ jobs:
 
       - name: Docker - Login to Dockerhub
         # for pulling images like docker.io/library/eclipse-temurin:25-jre-jammy without getting rate limited
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

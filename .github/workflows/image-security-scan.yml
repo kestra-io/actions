@@ -164,7 +164,7 @@ jobs:
       # Public GHCR images; a private one would need its package to grant this repo access.
       - name: Docker - Login to GHCR
         if: ${{ startsWith(matrix.image, 'ghcr.io/') }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -181,7 +181,7 @@ jobs:
 
       - name: Docker - Login to Artifact Registry
         if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ matrix.registry }}
           username: oauth2accesstoken

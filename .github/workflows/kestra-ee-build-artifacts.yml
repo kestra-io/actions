@@ -156,21 +156,21 @@ jobs:
       # Independent uploads — different artifact names, different source paths.
       - parallel:
           - name: Artifacts - Upload Executable
-            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
             with:
               name: exe
               path: kestra-ee/build/executable/
 
           - name: Artifacts - Upload SBOM
             if: ${{ inputs.sbom }}
-            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
             with:
               name: sbom
               path: kestra-ee/build/sbom/
 
           - name: Artifacts - Upload cloud-ee libs
             if: ${{ steps.cloud-ee.outputs.exists == 'true' }}
-            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
             with:
               name: cloud-libs
               path: kestra-ee/cloud-ee/build/libs/cloud-ee-*-all.jar
@@ -182,7 +182,7 @@ jobs:
           cp kestra-ee/webserver-ee/build/classes/java/main/META-INF/swagger/kestra-ee.yml swagger/kestra-ee.yml
 
       - name: Artifacts - Upload Swagger
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: swagger
           path: swagger
