@@ -32,7 +32,8 @@ test('uploadBaseline writes the summary to disk and hands it to the artifact cli
     } as unknown as ArtifactClient
     await uploadBaseline(summary, 'backend', dir, client)
     assert.equal(calls.length, 1)
-    const [name, files, root] = calls[0] as [string, string[], string]
+    const [name, files, root, options] = calls[0] as [string, string[], string, unknown]
+    assert.equal(options, undefined)
     assert.equal(name, 'coverage-baseline-backend')
     assert.equal(root, dir)
     assert.deepEqual(JSON.parse(await readFile(files[0], 'utf8')), summary)

@@ -17,7 +17,10 @@ export interface ArtifactClient {
   downloadArtifact: DefaultArtifactClient['downloadArtifact']
 }
 
-/** Uploaded on every run of `base-branch`, so a PR always compares against the latest develop run. */
+/**
+ * Uploaded on every run of `base-branch`, so a PR always compares against the latest develop run. No
+ * retention is passed, so the repository's own setting applies: a fixed value above its maximum only logs a warning.
+ */
 export async function uploadBaseline(
   summary: CoverageSummary,
   component: string,
@@ -26,7 +29,7 @@ export async function uploadBaseline(
 ): Promise<void> {
   const file = path.join(tempDir, 'coverage-summary.json')
   await fs.writeFile(file, JSON.stringify(summary))
-  await client.uploadArtifact(artifactName(component), [file], tempDir, { retentionDays: 90 })
+  await client.uploadArtifact(artifactName(component), [file], tempDir)
 }
 
 /**

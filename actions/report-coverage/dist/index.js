@@ -129723,7 +129723,7 @@ function artifactName(component) {
 async function uploadBaseline(summary, component, tempDir, client = new DefaultArtifactClient()) {
   const file = path$3.join(tempDir, "coverage-summary.json");
   await fs$1.writeFile(file, JSON.stringify(summary));
-  await client.uploadArtifact(artifactName(component), [file], tempDir, { retentionDays: 90 });
+  await client.uploadArtifact(artifactName(component), [file], tempDir);
 }
 async function findBaselineRun(octokit, owner, repo, workflowFile, baseBranch, component, maxRuns = 20) {
   const name = artifactName(component);
