@@ -135,8 +135,8 @@ Two more things happen in image mode:
   tags and owner squad live in the security controller tower
   (`security.scanning/trigger_image_scan`, its `images` variable), whose daily
   sweep dispatches this workflow once per image. `workflow_call` lets a caller
-  scan an image it just built, dry run (the kestra-ee PR image in
-  `kestra-ee-pullrequest-publish-docker.yml`):
+  scan an image it just built (no caller does yet), e.g. a PR image in dry
+  run:
 
   ```yaml
   scan-image:

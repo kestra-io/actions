@@ -14,8 +14,8 @@ name: Image security scan
 # - workflow_dispatch: what the tower sends (`image`, `tags`, `owner`, its request id in
 #   `metadata`). Run it by hand from the Actions tab to test (`dry-run`).
 #
-# - workflow_call: a caller scans an image it just built, e.g. the kestra-ee PR image in
-#   kestra-ee-pullrequest-publish-docker.yml, always with `dry-run: true`. A call that ships
+# - workflow_call: a caller scans an image it just built (none does yet), e.g. a PR image
+#   with `dry-run: true`. A call that ships
 #   (dry-run false) must only pass tags the tower's list holds: the tower keeps one state per
 #   image × tag and only the tags its sweep rescans can ever be marked fixed.
 #
