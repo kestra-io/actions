@@ -21,6 +21,7 @@ export interface TrivyVulnerability {
   VulnerabilityID?: string
   PkgName?: string
   PkgIdentifier?: { PURL?: string }
+  PkgPath?: string
   InstalledVersion?: string
   FixedVersion?: string
   Status?: string
@@ -58,8 +59,19 @@ export interface TrivyResult {
 export interface TrivyReport {
   SchemaVersion?: number
   ArtifactName?: string
+  ArtifactType?: string
   Trivy?: { Version?: string }
+  Metadata?: { OS?: { Family?: string; Name?: string }; RepoDigests?: string[]; RepoTags?: string[] }
   Results?: TrivyResult[]
+}
+
+/** The sha256 digest the image was pulled by, when the report carries one (`Metadata.RepoDigests`). */
+export function imageDigest(report: TrivyReport): string | undefined {
+  for (const entry of report.Metadata?.RepoDigests ?? []) {
+    const digest = /@(sha256:[0-9a-f]{64})$/.exec(entry)?.[1]
+    if (digest) return digest
+  }
+  return undefined
 }
 
 /** A SARIF log has `runs`, a Trivy report has `Results` and a `SchemaVersion`. */
@@ -122,7 +134,10 @@ function toFinding(report: TrivyReport, result: TrivyResult, vulnerability: Triv
     cvss: vulnerability.CVSS,
     references: vulnerability.References,
     purl: vulnerability.PkgIdentifier?.PURL,
-    fixStatus: vulnerability.Status
+    fixStatus: vulnerability.Status,
+    ecosystem: result.Type,
+    resultClass: result.Class,
+    packagePath: vulnerability.PkgPath
   }
 }
 
@@ -147,13 +162,33 @@ function toLicenseFinding(report: TrivyReport, result: TrivyResult, license: Tri
     tags: [result.Type, result.Class, license.Category].filter((tag): tag is string => Boolean(tag)),
     cwes: [],
     file: license.FilePath || result.Target,
-    packageName: license.PkgName
+    packageName: license.PkgName,
+    ecosystem: result.Type,
+    resultClass: result.Class
   }
 }
 
-export function flattenTrivy(report: TrivyReport): Finding[] {
+export interface TrivyOptions {
+  /**
+   * Drop OS package vulnerabilities the distribution has not fixed (`Class: os-pkgs`, no `FixedVersion`).
+   * An image scan reports hundreds of them (every CVE Debian marks as unimportant or won't-fix), and
+   * nothing can be done about them short of changing the base image; language packages keep theirs.
+   */
+  readonly dropUnfixedOs?: boolean
+}
+
+/** The vulnerabilities `dropUnfixedOs` leaves out of a report, for the log line. */
+export function unfixedOsCount(report: TrivyReport): number {
+  return (report.Results ?? [])
+    .filter(result => result.Class === 'os-pkgs')
+    .reduce((count, result) => count + (result.Vulnerabilities ?? []).filter(v => !v.FixedVersion).length, 0)
+}
+
+export function flattenTrivy(report: TrivyReport, options: TrivyOptions = {}): Finding[] {
   return (report.Results ?? []).flatMap(result => [
-    ...(result.Vulnerabilities ?? []).map(vulnerability => toFinding(report, result, vulnerability)),
+    ...(result.Vulnerabilities ?? [])
+      .filter(vulnerability => !(options.dropUnfixedOs && result.Class === 'os-pkgs' && !vulnerability.FixedVersion))
+      .map(vulnerability => toFinding(report, result, vulnerability)),
     // Low is the permissive licenses (MIT, Apache, ...): one finding per dependency, never actionable.
     ...(result.Licenses ?? [])
       .filter(license => severityFromWord(license.Severity) !== 'Low')

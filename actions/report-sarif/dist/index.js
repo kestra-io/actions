@@ -32370,6 +32370,13 @@ function rationaleOf(description) {
   return opening?.[3]?.trim() || void 0;
 }
 
+function imageDigest(report) {
+  for (const entry of report.Metadata?.RepoDigests ?? []) {
+    const digest = /@(sha256:[0-9a-f]{64})$/.exec(entry)?.[1];
+    if (digest) return digest;
+  }
+  return void 0;
+}
 function isTrivyReport(value) {
   if (typeof value !== "object" || value === null) return false;
   const report = value;
@@ -32417,7 +32424,10 @@ function toFinding$1(report, result, vulnerability) {
     cvss: vulnerability.CVSS,
     references: vulnerability.References,
     purl: vulnerability.PkgIdentifier?.PURL,
-    fixStatus: vulnerability.Status
+    fixStatus: vulnerability.Status,
+    ecosystem: result.Type,
+    resultClass: result.Class,
+    packagePath: vulnerability.PkgPath
   };
 }
 const LICENSE_TOOL = "Trivy License";
@@ -32438,17 +32448,34 @@ function toLicenseFinding(report, result, license) {
     tags: [result.Type, result.Class, license.Category].filter((tag) => Boolean(tag)),
     cwes: [],
     file: license.FilePath || result.Target,
-    packageName: license.PkgName
+    packageName: license.PkgName,
+    ecosystem: result.Type,
+    resultClass: result.Class
   };
 }
-function flattenTrivy(report) {
+function unfixedOsCount(report) {
+  return (report.Results ?? []).filter((result) => result.Class === "os-pkgs").reduce((count, result) => count + (result.Vulnerabilities ?? []).filter((v) => !v.FixedVersion).length, 0);
+}
+function flattenTrivy(report, options = {}) {
   return (report.Results ?? []).flatMap((result) => [
-    ...(result.Vulnerabilities ?? []).map((vulnerability) => toFinding$1(report, result, vulnerability)),
+    ...(result.Vulnerabilities ?? []).filter((vulnerability) => !(options.dropUnfixedOs && result.Class === "os-pkgs" && !vulnerability.FixedVersion)).map((vulnerability) => toFinding$1(report, result, vulnerability)),
     // Low is the permissive licenses (MIT, Apache, ...): one finding per dependency, never actionable.
     ...(result.Licenses ?? []).filter((license) => severityFromWord(license.Severity) !== "Low").map((license) => toLicenseFinding(report, result, license))
   ]);
 }
 
+function parseImageRef(ref, digest) {
+  const trimmed = ref.trim();
+  const at = trimmed.indexOf("@");
+  if (at !== -1) return { name: trimmed.slice(0, at), tag: trimmed.slice(at + 1), digest: digest ?? trimmed.slice(at + 1) };
+  const slash = trimmed.lastIndexOf("/");
+  const colon = trimmed.lastIndexOf(":");
+  if (colon > slash) return { name: trimmed.slice(0, colon), tag: trimmed.slice(colon + 1) || "latest", digest };
+  return { name: trimmed, tag: "latest", digest };
+}
+function imageShortName(image) {
+  return image.name.split("/").filter(Boolean).pop() ?? image.name;
+}
 const SEVERITY_SCORE = { Critical: 99, High: 73, Medium: 47, Low: 21, Unknown: 0 };
 function enumerationOf(ruleId) {
   if (/^CVE-/i.test(ruleId)) return "CVE";
@@ -32456,6 +32483,11 @@ function enumerationOf(ruleId) {
   return void 0;
 }
 function findingId(finding, context) {
+  if (context.image) {
+    return sha256(
+      [context.image.name, context.image.tag, finding.tool, finding.ruleId, finding.ecosystem ?? finding.file ?? "", "", finding.packageName ?? ""].join("|")
+    );
+  }
   return sha256(
     [
       context.github.repository,
@@ -32481,7 +32513,23 @@ function location(finding) {
   if (!finding.file) return "";
   return finding.startLine ? `${finding.file}:${finding.startLine}` : finding.file;
 }
+function imageResource(finding, image) {
+  const type = finding.ecosystem ?? languageOf(finding.file ?? "") ?? finding.file?.toLowerCase();
+  const scope = `${image.name} (${image.tag})`;
+  const target = finding.file?.replace(/^\S+\s+\((.+)\)$/, "$1");
+  return {
+    id: sha256(`${image.name}|${image.tag}|${type ?? ""}`).slice(0, 32),
+    name: target ? `${scope} / ${target}` : scope,
+    type: "container-image",
+    sub_type: type,
+    target: type,
+    language: type,
+    repository: image.name,
+    url: `https://${image.name}`
+  };
+}
 function resourceFor(finding, context) {
+  if (context.image) return imageResource(finding, context.image);
   const repository = context.github.repository;
   const target = finding.file;
   const repositoryUrl = repository ? `${context.github.serverUrl}/${repository}` : void 0;
@@ -32527,10 +32575,17 @@ function resourceFor(finding, context) {
     url: repositoryUrl
   };
 }
+function containerOf(image) {
+  if (!image) return void 0;
+  return { image: { name: image.name, tag: [image.tag], hash: image.digest ? { all: [image.digest] } : void 0 } };
+}
 function common(finding, context) {
   const github = context.github;
   return {
     "@timestamp": context.scanTime,
+    container: containerOf(context.image),
+    // The image is the service the scan is about; a `service.name=` in metadata still overrides it.
+    service: context.image ? { name: imageShortName(context.image) } : void 0,
     tags: context.tags,
     data_stream: { type: "logs", dataset: datasetOf(finding, context), namespace: context.namespace },
     ecs: { version: "8.11.0" },
@@ -32660,10 +32715,56 @@ function toDocument(finding, context) {
       fixed_version: finding.packageFixedVersion,
       reference: finding.purl,
       // "fixed", "affected", "will_not_fix" — whether a fixed_version exists says less than this.
-      fix_status: finding.fixStatus
+      fix_status: finding.fixStatus,
+      // Which jar or site-packages entry inside an image: the same CVE sits in several plugin jars.
+      path: finding.packagePath
     },
     // Every reference the advisory lists, not just the primary one in vulnerability.reference.
     related: { references: finding.references }
+  };
+  applyMetadata(document, context.metadata);
+  return prune(document);
+}
+function scanSummary(context, tool, toolVersion, count) {
+  const image = context.image;
+  if (!image) throw new Error("scanSummary needs an image context");
+  const github = context.github;
+  const dataset = context.dataset || datasetForTool(tool);
+  const scope = `${image.name} (${image.tag})`;
+  const document = {
+    "@timestamp": context.scanTime,
+    tags: context.tags,
+    data_stream: { type: "logs", dataset, namespace: context.namespace },
+    ecs: { version: "8.11.0" },
+    message: `${tool} scanned ${image.name}:${image.tag}: ${count} vulnerabilit${count === 1 ? "y" : "ies"}`,
+    event: {
+      kind: "event",
+      category: ["vulnerability"],
+      type: ["info"],
+      action: "scan_completed",
+      outcome: "success",
+      dataset,
+      module: datasetForTool(tool),
+      provider: "github-actions",
+      id: sha256([image.name, image.tag, tool, "scan_completed"].join("|")),
+      created: context.scanTime,
+      sequence: Number(github.runId) || void 0
+    },
+    container: containerOf(image),
+    service: { name: imageShortName(image) },
+    observer: { vendor: tool, product: tool, version: toolVersion },
+    resource: {
+      id: sha256(`${image.name}|${image.tag}`).slice(0, 32),
+      name: scope,
+      type: "container-image",
+      repository: image.name,
+      url: `https://${image.name}`
+    },
+    user: { name: github.triggeringActor || github.actor, id: github.actorId },
+    organization: { name: github.repositoryOwner, id: github.repositoryOwnerId },
+    github: structuredClone(github),
+    vulnerability: { scanner: { vendor: tool, version: toolVersion }, report_id: `${github.runId}-${github.runAttempt ?? 1}` },
+    labels: { component: "image" }
   };
   applyMetadata(document, context.metadata);
   return prune(document);
@@ -32837,20 +32938,27 @@ function flattenTrufflehog(lines) {
   });
 }
 
-async function readReport(file) {
+async function readReport(file, image) {
   const content = await fs$1.readFile(file, "utf8");
   try {
     let parsed;
     try {
       parsed = JSON.parse(content);
     } catch {
-      return flattenTrufflehog(parseTrufflehog(content));
+      return { findings: flattenTrufflehog(parseTrufflehog(content)) };
     }
-    if (isTrufflehogLine(parsed)) return flattenTrufflehog([parsed]);
-    return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed);
+    if (isTrufflehogLine(parsed)) return { findings: flattenTrufflehog([parsed]) };
+    if (isTrivyReport(parsed)) {
+      if (image) {
+        const dropped = unfixedOsCount(parsed);
+        if (dropped > 0) info(`${file}: ${dropped} OS package vulnerabilit${dropped === 1 ? "y" : "ies"} without a fix left out`);
+      }
+      return { findings: flattenTrivy(parsed, { dropUnfixedOs: image }), trivy: parsed };
+    }
+    return { findings: flatten(parsed) };
   } catch (error) {
     warning(`Could not read ${file} as SARIF or a Trivy report: ${error.message}`);
-    return [];
+    return { findings: [] };
   }
 }
 function finish(documents, sent, ndjsonFile, skipped) {
@@ -32879,16 +32987,27 @@ async function run() {
     return;
   }
   info(`SARIF files: ${files.map((file) => path$2.relative(process.cwd(), file)).join(", ")}`);
+  const imageRef = getInput("image-ref").trim();
+  const reports = await Promise.all(files.map((file) => readReport(file, imageRef !== "")));
+  const image = imageRef ? parseImageRef(imageRef, reports.map((report) => report.trivy && imageDigest(report.trivy)).find(Boolean)) : void 0;
+  if (image && type !== "vulnerabilities") {
+    setFailed("image-ref only applies to type vulnerabilities");
+    return;
+  }
+  const metadata = parsePairs(getInput("metadata"));
+  if (image && !metadata.component) metadata.component = "image";
   const context = {
     dataset,
     namespace,
     type,
+    image,
     github: githubMetadata(process.env),
     scanTime: (/* @__PURE__ */ new Date()).toISOString(),
     tags: parseList(getInput("tags")),
-    metadata: parsePairs(getInput("metadata"))
+    metadata
   };
-  const findings = (await Promise.all(files.map(readReport))).flat();
+  if (image) info(`Image scan: ${image.name}:${image.tag}${image.digest ? ` (${image.digest})` : ""}, service ${metadata["service.name"] ?? imageShortName(image)}`);
+  const findings = reports.flatMap((report) => report.findings);
   const components = parseComponents(getInput("components"));
   const componentsPath = getInput("components-path");
   const workspace = process.env.GITHUB_WORKSPACE ?? "";
@@ -32905,11 +33024,19 @@ async function run() {
     documents.push(toDocument(finding, component ? { ...context, metadata: { ...context.metadata, component } } : context));
     byStream.set(stream, documents);
   }
+  if (image) {
+    for (const report of reports) {
+      if (!report.trivy) continue;
+      const summary = scanSummary(context, "Trivy", report.trivy.Trivy?.Version ?? "", report.findings.length);
+      const stream = dataStreamName(String(summary.data_stream.dataset), namespace);
+      byStream.set(stream, [...byStream.get(stream) ?? [], summary]);
+    }
+  }
   const size = Math.max(1, Number(getInput("batch-size") || "500"));
   const batches = [...byStream].flatMap(
     ([stream, documents]) => chunk(documents, size).map((batch) => ({ stream, batch }))
   );
-  const documentCount = findings.length;
+  const documentCount = [...byStream.values()].reduce((count, documents) => count + documents.length, 0);
   await fs$1.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(""));
   for (const [stream, documents] of byStream) {
     const bySeverity = documents.reduce((counts, document) => {
