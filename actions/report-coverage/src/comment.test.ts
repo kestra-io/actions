@@ -66,3 +66,8 @@ test('titleSummary shows a drop with a minus sign and the down arrow', () => {
   const base = summary({ core: { lines: { covered: 9, missed: 1 } } })
   assert.equal(titleSummary(current, base), '80.00%, ▼ -10.00%')
 })
+
+test('buildComment names the configured base branch in the no-baseline note', () => {
+  const markdown = buildComment(summary({ core: { lines: { covered: 8, missed: 2 } } }), undefined, 'main')
+  assert.match(markdown, /No main baseline yet — this will compare against main/)
+})

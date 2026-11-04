@@ -129795,13 +129795,13 @@ function titleSummary(current, base) {
   const sign = delta > 0 ? "+" : "";
   return `${linePct.toFixed(2)}%, ${arrow(delta)} ${sign}${delta.toFixed(2)}%`;
 }
-function buildComment(current, base) {
+function buildComment(current, base, baseBranch = "develop") {
   const linePct = pct(current.totals.lines);
   const baseLinePct = base ? pct(base.totals.lines) : void 0;
   const lines = [];
   lines.push(`**${linePct.toFixed(2)}%** line coverage${formatDelta(linePct, baseLinePct)}`);
   lines.push(`${current.totals.lines.covered}/${current.totals.lines.covered + current.totals.lines.missed} lines covered`);
-  if (!base) lines.push("_No develop baseline yet \u2014 this will compare against develop once it has a coverage run._");
+  if (!base) lines.push(`_No ${baseBranch} baseline yet \u2014 this will compare against ${baseBranch} once it has a coverage run._`);
   lines.push("");
   const rows = moduleRows(current, base);
   const header = "| Module | Lines | Coverage |\n| --- | --- | --- |";
@@ -130295,7 +130295,7 @@ async function run() {
     runId: githubContext.runId
   });
   const baseline = await resolveBaseline(summary, baseBranch, component, temp);
-  const markdown = buildComment(summary, baseline);
+  const markdown = buildComment(summary, baseline, baseBranch);
   await fs$1.writeFile(markdownFile, markdown);
   info(markdown);
   setOutput("line-rate", String(pct(summary.totals.lines)));
@@ -130355,7 +130355,7 @@ function mergeFileCoverage(a, b) {
 async function resolveBaseline(summary, baseBranch, component, temp) {
   const token = getInput("github-token");
   if (!token) {
-    info("No github-token supplied; skipping the develop baseline comparison.");
+    info(`No github-token supplied; skipping the ${baseBranch} baseline comparison.`);
     return void 0;
   }
   if (context$2.ref === `refs/heads/${baseBranch}`) return void 0;
