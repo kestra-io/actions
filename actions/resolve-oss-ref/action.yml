@@ -1,0 +1,22 @@
+name: Resolve OSS ref
+description: >
+  Pick the kestra-io/kestra ref a kestra-ee job builds against. On a pull request: the OSS branch named like
+  the EE branch, else the nearest branch down the EE pull request stack (each hop follows the base of the
+  open pull request whose head is the current branch) that exists in OSS, else develop. Without a pull
+  request: the same ref in OSS, else develop.
+
+runs:
+  using: node24
+  main: dist/index.js
+
+inputs:
+  github-token:
+    description: Token that can read kestra-io/kestra and list the pull requests of the calling repository
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  ref:
+    description: OSS ref to check out
+  same-name:
+    description: '"true" when the ref is the OSS branch named like the EE branch itself, "false" otherwise'
