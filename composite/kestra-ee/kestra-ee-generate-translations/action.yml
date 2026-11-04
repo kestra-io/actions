@@ -21,6 +21,14 @@ inputs:
     description: 'Vertex AI location (GOOGLE_CLOUD_LOCATION)'
     required: false
     default: 'global'
+  gh-app-id:
+    description: GitHub App Client ID (pass secrets.GH_BOT_APP_ID from the caller workflow). Without it the OSS ref lookups use github-token.
+    required: false
+    default: ''
+  gh-app-private-key:
+    description: GitHub App private key (pass secrets.GH_BOT_PRIVATE_KEY from the caller workflow).
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -32,51 +40,59 @@ runs:
         path: kestra-ee
         ref: ${{ github.head_ref }}
 
+    - name: Generate GitHub App token
+      id: app-token
+      if: inputs.gh-app-id != '' && inputs.gh-app-private-key != ''
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: kestra-io
+        repositories: kestra,kestra-ee
+        permission-contents: read
+        permission-pull-requests: read
+
     # Which OSS to generate and check against: the same lookup `kestra-ee-checkout` does for the
     # frontend tests. A companion OSS branch of the same name wins (at its PR's simulated-merge ref
-    # when that PR is open and mergeable, else the branch tip), otherwise the PR base branch. Without
-    # this an EE PR that uses a key its companion OSS PR adds is red until the OSS side merges, and
-    # the two have to be merged in a fixed order.
+    # when that PR is open and mergeable, else the branch tip), otherwise the nearest branch down the
+    # EE PR stack that exists in OSS, else develop. Without this an EE PR that uses a key its companion
+    # OSS PR adds is red until the OSS side merges, and the two have to be merged in a fixed order.
+    - name: Resolve the OSS branch
+      id: oss-branch
+      uses: kestra-io/actions/actions/resolve-oss-ref@main
+      with:
+        github-token: ${{ steps.app-token.outputs.token || inputs.github-token }}
+
     - name: Resolve the OSS ref
       id: oss-ref
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        HEAD_REF: ${{ github.head_ref }}
-        BASE_REF: ${{ github.base_ref }}
+        OSS_BRANCH: ${{ steps.oss-branch.outputs.ref }}
+        SAME_NAME: ${{ steps.oss-branch.outputs.same-name }}
       run: |
         # Authenticated probes: anonymous git is rate-limited per egress IP and the shared runner pool
         # trips that limit. Composed here so the URL is never echoed into the job log.
         OSS_REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/kestra-io/kestra.git"
 
         BRANCH_SHA=""
-        if [[ -n "$HEAD_REF" ]]; then
-          BRANCH_SHA=$(git ls-remote "$OSS_REMOTE" "refs/heads/$HEAD_REF" | cut -f1)
+        if [[ "$SAME_NAME" == "true" ]]; then
+          BRANCH_SHA=$(git ls-remote "$OSS_REMOTE" "refs/heads/$OSS_BRANCH" | cut -f1)
         fi
         if [[ -n "$BRANCH_SHA" ]]; then
           OSS_PR_REF=$(git ls-remote "$OSS_REMOTE" 'refs/pull/*/head' | { grep "^$BRANCH_SHA" || [ $? -eq 1 ]; } | sort -t'/' -k3 -n -r | head -1 | awk '{print $2}')
           if [[ -n "$OSS_PR_REF" ]]; then
             OSS_PR_NUMBER=$(echo "$OSS_PR_REF" | sed 's|refs/pull/||;s|/head||')
             if [[ -n "$(git ls-remote "$OSS_REMOTE" "refs/pull/$OSS_PR_NUMBER/merge")" ]]; then
-              echo "same-name OSS branch $HEAD_REF is the head of OSS PR #$OSS_PR_NUMBER, using its merge ref"
+              echo "same-name OSS branch $OSS_BRANCH is the head of OSS PR #$OSS_PR_NUMBER, using its merge ref"
               echo "ref=refs/pull/$OSS_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "OSS PR #$OSS_PR_NUMBER has no merge ref (conflicts), using the branch tip"
           fi
-          echo "same-name OSS branch found, using $HEAD_REF"
-          echo "ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
-          exit 0
         fi
 
-        if [[ -n "$(git ls-remote "$OSS_REMOTE" "refs/heads/$BASE_REF")" ]]; then
-          echo "no same-name OSS branch, using the PR base $BASE_REF"
-          echo "ref=$BASE_REF" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        echo "neither $HEAD_REF nor $BASE_REF exists in OSS, falling back to develop"
-        echo "ref=develop" >> "$GITHUB_OUTPUT"
+        echo "ref=$OSS_BRANCH" >> "$GITHUB_OUTPUT"
 
     # The translation tooling is shared: EE's `scripts/translations/{generate,check}.ts` import the
     # implementation from OSS, resolved as a sibling checkout. Three things are needed: the tooling,
@@ -166,6 +182,7 @@ runs:
     - name: Check for changes and commit
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        HEAD_REF: ${{ github.head_ref }}
       shell: bash
       working-directory: kestra-ee
       run: |
@@ -191,4 +208,4 @@ runs:
           exit 0
         fi
         git commit -m "chore(core): localize to languages other than english" -m "Extended localization support by adding translations for multiple languages using English as the base. This enhances accessibility and usability for non-English-speaking users while keeping English as the source reference."
-        git push origin ${{ github.head_ref }}
+        git push origin "$HEAD_REF"

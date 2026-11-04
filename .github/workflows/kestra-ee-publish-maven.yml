@@ -11,6 +11,12 @@ on:
       OTLP_HEADERS:
         description: 'OTLP headers for OpenTelemetry export'
         required: false
+      GH_BOT_APP_ID:
+        description: 'GitHub App Client ID, used for the OSS ref lookups (github.token without it)'
+        required: false
+      GH_BOT_PRIVATE_KEY:
+        description: 'GitHub App private key, used for the OSS ref lookups'
+        required: false
     inputs:
       java-version:
         description: "Java version"
@@ -49,6 +55,9 @@ jobs:
 
       - name: Checkout - OSS
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+        with:
+          gh-app-id: ${{ secrets.GH_BOT_APP_ID }}
+          gh-app-private-key: ${{ secrets.GH_BOT_PRIVATE_KEY }}
 
       - name: setup init
         uses: kestra-io/actions/composite/setup-build@main
