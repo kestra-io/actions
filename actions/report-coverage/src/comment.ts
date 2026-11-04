@@ -64,14 +64,14 @@ export function titleSummary(current: CoverageSummary, base: CoverageSummary | u
  * leaves the table alone. Modules are sorted by the biggest coverage drop first, so a regression is
  * the first thing a reviewer sees rather than buried in an alphabetical list.
  */
-export function buildComment(current: CoverageSummary, base: CoverageSummary | undefined): string {
+export function buildComment(current: CoverageSummary, base: CoverageSummary | undefined, baseBranch = 'develop'): string {
   const linePct = pct(current.totals.lines)
   const baseLinePct = base ? pct(base.totals.lines) : undefined
   const lines: string[] = []
 
   lines.push(`**${linePct.toFixed(2)}%** line coverage${formatDelta(linePct, baseLinePct)}`)
   lines.push(`${current.totals.lines.covered}/${current.totals.lines.covered + current.totals.lines.missed} lines covered`)
-  if (!base) lines.push('_No develop baseline yet — this will compare against develop once it has a coverage run._')
+  if (!base) lines.push(`_No ${baseBranch} baseline yet — this will compare against ${baseBranch} once it has a coverage run._`)
   lines.push('')
 
   const rows = moduleRows(current, base)
