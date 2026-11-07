@@ -81324,6 +81324,10 @@ allprojects { prj ->
       span.setAttribute("test.class", String.valueOf(desc.className))
       span.setAttribute("test.name", String.valueOf(desc.name))
       span.setAttribute("test.result", String.valueOf(result.resultType))
+      // the forked JVM that ran the test: "Gradle Test Executor 3" is an ancestor of its class
+      def worker = desc.parent
+      while (worker != null && !String.valueOf(worker.name).startsWith("Gradle Test Executor")) worker = worker.parent
+      if (worker != null) span.setAttribute("test.worker", String.valueOf(worker.name))
       if (result.resultType.toString() == "FAILURE") {
         def ex = result.exception
         span.setStatus(StatusCode.ERROR, ex != null ? String.valueOf(ex.message) : "test failed")
