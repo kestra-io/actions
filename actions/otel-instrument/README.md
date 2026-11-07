@@ -146,3 +146,17 @@ after changing `src/` or the shared modules under `../../shared/otel-core`.
 > default — if you need the build spans to nest under the step span, add a
 > Gradle init script that starts the build root span as a child of
 > `TRACEPARENT` (`gradle-tracing-enabled` does exactly this).
+
+## Nesting a tool's spans under a specific step
+
+`TRACEPARENT` points at the job span (or `parent-step-name`). Tools that read it
+on their own, like `docker compose`, then show up under the job rather than the
+step that ran them. `OTEL_TRACE_ID` and `OTEL_JOB_ID` are exported so a step can
+derive its own span id (`sha256("<job id>-<step name>-s")[16:32]`):
+
+```bash
+export TRACEPARENT="00-$OTEL_TRACE_ID-$(printf '%s' "$OTEL_JOB_ID-<step name>-s" | sha256sum | cut -c17-32)-01"
+docker compose up -d
+```
+
+The step name must match the step's `name:` exactly.

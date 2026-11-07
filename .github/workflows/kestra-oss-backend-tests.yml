@@ -73,7 +73,12 @@ jobs:
         id: compose
         background: true
         shell: bash
-        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
+        run: |
+          # docker compose reads TRACEPARENT: nest its spans under this step, not the job span
+          if [ -n "$OTEL_JOB_ID" ]; then
+            export TRACEPARENT="00-$OTEL_TRACE_ID-$(printf '%s' "$OTEL_JOB_ID-Setup - Start docker compose-s" | sha256sum | cut -c17-32)-01"
+          fi
+          docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       # Setup build
       - uses: kestra-io/actions/composite/setup-build@main
