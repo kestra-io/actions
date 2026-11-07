@@ -69,6 +69,18 @@ test('buildWorkflowTrace excludes skipped jobs', () => {
   assert.ok(ranJobSpan, 'non-skipped job span still present')
 })
 
+test('buildWorkflowTrace root is OK when other jobs are neutral, failed when one fails', () => {
+  const rootOf = (jobs: WorkflowJob[]) =>
+    buildWorkflowTrace(jobs, '123', '1', 'CI', 'svc', Date.now()).find(
+      (s) => s.spanContext().spanId === rootSpanId('123', '1')
+    )
+  const neutral: WorkflowJob = { ...job(789, 'coverage'), conclusion: 'neutral' }
+  assert.equal(rootOf([job(456, 'test'), neutral])?.status.code, SpanStatusCode.OK)
+
+  const failed: WorkflowJob = { ...job(790, 'broken'), conclusion: 'failure' }
+  assert.equal(rootOf([job(456, 'test'), neutral, failed])?.status.code, SpanStatusCode.ERROR)
+})
+
 test('job and step spans get a job-scoped instance id; the root span gets a run-level one', () => {
   const prev = { id: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT }
   process.env.GITHUB_RUN_ID = '123'

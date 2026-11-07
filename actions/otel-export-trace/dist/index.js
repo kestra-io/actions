@@ -104335,6 +104335,7 @@ async function buildWorkflowLogs(octokit, owner, repo, jobs, runId, runAttempt, 
   return all;
 }
 
+const PASSING_CONCLUSIONS = /* @__PURE__ */ new Set(["success", "neutral", "skipped"]);
 const parseTime = (iso, fallback) => {
   if (!iso) return fallback;
   const ms = Date.parse(iso);
@@ -104407,7 +104408,7 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, serviceName, 
       spanId: rootId,
       startMs: rootStart,
       endMs: rootEnd,
-      conclusion: ranJobs.some((j) => j.conclusion && j.conclusion !== "success") ? "failure" : "success",
+      conclusion: ranJobs.some((j) => j.conclusion && !PASSING_CONCLUSIONS.has(j.conclusion)) ? "failure" : "success",
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: "github-actions",
         "github.run_id": String(runId),

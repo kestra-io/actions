@@ -3,6 +3,9 @@ import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from '../..
 import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from '../../../shared/otel-core/src/otlp.js'
 import { runnerEnvironmentOf, type WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
+// Matches statusOf in otlp.ts: check-run style jobs (coverage, trivy, opengrep) end `neutral`.
+const PASSING_CONCLUSIONS = new Set(['success', 'neutral', 'skipped'])
+
 const parseTime = (iso: string | null | undefined, fallback: number): number => {
   if (!iso) return fallback
   const ms = Date.parse(iso)
@@ -125,7 +128,7 @@ export function buildWorkflowTrace(
       spanId: rootId,
       startMs: rootStart,
       endMs: rootEnd,
-      conclusion: ranJobs.some((j) => j.conclusion && j.conclusion !== 'success') ? 'failure' : 'success',
+      conclusion: ranJobs.some((j) => j.conclusion && !PASSING_CONCLUSIONS.has(j.conclusion)) ? 'failure' : 'success',
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: 'github-actions',
         'github.run_id': String(runId),
