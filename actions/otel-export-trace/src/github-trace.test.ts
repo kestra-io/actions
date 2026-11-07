@@ -211,3 +211,25 @@ test('a live build span using the exported traceparent nests under the step span
   const stepSpan = spans.find((s) => s.spanContext().spanId === exportedParent)
   assert.ok(stepSpan, 'the step the build runs in exists with the id used in TRACEPARENT')
 })
+
+test('steps of a `parallel:` block nest under the "Parallel group" step', () => {
+  const step = (name: string, number: number, s: string, e: string) => ({
+    name, number, status: 'completed', conclusion: 'success', started_at: s, completed_at: e
+  })
+  const pjob = {
+    ...job(456, 'check'),
+    steps: [
+      step('Install', 6, '2026-06-20T10:00:02Z', '2026-06-20T10:00:46Z'),
+      step('Typecheck', 7, '2026-06-20T10:00:46Z', '2026-06-20T10:01:38Z'),
+      step('Lint', 8, '2026-06-20T10:00:46Z', '2026-06-20T10:01:12Z'),
+      step('Tests', 9, '2026-06-20T10:00:46Z', '2026-06-20T10:01:35Z'),
+      step('Parallel group', 10, '2026-06-20T10:00:47Z', '2026-06-20T10:01:38Z'),
+      step('Report', 11, '2026-06-20T10:01:38Z', '2026-06-20T10:01:41Z')
+    ]
+  }
+  const spans = buildWorkflowTrace([pjob], 1, 1, 'wf', 'svc', Date.now())
+  const parentOf = (name: string) =>
+    spans.find((s) => s.spanContext().spanId === stepSpanId(456, name))?.parentSpanContext?.spanId
+  for (const n of ['Typecheck', 'Lint', 'Tests']) assert.equal(parentOf(n), stepSpanId(456, 'Parallel group'))
+  for (const n of ['Install', 'Parallel group', 'Report']) assert.equal(parentOf(n), jobSpanId(456))
+})
