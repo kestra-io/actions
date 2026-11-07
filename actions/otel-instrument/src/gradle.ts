@@ -155,23 +155,26 @@ def buildSpan = gradleTracer.spanBuilder("gradle " + gradle.startParameter.taskN
 buildSpan.setAttribute("telemetry.source", "gradle")
 def buildContext = parentContext.with(buildSpan)
 
-def taskStarts = new ConcurrentHashMap<String, Long>()
-gradle.taskGraph.beforeTask { task -> taskStarts.put(task.path, System.currentTimeMillis()) }
-gradle.taskGraph.afterTask { task ->
-  def start = taskStarts.remove(task.path)
-  if (start == null) return
-  def span = gradleTracer.spanBuilder(task.path).setParent(buildContext)
-    .setStartTimestamp(Instant.ofEpochMilli(start)).startSpan()
+// Task spans are started in beforeTask (not back-dated in afterTask) so a Test
+// task's span exists while its tests run and can be their parent.
+def taskSpans = new ConcurrentHashMap<String, Span>()
+gradle.taskGraph.beforeTask { task ->
+  def span = gradleTracer.spanBuilder(task.path).setParent(buildContext).startSpan()
   span.setAttribute("telemetry.source", "gradle")
   span.setAttribute("gradle.task.path", task.path)
   span.setAttribute("gradle.task", task.name)
   span.setAttribute("gradle.module", task.project.path)
+  taskSpans.put(task.path, span)
+}
+gradle.taskGraph.afterTask { task ->
+  def span = taskSpans.remove(task.path)
+  if (span == null) return
   span.setAttribute("gradle.task.did_work", task.state.didWork)
   // "EXECUTED", or Gradle's own skip reason: "UP-TO-DATE", "FROM-CACHE", "SKIPPED" or "NO-SOURCE".
   span.setAttribute("gradle.task.state", task.state.skipMessage ?: "EXECUTED")
   def failure = task.state.failure
   if (failure != null) span.setStatus(StatusCode.ERROR, String.valueOf(failure.message))
-  span.end(Instant.now())
+  span.end()
 }
 
 // A span per JUnit test, from Gradle's own test events.
@@ -179,7 +182,9 @@ allprojects { prj ->
   prj.tasks.withType(Test).configureEach { testTask ->
     testTask.afterTest { desc, result ->
       def name = (desc.className ? desc.className + "#" : "") + desc.name
-      def span = junitTracer.spanBuilder(name).setParent(buildContext)
+      def taskSpan = taskSpans.get(testTask.path)
+      def testParent = taskSpan != null ? buildContext.with(taskSpan) : buildContext
+      def span = junitTracer.spanBuilder(name).setParent(testParent)
         .setStartTimestamp(Instant.ofEpochMilli(result.startTime)).startSpan()
       span.setAttribute("telemetry.source", "junit")
       span.setAttribute("test.module", prj.path)
