@@ -102,8 +102,7 @@ async function main(inputs: Inputs): Promise<void> {
     core.exportVariable('TRACEPARENT', traceparent)
     core.setOutput('traceparent', traceparent)
   }
-  // Lets a later step derive its own TRACEPARENT (see the README) so tools that read it,
-  // like `docker compose`, nest under that step instead of the job or parent-step-name.
+  // Lets child tools (e.g. the vitest reporter) derive their step's span id and nest under it.
   core.exportVariable('OTEL_TRACE_ID', tId)
   if (jobId !== null) core.exportVariable('OTEL_JOB_ID', String(jobId))
   // gRPC requires a base endpoint with no signal path ("/v1/traces" is rejected),

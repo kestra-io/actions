@@ -141,10 +141,8 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          # setup-unit.sh runs docker compose, which reads TRACEPARENT: nest its spans under this step
-          if [ -n "$OTEL_JOB_ID" ]; then
-            export TRACEPARENT="00-$OTEL_TRACE_ID-$(printf '%s' "$OTEL_JOB_ID-Setup - Unit test-s" | sha256sum | cut -c17-32)-01"
-          fi
+          # setup-unit.sh runs docker compose, which exports its own traces whenever an OTEL endpoint is set
+          unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
           if [ -f .github/setup-unit.sh ]; then
             ./.github/setup-unit.sh
           fi

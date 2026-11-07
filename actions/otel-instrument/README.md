@@ -176,14 +176,11 @@ exports them over gRPC at the end of the job.
 
 ## Nesting a tool's spans under a specific step
 
-`TRACEPARENT` points at the job span (or `parent-step-name`). Tools that read it
-on their own, like `docker compose`, then show up under the job rather than the
-step that ran them. `OTEL_TRACE_ID` and `OTEL_JOB_ID` are exported so a step can
-derive its own span id (`sha256("<job id>-<step name>-s")[16:32]`):
+`TRACEPARENT` points at the job span (or `parent-step-name`). `OTEL_TRACE_ID` and
+`OTEL_JOB_ID` are also exported so a tool can derive its step's span id
+(`sha256("<job id>-<step name>-s")[16:32]`), as the Vitest reporter does.
 
-```bash
-export TRACEPARENT="00-$OTEL_TRACE_ID-$(printf '%s' "$OTEL_JOB_ID-<step name>-s" | sha256sum | cut -c17-32)-01"
-docker compose up -d
-```
-
-The step name must match the step's `name:` exactly.
+`docker`, `docker compose` and `buildx` also export their own traces whenever an OTLP
+endpoint is set, and those spans land unparented. Keep them out per step:
+`unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (compose) and
+`OTEL_TRACES_EXPORTER: none` (buildx / `docker/build-push-action`).

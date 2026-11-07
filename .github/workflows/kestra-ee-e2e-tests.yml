@@ -166,7 +166,10 @@ jobs:
           APPLICATION_SECRETS: ${{ secrets.APPLICATION_SECRETS }}
           NODE_OPTIONS: "--max-old-space-size=4096"
           E2E_USE_PREBUILT_EXE: ${{ inputs.exe-artifact != '' }}
+          OTEL_TRACES_EXPORTER: none # keep buildx/buildkit spans out of the trace
         run: |
+          # docker compose exports its own traces whenever an OTEL endpoint is set; keep them out
+          unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
           E2E_DATA_DIR=$([ -d ./e2e/data ] && echo ./e2e/data || echo ./ui-ee/tests/e2e/data)
           echo $APPLICATION_SECRETS | base64 -d > "$E2E_DATA_DIR/application-secrets.yml"
           echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
