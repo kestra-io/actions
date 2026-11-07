@@ -18,11 +18,14 @@ import {
   stopCollector
 } from './collector.js'
 import { installGradleInitScript } from './gradle.js'
+import { exportVitestSpans, installVitestReporter } from './vitest.js'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
 import { baseEndpoint, NAMESPACE } from '../../../shared/otel-core/src/otlp.js'
 import { resolveJob } from '../../../shared/otel-core/src/resolve-job.js'
 
 const STARTED_STATE = 'otel-instrument-started'
+const JOB_ID_STATE = 'otel-instrument-job-id'
+const WORKFLOW_NAME_STATE = 'otel-instrument-workflow-name'
 
 interface Inputs {
   githubToken: string
@@ -35,6 +38,7 @@ interface Inputs {
   hostMetricsEnabled: boolean
   cgroupMetricsEnabled: boolean
   gradleTracingEnabled: boolean
+  vitestTracingEnabled: boolean
   parentStepName: string
   collectorVersion: string
   javaAgentVersion: string
@@ -53,6 +57,7 @@ function readInputs(): Inputs {
     hostMetricsEnabled: core.getBooleanInput('host-metrics-enabled'),
     cgroupMetricsEnabled: core.getBooleanInput('cgroup-metrics-enabled'),
     gradleTracingEnabled: core.getBooleanInput('gradle-tracing-enabled'),
+    vitestTracingEnabled: core.getBooleanInput('vitest-tracing-enabled'),
     parentStepName: core.getInput('parent-step-name'),
     collectorVersion: core.getInput('collector-version'),
     javaAgentVersion: core.getInput('java-agent-version'),
@@ -151,6 +156,11 @@ async function main(inputs: Inputs): Promise<void> {
   if (inputs.gradleTracingEnabled) {
     installGradleInitScript(serviceName(inputs), jobId, workflowName)
   }
+  if (inputs.vitestTracingEnabled) {
+    if (jobId !== null) core.saveState(JOB_ID_STATE, String(jobId))
+    core.saveState(WORKFLOW_NAME_STATE, workflowName)
+    installVitestReporter()
+  }
   if (agentSetup.length) await Promise.all(agentSetup)
 
   // Needs the collector above running: it pushes into its local OTLP receiver rather
@@ -164,9 +174,10 @@ async function main(inputs: Inputs): Promise<void> {
 }
 
 /**
- * Per-job post: stop the cgroup poller and the collector so their metrics are flushed.
+ * Per-job post: export the Vitest spans written during the job, then stop the cgroup
+ * poller and the collector so their metrics are flushed.
  *
- * It deliberately exports no spans. Job and step span ids are deterministic
+ * It deliberately exports no GitHub Actions spans. Job and step span ids are deterministic
  * (jobSpanId/stepSpanId), so a job exporting its own tree here and the final
  * `otel-export-trace` job re-exporting it would emit the *same* span twice — and a
  * traces data stream appends rather than upserts on trace_id+span_id. The copy
@@ -175,7 +186,17 @@ async function main(inputs: Inputs): Promise<void> {
  * "success" and a Date.now() end time. `otel-export-trace` is the single source of
  * truth for the GitHub Actions span layer.
  */
-async function post(): Promise<void> {
+async function post(inputs: Inputs): Promise<void> {
+  if (inputs.vitestTracingEnabled) {
+    const jobId = core.getState(JOB_ID_STATE)
+    await exportVitestSpans(
+      serviceName(inputs),
+      jobId ? Number(jobId) : undefined,
+      core.getState(WORKFLOW_NAME_STATE) || undefined,
+      inputs.otlpEndpoint,
+      inputs.otlpHeaders
+    ).catch((err: Error) => core.warning(`Vitest span export failed: ${err.message}`))
+  }
   await stopCgroupPoller()
   await stopCollector()
 }
@@ -207,7 +228,7 @@ async function run(): Promise<void> {
     core.saveState(STARTED_STATE, 'true')
 
     if (isPost) {
-      await post()
+      await post(inputs)
     } else {
       await main(inputs)
     }
