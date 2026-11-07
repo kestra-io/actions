@@ -24,4 +24,11 @@ const config = {
   ]
 }
 
-export default config
+// Loaded by Vitest through Vite's module runner: node builtins only, no require banner.
+const vitestReporter = {
+  input: 'src/vitest-reporter.ts',
+  output: { esModule: true, file: 'dist/vitest-reporter.js', format: 'es' },
+  plugins: [esbuild({ target: 'es2022' }), nodeResolve({ preferBuiltins: true })]
+}
+
+export default [config, vitestReporter]
