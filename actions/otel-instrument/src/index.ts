@@ -97,6 +97,10 @@ async function main(inputs: Inputs): Promise<void> {
     core.exportVariable('TRACEPARENT', traceparent)
     core.setOutput('traceparent', traceparent)
   }
+  // Lets a later step derive its own TRACEPARENT (see the README) so tools that read it,
+  // like `docker compose`, nest under that step instead of the job or parent-step-name.
+  core.exportVariable('OTEL_TRACE_ID', tId)
+  if (jobId !== null) core.exportVariable('OTEL_JOB_ID', String(jobId))
   // gRPC requires a base endpoint with no signal path ("/v1/traces" is rejected),
   // so normalize whatever endpoint was provided before handing it to child agents.
   core.exportVariable('OTEL_EXPORTER_OTLP_ENDPOINT', baseEndpoint(inputs.otlpEndpoint))

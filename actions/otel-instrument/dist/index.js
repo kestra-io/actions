@@ -102027,6 +102027,8 @@ async function main(inputs) {
     exportVariable("TRACEPARENT", traceparent);
     setOutput("traceparent", traceparent);
   }
+  exportVariable("OTEL_TRACE_ID", tId);
+  if (jobId !== null) exportVariable("OTEL_JOB_ID", String(jobId));
   exportVariable("OTEL_EXPORTER_OTLP_ENDPOINT", baseEndpoint(inputs.otlpEndpoint));
   if (inputs.otlpHeaders) exportVariable("OTEL_EXPORTER_OTLP_HEADERS", inputs.otlpHeaders);
   exportVariable("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
