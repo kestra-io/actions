@@ -53,6 +53,14 @@ inputs:
     required: false
     default: 'true'
 
+  ignore-tests:
+    description: >-
+      Drop unverified findings in test code and test data (tests/, __tests__/, e2e/, fixtures/, testdata/,
+      *.spec.ts, *.test.js, *_test.go, test_*.py…), which hold placeholder credentials on purpose. Verified
+      findings are always kept
+    required: false
+    default: 'true'
+
   components:
     description: >-
       Newline separated component=glob pairs, e.g. frontend=ui/** then backend=**. Each finding gets
@@ -141,6 +149,17 @@ runs:
         report="${RUNNER_TEMP}/trufflehog.ndjson"
         [ -f "${report}" ] || exit 0
         "${ACTION_PATH}/drop-examples.sh" "${report}"
+
+    # Filtered after the scan, not with --exclude-paths, so that a verified secret in a test is still reported.
+    - name: TruffleHog - Drop test placeholders
+      if: ${{ !cancelled() && inputs.ignore-tests == 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        report="${RUNNER_TEMP}/trufflehog.ndjson"
+        [ -f "${report}" ] || exit 0
+        "${ACTION_PATH}/drop-tests.sh" "${report}"
 
     # Detector, file and line only: the report holds the raw secret and must not reach the log or the
     # comment, so the comment reads a copy stripped down to those.
