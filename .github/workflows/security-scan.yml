@@ -92,17 +92,17 @@ jobs:
           submodules: true
 
       - name: Checkout - OSS
-        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' }}
+        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
 
       # Out of the workspace, where settings.gradle expects it, and so OpenGrep and TruffleHog don't scan OSS too.
       - name: Checkout - Move OSS next to the repository
-        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' }}
+        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         shell: bash
         run: mv kestra ../kestra
 
       - name: Setup - Build
-        if: ${{ env.SBOM_ENABLED == 'true' }}
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
@@ -110,7 +110,7 @@ jobs:
 
       # Route Gradle Maven reads through the GCP maven-remote caching proxy (avoids Maven Central 429s)
       - name: Setup - Maven proxy
-        if: ${{ env.SBOM_ENABLED == 'true' }}
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
@@ -120,7 +120,7 @@ jobs:
       # The service account goes to RUNNER_TEMP, never the workspace TruffleHog scans.
       - name: Trivy - Generate CycloneDX
         id: sbom
-        if: ${{ env.SBOM_ENABLED == 'true' }}
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         continue-on-error: true
         shell: bash
         env:
