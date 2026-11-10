@@ -48,6 +48,11 @@ on:
         required: false
         type: string
         default: ''
+      skip-dirs:
+        description: "Comma separated directories inside the image not to scan (opt/gradle-ro-cache), e.g. a build cache baked into a CI image"
+        required: false
+        type: string
+        default: ''
       dry-run:
         description: "Build the Elastic payload without sending it"
         required: false
@@ -70,6 +75,11 @@ on:
         default: ''
       metadata:
         description: "Newline separated key=value pairs added to every finding"
+        required: false
+        type: string
+        default: ''
+      skip-dirs:
+        description: "Comma separated directories inside the image not to scan (opt/gradle-ro-cache), e.g. a build cache baked into a CI image"
         required: false
         type: string
         default: ''
@@ -191,6 +201,7 @@ jobs:
         uses: ./composite/scan-image
         with:
           image-ref: ${{ matrix.ref }}
+          skip-dirs: ${{ inputs.skip-dirs }}
           elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           dry-run: ${{ inputs.dry-run }}

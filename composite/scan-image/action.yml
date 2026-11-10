@@ -48,6 +48,11 @@ inputs:
     required: false
     default: 'false'
 
+  skip-dirs:
+    description: 'Comma separated directories inside the image Trivy does not scan (opt/gradle-ro-cache): build caches baked into a CI image, not code the image runs. Their findings are then reported as fixed'
+    required: false
+    default: ''
+
   timeout:
     description: 'Trivy timeout; a full kestra image with every plugin takes a few minutes'
     required: false
@@ -110,6 +115,7 @@ runs:
         scanners: vuln
         format: json
         output: ${{ steps.paths.outputs.json }}
+        skip-dirs: ${{ inputs.skip-dirs }}
         timeout: ${{ inputs.timeout }}
 
     - name: Trivy - Summary
