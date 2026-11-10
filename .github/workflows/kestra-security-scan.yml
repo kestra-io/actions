@@ -45,8 +45,5 @@ jobs:
         backend=**
       npm-lockfile: ${{ inputs.ee && 'ui-ee' || 'ui' }}/package-lock.json
       kestra-ee: ${{ inputs.ee }}
-      # kestra-ee builds on 8 GB in its own CI: on the 4 GB default its Gradle build plus a full OpenGrep scan
-      # lost the runner on about 1 develop push in 5
-      runner: ${{ inputs.ee && 'kestra-private-4cpu-8gb' || '' }}
       metadata: ${{ inputs.metadata }}
     secrets: inherit
