@@ -91,6 +91,8 @@ runs:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-path }}
         scanners: 'vuln,license'
+        # Its own temp and cache directories live in the workspace: a scan of `.` would walk them.
+        skip-dirs: '**/trivy-tmp,**/.trivy-cache'
         trivyignores: ${{ steps.ignore.outputs.file }}
         format: 'json'
         output: ${{ github.workspace }}/trivy-result.json
