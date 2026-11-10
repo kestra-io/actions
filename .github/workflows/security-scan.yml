@@ -1,6 +1,6 @@
 name: Security scan
 
-# Trivy (Java SBOM and npm lockfile), OpenGrep and TruffleHog in their own job, so each CI calls one
+# Trivy (Java SBOM, npm lockfile and any other lock file), OpenGrep and TruffleHog in their own job, so each CI calls one
 # workflow instead of repeating the scan steps. Each scanner gates itself on the branch: Trivy only
 # runs on the default branch and releases/*, OpenGrep and TruffleHog run everywhere and ship to
 # Elastic on the default branch only.
@@ -32,6 +32,15 @@ on:
         default: '25'
       npm-lockfile:
         description: "package-lock.json to scan with Trivy. Skipped when empty or missing"
+        required: false
+        type: string
+        default: ''
+      dependencies-path:
+        description: >-
+          Directory or lock file scanned with Trivy in fs mode, for the ecosystems the two inputs above don't cover:
+          go.mod, uv.lock, poetry.lock, requirements*.txt, Pipfile.lock, pom.xml, Cargo.lock... `.` scans every lock file
+          of the repository, npm ones included: leave npm-lockfile empty then, or each npm finding is reported twice.
+          Skipped when empty
         required: false
         type: string
         default: ''
@@ -165,6 +174,19 @@ jobs:
           metadata: |
             ${{ inputs.metadata }}
             target=npm-dependencies
+          components: ${{ inputs.components }}
+
+      - name: Trivy - Scan other dependencies
+        id: trivy-deps
+        if: ${{ !cancelled() && inputs.dependencies-path != '' }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-path: ${{ inputs.dependencies-path }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            ${{ inputs.metadata }}
+            target=dependencies
           components: ${{ inputs.components }}
 
       - name: OpenGrep - Static analysis
