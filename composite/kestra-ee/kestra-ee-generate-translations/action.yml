@@ -120,7 +120,7 @@ runs:
         node-version: "24.x"
 
     - name: Install Node dependencies
-      run: npm ci
+      run: npm ci --ignore-scripts
       shell: bash
       working-directory: kestra-ee/ui-ee
 
