@@ -7,8 +7,8 @@ on:
         description: 'Deprecated, unused. Kept so callers still passing it do not fail.'
         required: false
       GOOGLE_SERVICE_ACCOUNT:
-        description: "The Google Service Account."
-        required: true
+        description: "DEPRECATED old unit test dedicated SA"
+        required: false
       GCP_SERVICE_ACCOUNT:
         description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
         required: false
@@ -54,7 +54,6 @@ jobs:
     name: Build Jar
     runs-on: ${{ inputs.legacy-runner && 'kestra-private-standard' || 'kestra-private-4cpu-8gb' }}
     env:
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       COREPACK_INTEGRITY_KEYS: 0
       NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
     steps:
@@ -69,14 +68,6 @@ jobs:
           host-metrics-enabled: 'true'
           gradle-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
-
-      # Google Auth
-      - name: GCP - Auth with unit test account
-        id: auth
-        if: ${{ env.GOOGLE_SERVICE_ACCOUNT != 0 }}
-        uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
-        with:
-          credentials_json: '${{ env.GOOGLE_SERVICE_ACCOUNT }}'
 
       # Checkout
       - name: Checkout - EE
@@ -99,8 +90,6 @@ jobs:
 
       - name: Setup - Maven proxy
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
-        with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       # OSS npm ci and EE npm install target separate directories/lockfiles — independent. The EE
       # build itself stays sequential-after: it needs the local install in kestra-ee/ui-ee done.
