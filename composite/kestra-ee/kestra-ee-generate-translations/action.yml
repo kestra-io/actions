@@ -3,7 +3,7 @@ description: "Generates translations for the EE UI with Gemini on Vertex AI. Aut
 
 inputs:
   github-token:
-    description: 'Token that reads kestra-io/kestra and pushes the generated commit onto the PR branch. Pass a Kestra GitHub App token: a push made with GITHUB_TOKEN starts no workflow run, so the PR gets no checks on that commit.'
+    description: 'Token for the OSS ref lookups, and for the push when no gh-app-id is given. A push made with GITHUB_TOKEN starts no workflow run, so pass the app credentials to have the PR checks run on the generated commit.'
     required: true
   retranslate_modified_keys:
     description: 'If true, forces a full re-translation of every key, ignoring the fingerprints'
@@ -26,7 +26,7 @@ inputs:
     required: false
     default: ''
   gh-app-private-key:
-    description: GitHub App private key (pass secrets.GH_BOT_PRIVATE_KEY from the caller workflow).
+    description: GitHub App private key (pass secrets.GH_BOT_PRIVATE_KEY from the caller workflow). With gh-app-id, the generated commit is pushed as the app.
     required: false
     default: ''
 
@@ -34,13 +34,13 @@ runs:
   using: composite
 
   steps:
-    # The token is what `git push` below authenticates with, so it has to be the one that triggers CI.
+    # No checkout keeps a credential in `.git/config`: `npm ci` and the branch's own scripts run below.
     - name: Checkout - EE
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: kestra-ee
         ref: ${{ github.head_ref }}
-        token: ${{ inputs.github-token }}
+        persist-credentials: false
 
     - name: Generate GitHub App token
       id: app-token
@@ -107,6 +107,7 @@ runs:
         repository: kestra-io/kestra
         path: kestra
         ref: ${{ steps.oss-ref.outputs.ref }}
+        persist-credentials: false
         sparse-checkout: |
           ui/scripts/translations/
           ui/src/translations/
@@ -181,9 +182,21 @@ runs:
         git config --global user.name "kestra-io"
         git config --global user.email "hello@kestra.io"
 
+    # Minted after the last step that runs code from the branch, so no dependency or script sees it.
+    - name: Generate GitHub App token for the push
+      id: push-token
+      if: inputs.gh-app-id != '' && inputs.gh-app-private-key != ''
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+
     - name: Check for changes and commit
       env:
-        GH_TOKEN: ${{ inputs.github-token }}
+        PUSH_TOKEN: ${{ steps.push-token.outputs.token || inputs.github-token }}
         HEAD_REF: ${{ github.head_ref }}
       shell: bash
       working-directory: kestra-ee
@@ -210,4 +223,4 @@ runs:
           exit 0
         fi
         git commit -m "chore(core): localize to languages other than english" -m "Extended localization support by adding translations for multiple languages using English as the base. This enhances accessibility and usability for non-English-speaking users while keeping English as the source reference."
-        git push origin "$HEAD_REF"
+        git -c core.hooksPath=/dev/null push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${HEAD_REF}"
