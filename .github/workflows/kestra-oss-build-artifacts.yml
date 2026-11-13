@@ -120,11 +120,29 @@ jobs:
             with:
               kestraVersion: ${{ github.ref_name }}
 
-          - name: Schema bundle - Authenticate to Google Cloud
+          # SEC-2311: read-only ci-reader through Workload Identity Federation (needs
+          # `id-token: write` from the caller). On failure, the key fallback below takes over.
+          - name: Schema bundle - Authenticate to Google Cloud (ci-reader, WIF)
+            id: schema-bundle-gcp-wif
             if: ${{ inputs.embed-plugins-schema-bundle }}
+            continue-on-error: true
             uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
             with:
-              credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+              token_format: access_token
+              workload_identity_provider: projects/230725787862/locations/global/workloadIdentityPools/github/providers/github
+              service_account: ci-reader@kestra-host.iam.gserviceaccount.com
+              export_environment_variables: false
+              create_credentials_file: false
+
+      - name: Schema bundle - Authenticate to Google Cloud (key fallback)
+        id: schema-bundle-gcp-key
+        if: ${{ inputs.embed-plugins-schema-bundle && steps.schema-bundle-gcp-wif.outputs.access_token == '' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          export_environment_variables: false
+          create_credentials_file: false
 
       # Unconditional: `wait:` doesn't accept `if:` (GitHub rejects the combination as an
       # unrecognized step shape). The background step above already carries the condition —
@@ -137,12 +155,13 @@ jobs:
         if: ${{ inputs.embed-plugins-schema-bundle }}
         env:
           PLUGINS: ${{ steps.schema-bundle-plugins.outputs.plugins }}
+          MAVEN_TOKEN: ${{ steps.schema-bundle-gcp-wif.outputs.access_token || steps.schema-bundle-gcp-key.outputs.access_token }}
         run: |
           set -euo pipefail
           kestractl plugins download "${{ github.ref_name }}" \
             --maven-repository "https://europe-maven.pkg.dev/kestra-host/maven-remote" \
             --maven-username oauth2accesstoken \
-            --maven-password "$(gcloud auth print-access-token)" \
+            --maven-password "$MAVEN_TOKEN" \
             --plugins-dir ./plugins-catalog \
             --plugins "$PLUGINS" \
             --concurrency 50
