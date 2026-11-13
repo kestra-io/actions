@@ -8,8 +8,8 @@ description: 'Scan one container image for vulnerabilities with Trivy and ship t
 #   - uses: kestra-io/actions/composite/scan-image@main
 #     with:
 #       image-ref: docker.io/kestra/kestra:${{ steps.vars.outputs.tag }}
-#       elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-#       elastic-headers: ${{ secrets.OTLP_HEADERS }}
+#       elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+#       elastic-headers: ${{ secrets.OTLP_SECURITY_HEADERS }}
 #       metadata: |
 #         owner=core-squad
 #

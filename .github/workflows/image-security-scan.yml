@@ -84,11 +84,11 @@ on:
         type: string
         default: main
     secrets:
-      OTLP_ENDPOINT:
-        description: "Elastic ingest endpoint; `secrets: inherit` passes the org one"
+      OTLP_SECURITY_ENDPOINT:
+        description: "Elastic ingest endpoint of the security project; `secrets: inherit` passes the org one"
         required: false
-      OTLP_HEADERS:
-        description: "Elastic ingest headers"
+      OTLP_SECURITY_HEADERS:
+        description: "Elastic ingest headers of the security project"
         required: false
       GCP_SERVICE_ACCOUNT:
         description: "GCP service account JSON, to pull *-docker.pkg.dev images (kestra-ee on Artifact Registry)"
@@ -191,8 +191,8 @@ jobs:
         uses: ./composite/scan-image
         with:
           image-ref: ${{ matrix.ref }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
           dry-run: ${{ inputs.dry-run }}
           metadata: |
             service.name=${{ matrix.service }}

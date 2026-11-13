@@ -175,7 +175,7 @@ async function run(): Promise<void> {
   const url = bulkUrl(core.getInput('elastic-endpoint', { required: true }))
   const headers = authHeaders(core.getInput('elastic-headers'), core.getInput('elastic-api-key'))
   if (!headers.Authorization) {
-    core.setFailed('Supply elastic-headers (the OTLP_HEADERS secret) or elastic-api-key; neither carries an Authorization header.')
+    core.setFailed('Supply elastic-headers (the OTLP_SECURITY_HEADERS secret) or elastic-api-key; neither carries an Authorization header.')
     return
   }
   core.info(`Shipping ${batches.length} batch(es) to ${url}`)
