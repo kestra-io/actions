@@ -105,16 +105,16 @@ jobs:
       - name: Setup - Maven proxy
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
 
-      - name: Schema bundle - Authenticate to Google Cloud (ci-reader, WIF)
+      # SEC-2311: ADC as ci-reader. The action writes a WIF credential config (external_account) and
+      # exports GOOGLE_APPLICATION_CREDENTIALS, so Gradle's Artifact Registry plugin authenticates
+      # through the standard ADC chain, refreshing the token as needed. No continue-on-error: a failed
+      # exchange must fail the job, not fall back to the runner's metadata-server identity.
+      - name: GCP - Auth with ci-reader (Workload Identity Federation)
         id: auth-gcp-ci-reader
-        continue-on-error: true
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          token_format: access_token
           workload_identity_provider: projects/230725787862/locations/global/workloadIdentityPools/github/providers/github
           service_account: ci-reader@kestra-host.iam.gserviceaccount.com
-          export_environment_variables: false
-          create_credentials_file: false
 
       - name: Move working directory structure
         run: |
@@ -164,9 +164,6 @@ jobs:
       # https://github.com/kestra-io/gradle-plugin/#test-scheduling
       - name: Gradle - javadoc
         timeout-minutes: 15
-        env:
-          # read by kestra-ee build.gradle in place of Application Default Credentials
-          ARTIFACT_REGISTRY_ACCESS_TOKEN: ${{ steps.auth-gcp-ci-reader.outputs.access_token }}
         run: |
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
@@ -178,8 +175,6 @@ jobs:
         wait: [compose]
 
       - name: Gradle - check
-        env:
-          ARTIFACT_REGISTRY_ACCESS_TOKEN: ${{ steps.auth-gcp-ci-reader.outputs.access_token }}
         run: |
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
