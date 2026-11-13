@@ -22,11 +22,11 @@ inputs:
   workload-identity-provider:
     description: 'GCP Workload Identity Federation provider, used when the job can mint a GitHub OIDC token.'
     required: false
-    default: 'projects/230725787862/locations/global/workloadIdentityPools/github/providers/github'
+    default: 'projects/956000344026/locations/global/workloadIdentityPools/github/providers/github'
   service-account:
     description: 'Read-only service account impersonated through Workload Identity Federation.'
     required: false
-    default: 'ci-reader@kestra-host.iam.gserviceaccount.com'
+    default: 'ci-reader@kestra-dev.iam.gserviceaccount.com'
 
 runs:
   using: composite
