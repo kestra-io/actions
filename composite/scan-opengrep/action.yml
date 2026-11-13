@@ -15,9 +15,9 @@ inputs:
     required: true
 
   opengrep-version:
-    description: 'OpenGrep release to run. Defaults to latest; pin a version for reproducible scans'
+    description: 'OpenGrep release to run, or latest. Pinned to 1.x until the action supports the 2.x Linux binaries'
     required: false
-    default: "latest"
+    default: "1.33.1"
 
   config-dir:
     description: "Directory holding the repository's OpenGrep configuration"
