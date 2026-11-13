@@ -117,8 +117,10 @@ runs:
         // Sonatype SNAPSHOTS are intentionally NOT excluded. Kestra publishes pre-release
         // artifacts (e.g. io.kestra:platform:2.0.0-SNAPSHOT, needed by v2/SDK plugin branches)
         // only to central.sonatype.com/repository/maven-snapshots, and the maven-remote mirror
-        // caches Central RELEASES, not Sonatype snapshots. Only io.kestra:*:*-SNAPSHOT is fetched
-        // there and only on snapshot builds, so the traffic is tiny and immune to the Central 429.
+        // caches Central RELEASES, not Sonatype snapshots. It is restricted to io.kestra groups
+        // (isSonatypeSnapshots below): otherwise Gradle also asks it for any artifact the repos
+        // before it lack, e.g. org.opensaml (served by the Shibboleth repo declared after it), and a
+        // Sonatype HTTP 429 there fails the whole resolution.
         def isRawPublic = { repo ->
             repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
                 repo.url != null &&
@@ -126,6 +128,13 @@ runs:
                  (repo.url.toString().contains("central.sonatype.com") &&
                   !repo.url.toString().contains("maven-snapshots")))
         }
+        def isSonatypeSnapshots = { repo ->
+            repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
+                repo.url != null &&
+                repo.url.toString().contains("central.sonatype.com") &&
+                repo.url.toString().contains("maven-snapshots")
+        }
+        def kestraOnly = { repo -> repo.content { includeGroupByRegex "io\\.kestra(\\..*)?" } }
         // Plugin/buildscript repos: neutralise raw Central/Sonatype, and for the remaining maven
         // repos use the .pom only + ignore the .module redirect. Some plugins (artifactregistry,
         // owasp dependencycheck) publish Gradle Module Metadata whose .module the proxy does not
@@ -136,6 +145,7 @@ runs:
                 if (isRawPublic(repo)) {
                     repo.content { excludeGroupByRegex ".*" }
                 } else if (repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository) {
+                    if (isSonatypeSnapshots(repo)) kestraOnly(repo)
                     repo.metadataSources { mavenPom(); ignoreGradleMetadataRedirection() }
                 }
             }
@@ -147,6 +157,8 @@ runs:
             repos.all { repo ->
                 if (isRawPublic(repo)) {
                     repo.content { excludeGroupByRegex ".*" }
+                } else if (isSonatypeSnapshots(repo)) {
+                    kestraOnly(repo)
                 }
             }
         }
