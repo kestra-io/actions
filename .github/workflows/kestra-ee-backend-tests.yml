@@ -10,7 +10,7 @@ on:
         description: "The Slack webhook url."
         required: true
       GOOGLE_SERVICE_ACCOUNT:
-        description: "The Google Service Account."
+        description: "DEPRECATED old unit test dedicated SA"
         required: false
       GCP_SERVICE_ACCOUNT:
         description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
@@ -58,9 +58,16 @@ jobs:
     name: Check
     runs-on: ${{ inputs.legacy-runner && 'kestra-private-large' || 'kestra-private-16cpu-16gb' }}
     timeout-minutes: 90
+    # Job-level permissions replace the workflow-level block entirely, so repeat it here.
+    # id-token: write mints the GitHub OIDC token for the ci-reader WIF exchange (SEC-2311).
+    permissions:
+      contents: write
+      checks: write
+      actions: read
+      pull-requests: write
+      id-token: write
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       # to save corepack from itself
       COREPACK_INTEGRITY_KEYS: 0
       NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
@@ -97,8 +104,17 @@ jobs:
 
       - name: Setup - Maven proxy
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+
+      - name: Schema bundle - Authenticate to Google Cloud (ci-reader, WIF)
+        id: auth-gcp-ci-reader
+        continue-on-error: true
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          workload_identity_provider: projects/230725787862/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ci-reader@kestra-host.iam.gserviceaccount.com
+          export_environment_variables: false
+          create_credentials_file: false
 
       - name: Move working directory structure
         run: |
@@ -148,9 +164,10 @@ jobs:
       # https://github.com/kestra-io/gradle-plugin/#test-scheduling
       - name: Gradle - javadoc
         timeout-minutes: 15
+        env:
+          # read by kestra-ee build.gradle in place of Application Default Credentials
+          ARTIFACT_REGISTRY_ACCESS_TOKEN: ${{ steps.auth-gcp-ci-reader.outputs.access_token }}
         run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
@@ -161,9 +178,9 @@ jobs:
         wait: [compose]
 
       - name: Gradle - check
+        env:
+          ARTIFACT_REGISTRY_ACCESS_TOKEN: ${{ steps.auth-gcp-ci-reader.outputs.access_token }}
         run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
