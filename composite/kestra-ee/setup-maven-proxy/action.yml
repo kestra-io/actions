@@ -4,15 +4,29 @@ description: >-
   avoid Maven Central HTTP 429 rate-limiting on shared runner IPs. Writes a Gradle init script
   and exports MAVEN_REMOTE_TOKEN to the whole job so every subsequent Gradle step is covered.
   Also routes Kestra's runtime plugin downloader through the same proxy by exporting the
-  kestra.plugins.repositories.central.* overrides. No-op when no service account is provided.
+  kestra.plugins.repositories.central.* overrides. No-op when no credential is available.
+
+  Authentication (SEC-2311): Workload Identity Federation with the read-only ci-reader service
+  account whenever the job can mint a GitHub OIDC token (the caller grants `id-token: write`).
+  Falls back to the gcp-service-account key when it cannot, or when the WIF exchange fails, so
+  callers keep working while they migrate.
 
 inputs:
   gcp-service-account:
     description: >-
-      GCP service account JSON able to mint access tokens and read the maven-remote Artifact
-      Registry proxy. When empty, this action is a no-op and Gradle resolves from Maven Central.
+      Deprecated fallback (SEC-2311): GCP service account key JSON, only used when no GitHub OIDC
+      token is available or the WIF exchange fails. When both are missing, this action is a no-op
+      and Gradle resolves from Maven Central.
     required: false
     default: ''
+  workload-identity-provider:
+    description: 'GCP Workload Identity Federation provider, used when the job can mint a GitHub OIDC token.'
+    required: false
+    default: 'projects/230725787862/locations/global/workloadIdentityPools/github/providers/github'
+  service-account:
+    description: 'Read-only service account impersonated through Workload Identity Federation.'
+    required: false
+    default: 'ci-reader@kestra-host.iam.gserviceaccount.com'
 
 runs:
   using: composite
@@ -20,11 +34,33 @@ runs:
     - name: GCP - Check credentials availability
       id: gcp-check
       shell: bash
-      run: echo "available=${{ inputs.gcp-service-account != '' }}" >> "$GITHUB_OUTPUT"
+      run: |
+        # ACTIONS_ID_TOKEN_REQUEST_URL is only set when the job is granted `id-token: write`.
+        if [ "${{ inputs.workload-identity-provider != '' }}" = "true" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "oidc=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "oidc=false" >> "$GITHUB_OUTPUT"
+        fi
+        echo "key=${{ inputs.gcp-service-account != '' }}" >> "$GITHUB_OUTPUT"
 
-    - name: GCP - Auth with github service account
+    - name: GCP - Auth with ci-reader (Workload Identity Federation)
+      id: gcp-wif
+      if: steps.gcp-check.outputs.oidc == 'true'
+      # A failed exchange falls back to the key below instead of failing the job.
+      continue-on-error: true
+      uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
+      with:
+        token_format: 'access_token'
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        service_account: ${{ inputs.service-account }}
+        # Do not clobber GOOGLE_APPLICATION_CREDENTIALS: callers set it to a different
+        # (unit-test) service account for their own build/test steps.
+        export_environment_variables: false
+        create_credentials_file: false
+
+    - name: GCP - Auth with github service account (fallback)
       id: gcp-auth
-      if: steps.gcp-check.outputs.available == 'true'
+      if: steps.gcp-check.outputs.key == 'true' && steps.gcp-wif.outputs.access_token == ''
       uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
       with:
         token_format: 'access_token'
@@ -33,11 +69,25 @@ runs:
         # (unit-test) service account for their own build/test steps.
         export_environment_variables: false
 
-    - name: Setup - Gradle maven-remote init script
-      if: ${{ steps.gcp-auth.outputs.access_token != '' }}
+    - name: GCP - Report authentication method
       shell: bash
       env:
-        MAVEN_REMOTE_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
+        WIF_TOKEN: ${{ steps.gcp-wif.outputs.access_token != '' }}
+        KEY_TOKEN: ${{ steps.gcp-auth.outputs.access_token != '' }}
+      run: |
+        if [ "$WIF_TOKEN" = "true" ]; then
+          echo "::notice title=Maven proxy::authenticated with Workload Identity Federation (ci-reader)"
+        elif [ "$KEY_TOKEN" = "true" ]; then
+          echo "::warning title=Maven proxy::authenticated with the GCP_SERVICE_ACCOUNT key (SEC-2311). Grant 'id-token: write' to this job to use Workload Identity Federation."
+        else
+          echo "::notice title=Maven proxy::no GCP credential, Gradle resolves from Maven Central"
+        fi
+
+    - name: Setup - Gradle maven-remote init script
+      if: ${{ steps.gcp-wif.outputs.access_token != '' || steps.gcp-auth.outputs.access_token != '' }}
+      shell: bash
+      env:
+        MAVEN_REMOTE_ACCESS_TOKEN: ${{ steps.gcp-wif.outputs.access_token || steps.gcp-auth.outputs.access_token }}
       run: |
         mkdir -p ~/.gradle/init.d
         cat > ~/.gradle/init.d/maven-remote.gradle << 'EOF'
