@@ -59,6 +59,12 @@ on:
         required: false
       OTLP_HEADERS:
         required: false
+      OTLP_SECURITY_ENDPOINT:
+        description: "Ingest endpoint of the security project, where the findings are shipped"
+        required: false
+      OTLP_SECURITY_HEADERS:
+        description: "Ingest headers of the security project"
+        required: false
       GCP_SERVICE_ACCOUNT:
         required: false
       GOOGLE_SERVICE_ACCOUNT:
@@ -156,8 +162,8 @@ jobs:
         with:
           scan-type: sbom
           scan-path: ${{ inputs.java-sbom-path }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
           metadata: |
             ${{ inputs.metadata }}
             target=java-dependencies
@@ -169,8 +175,8 @@ jobs:
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           scan-path: ${{ inputs.npm-lockfile }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
           metadata: |
             ${{ inputs.metadata }}
             target=npm-dependencies
@@ -182,8 +188,8 @@ jobs:
         uses: kestra-io/actions/composite/scan-trivy@main
         with:
           scan-path: ${{ inputs.dependencies-path }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
           metadata: |
             ${{ inputs.metadata }}
             target=dependencies
@@ -195,8 +201,8 @@ jobs:
         uses: kestra-io/actions/composite/scan-opengrep@main
         with:
           github-token: ${{ github.token }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
           exclude-path: ${{ inputs.exclude-path }}
@@ -207,8 +213,8 @@ jobs:
         uses: kestra-io/actions/composite/scan-trufflehog@main
         with:
           github-token: ${{ github.token }}
-          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
           exclude-path: ${{ inputs.exclude-path }}

@@ -38,12 +38,12 @@ That input is deliberately narrow, and the action is built around its limits:
 
 - name: OpenGrep - Report findings to Elastic
   uses: kestra-io/actions/actions/report-sarif@main
-  if: ${{ !cancelled() && env.OTLP_ENDPOINT != '' }}
+  if: ${{ !cancelled() && env.OTLP_SECURITY_ENDPOINT != '' }}
   continue-on-error: true
   with:
     sarif-files: ${{ steps.scan.outputs.sarif-file }}
-    elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
-    elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+    elastic-endpoint: ${{ secrets.OTLP_SECURITY_ENDPOINT }}
+    elastic-headers: "${{ secrets.OTLP_SECURITY_HEADERS }}"
     type: misconfigurations
     metadata: |
       service.name=kestra-ee
@@ -151,8 +151,8 @@ Two more things happen in image mode:
 
   A call that ships (dry-run false) must only pass tags the tower's list
   holds: the tower keeps one state per image × tag and only the tags its sweep
-  rescans can ever be marked fixed. A caller passes `OTLP_ENDPOINT` /
-  `OTLP_HEADERS` to ship and `GCP_SERVICE_ACCOUNT` for `*-docker.pkg.dev`
+  rescans can ever be marked fixed. A caller passes `OTLP_SECURITY_ENDPOINT` /
+  `OTLP_SECURITY_HEADERS` to ship and `GCP_SERVICE_ACCOUNT` for `*-docker.pkg.dev`
   (Artifact Registry) images.
 
 Whichever way in, the documents are the same: `github.*` is the run that
@@ -172,7 +172,7 @@ single stream instead.
 No new secret: the `_bulk` input shares its host and its authentication with the
 Managed OTLP Endpoint, so the `OTLP_ENDPOINT` / `OTLP_HEADERS` pair these
 workflows already pass to `otel-instrument` works here unchanged, behind the
-same `env.OTLP_ENDPOINT != ''` opt-out guard. A caller holding only the key
+same `env.OTLP_SECURITY_ENDPOINT != ''` opt-out guard. A caller holding only the key
 itself can pass `elastic-api-key` instead; it takes precedence.
 
 This is already wired after the OpenGrep scan in the five reusable workflows

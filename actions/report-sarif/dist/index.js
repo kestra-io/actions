@@ -33061,7 +33061,7 @@ async function run() {
   const url = bulkUrl(getInput("elastic-endpoint", { required: true }));
   const headers = authHeaders(getInput("elastic-headers"), getInput("elastic-api-key"));
   if (!headers.Authorization) {
-    setFailed("Supply elastic-headers (the OTLP_HEADERS secret) or elastic-api-key; neither carries an Authorization header.");
+    setFailed("Supply elastic-headers (the OTLP_SECURITY_HEADERS secret) or elastic-api-key; neither carries an Authorization header.");
     return;
   }
   info(`Shipping ${batches.length} batch(es) to ${url}`);

@@ -23,9 +23,9 @@ inputs:
 
   elastic-headers:
     description: >-
-      Comma separated headers, the same format and the same secret the otel actions take for
+      Comma separated headers, the same format the otel actions take for
       otlp-headers (e.g. "Authorization=ApiKey xyz"). The _bulk input authenticates exactly like
-      the Managed OTLP Endpoint it shares a host with, so OTLP_HEADERS works here unchanged
+      the Managed OTLP Endpoint it shares a host with, so the OTLP_SECURITY_HEADERS org secret works here
     required: false
     default: ''
 
