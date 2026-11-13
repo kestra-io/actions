@@ -4,12 +4,13 @@ on:
   workflow_call:
     secrets:
       GOOGLE_SERVICE_ACCOUNT:
-        required: true
+        description: "DEPRECATED, unused (SEC-2311: Gradle reads Artifact Registry as ci-reader through WIF). Kept so callers still passing it do not fail."
+        required: false
       APPLICATION_SECRETS:
         description: "applications-secrets.yml with license infos for EE Kestra, encoded as base64"
         required: true
       GCP_SERVICE_ACCOUNT:
-        description: "GCP service account JSON for the Maven proxy (routes Gradle reads off Maven Central). Optional; when absent the proxy step is a no-op."
+        description: "DEPRECATED, unused (SEC-2311: the Maven proxy authenticates as ci-reader through WIF). Kept so callers still passing it do not fail."
         required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
@@ -51,8 +52,6 @@ jobs:
   check:
     timeout-minutes: 30
     runs-on: kestra-private-4cpu-8gb
-    env:
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
@@ -97,8 +96,18 @@ jobs:
       - name: Setup - Maven proxy
         if: ${{ inputs.exe-artifact == '' }}
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+
+      # SEC-2311: ADC as ci-reader. The action writes a WIF credential config (external_account) and
+      # exports GOOGLE_APPLICATION_CREDENTIALS, so Gradle's Artifact Registry plugin authenticates
+      # through the standard ADC chain, refreshing the token as needed. No continue-on-error: a failed
+      # exchange must fail the job, not fall back to the runner's metadata-server identity.
+      - name: GCP - Auth with ci-reader (Workload Identity Federation)
+        id: auth-gcp-ci-reader
+        if: ${{ inputs.exe-artifact == '' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/230725787862/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ci-reader@kestra-host.iam.gserviceaccount.com
 
       - name: Cache - OSS Node Modules
         id: cache-oss-node-modules
@@ -181,8 +190,6 @@ jobs:
           unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
           E2E_DATA_DIR=$([ -d ./e2e/data ] && echo ./e2e/data || echo ./ui-ee/tests/e2e/data)
           echo $APPLICATION_SECRETS | base64 -d > "$E2E_DATA_DIR/application-secrets.yml"
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           sh build-and-start-e2e-tests.sh
 
       - name: Upload Playwright Report as Github artifact
