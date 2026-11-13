@@ -13,11 +13,12 @@ inputs:
 
   opengrep-version:
     description: >-
-      OpenGrep release to run, e.g. 1.30.0. Defaults to latest, which resolves the newest release
-      at scan time and verifies the download against the checksum the releases API reports. Pin a
-      version for reproducible scans
+      OpenGrep release to run, e.g. 1.30.0, or latest for the newest release at scan time (the
+      download is verified against the checksum the releases API reports). Pinned by default: 2.x
+      renamed its Linux binaries (opengrep_linux_* instead of opengrep_manylinux_*), which this
+      action does not resolve yet, and its rule compatibility is unchecked
     required: false
-    default: 'latest'
+    default: '1.33.1'
 
   config-dir:
     description: >-
@@ -38,6 +39,12 @@ inputs:
     description: Comma-separated severities to report
     required: false
     default: 'ERROR,WARNING'
+
+  exclude-path:
+    description: >-
+      Newline separated globs to skip, added to the exclude-paths of settings.yml, e.g. src/content/**
+    required: false
+    default: ''
 
   fail-on-severity:
     description: 'none, WARNING or ERROR. Fail the step when a finding at or above this severity exists'

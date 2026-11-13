@@ -110,7 +110,10 @@ jobs:
       - name: Run E2E Tests
         env:
           E2E_USE_PREBUILT_EXE: ${{ inputs.exe-artifact != '' }}
+          OTEL_TRACES_EXPORTER: none # keep buildx/buildkit spans out of the trace
         run: |
+          # docker compose exports its own traces whenever an OTEL endpoint is set; keep them out
+          unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
           cd kestra
           sh build-and-start-e2e-tests.sh
 

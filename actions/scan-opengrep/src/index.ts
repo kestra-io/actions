@@ -55,6 +55,13 @@ async function run(): Promise<void> {
     core.warning(`exclude-rules entry '${id}' has no dots; --exclude-rule matches the full rule id, so this drops nothing.`)
   }
 
+  const excludePaths = [
+    ...new Set([
+      ...settings.excludePaths,
+      ...core.getMultilineInput('exclude-path')
+    ])
+  ]
+
   const maxRows = Number(core.getInput('comment-max-rows') || '50')
 
   const temp = process.env.RUNNER_TEMP ?? process.cwd()
@@ -102,7 +109,7 @@ async function run(): Promise<void> {
       sarifOutput,
       baseline: baseline ?? undefined,
       excludeRules: settings.excludeRules,
-      excludePaths: settings.excludePaths
+      excludePaths
     }),
     { ignoreReturnCode: true }
   )

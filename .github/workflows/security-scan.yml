@@ -1,6 +1,6 @@
 name: Security scan
 
-# Trivy (Java SBOM and npm lockfile), OpenGrep and TruffleHog in their own job, so each CI calls one
+# Trivy (Java SBOM, npm lockfile and any other lock file), OpenGrep and TruffleHog in their own job, so each CI calls one
 # workflow instead of repeating the scan steps. Each scanner gates itself on the branch: Trivy only
 # runs on the default branch and releases/*, OpenGrep and TruffleHog run everywhere and ship to
 # Elastic on the default branch only.
@@ -15,6 +15,11 @@ on:
           no glob gets no component
         required: true
         type: string
+      exclude-path:
+        description: "Newline separated globs of files OpenGrep and TruffleHog skip, e.g. src/content/**. Trivy is not affected"
+        required: false
+        type: string
+        default: ''
       java-sbom-path:
         description: "SBOM written by `./gradlew cyclonedxBom`, generated and scanned with Trivy. Skipped when empty"
         required: false
@@ -27,6 +32,15 @@ on:
         default: '25'
       npm-lockfile:
         description: "package-lock.json to scan with Trivy. Skipped when empty or missing"
+        required: false
+        type: string
+        default: ''
+      dependencies-path:
+        description: >-
+          Directory or lock file scanned with Trivy in fs mode, for the ecosystems the two inputs above don't cover:
+          go.mod, uv.lock, poetry.lock, requirements*.txt, Pipfile.lock, pom.xml, Cargo.lock... `.` scans every lock file
+          of the repository, npm ones included: leave npm-lockfile empty then, or each npm finding is reported twice.
+          Skipped when empty
         required: false
         type: string
         default: ''
@@ -64,7 +78,13 @@ env:
 jobs:
   scan:
     name: Security scan
-    runs-on: ${{ github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
+    # Fixed per repository, never a caller input: a fork's pull request runs the caller workflow from the fork, so an
+    # input would let it pick any self-hosted runner. github.repository is the calling repository, so a fork never
+    # matches. kestra-ee builds on 8 GB in its own CI: on 4 GB its Gradle build plus a full OpenGrep scan lost the
+    # runner on about 1 develop push in 5
+    runs-on: >-
+      ${{ github.repository == 'kestra-io/kestra-ee' && 'kestra-private-4cpu-8gb'
+      || github.event.repository.private && 'kestra-private-4cpu-4gb' || 'ubuntu-latest' }}
     env:
       SBOM_ENABLED: ${{ inputs.java-sbom-path != '' && (github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'releases/')) }}
     steps:
@@ -87,17 +107,17 @@ jobs:
           submodules: true
 
       - name: Checkout - OSS
-        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' }}
+        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
 
       # Out of the workspace, where settings.gradle expects it, and so OpenGrep and TruffleHog don't scan OSS too.
       - name: Checkout - Move OSS next to the repository
-        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' }}
+        if: ${{ inputs.kestra-ee && env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         shell: bash
         run: mv kestra ../kestra
 
       - name: Setup - Build
-        if: ${{ env.SBOM_ENABLED == 'true' }}
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/setup-build@main
         with:
           java-enabled: true
@@ -105,7 +125,7 @@ jobs:
 
       # Route Gradle Maven reads through the GCP maven-remote caching proxy (avoids Maven Central 429s)
       - name: Setup - Maven proxy
-        if: ${{ env.SBOM_ENABLED == 'true' }}
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
         with:
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
@@ -115,7 +135,7 @@ jobs:
       # The service account goes to RUNNER_TEMP, never the workspace TruffleHog scans.
       - name: Trivy - Generate CycloneDX
         id: sbom
-        if: ${{ env.SBOM_ENABLED == 'true' }}
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         continue-on-error: true
         shell: bash
         env:
@@ -156,6 +176,19 @@ jobs:
             target=npm-dependencies
           components: ${{ inputs.components }}
 
+      - name: Trivy - Scan other dependencies
+        id: trivy-deps
+        if: ${{ !cancelled() && inputs.dependencies-path != '' }}
+        uses: kestra-io/actions/composite/scan-trivy@main
+        with:
+          scan-path: ${{ inputs.dependencies-path }}
+          elastic-endpoint: ${{ secrets.OTLP_ENDPOINT }}
+          elastic-headers: "${{ secrets.OTLP_HEADERS }}"
+          metadata: |
+            ${{ inputs.metadata }}
+            target=dependencies
+          components: ${{ inputs.components }}
+
       - name: OpenGrep - Static analysis
         id: opengrep
         if: ${{ !cancelled() }}
@@ -166,6 +199,7 @@ jobs:
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
+          exclude-path: ${{ inputs.exclude-path }}
 
       # Secret scan. Diff on a pull request, the whole tree otherwise.
       - name: TruffleHog - Secret scan
@@ -177,6 +211,7 @@ jobs:
           elastic-headers: "${{ secrets.OTLP_HEADERS }}"
           metadata: ${{ inputs.metadata }}
           components: ${{ inputs.components }}
+          exclude-path: ${{ inputs.exclude-path }}
 
   otel-export-trace:
     if: always()

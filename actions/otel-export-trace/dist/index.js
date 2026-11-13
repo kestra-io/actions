@@ -104335,11 +104335,32 @@ async function buildWorkflowLogs(octokit, owner, repo, jobs, runId, runAttempt, 
   return all;
 }
 
+const PASSING_CONCLUSIONS = /* @__PURE__ */ new Set(["success", "neutral", "skipped"]);
 const parseTime = (iso, fallback) => {
   if (!iso) return fallback;
   const ms = Date.parse(iso);
   return Number.isNaN(ms) ? fallback : ms;
 };
+const PARALLEL_GROUP_STEP = "Parallel group";
+const PARALLEL_TOLERANCE_MS = 2e3;
+function parallelGroupParents(steps, jobStart, jobEnd) {
+  const parents = /* @__PURE__ */ new Map();
+  const sorted = [...steps].sort((a, b) => a.number - b.number);
+  sorted.forEach((group, i) => {
+    if (group.name !== PARALLEL_GROUP_STEP) return;
+    const gStart = parseTime(group.started_at, jobStart);
+    const gEnd = parseTime(group.completed_at, jobEnd);
+    for (let j = i - 1; j >= 0; j--) {
+      const m = sorted[j];
+      if (m.name === PARALLEL_GROUP_STEP || parents.has(m.number)) break;
+      const mStart = parseTime(m.started_at, jobStart);
+      const mEnd = parseTime(m.completed_at, jobEnd);
+      if (mStart < gStart - PARALLEL_TOLERANCE_MS || mEnd > gEnd + PARALLEL_TOLERANCE_MS) break;
+      parents.set(m.number, group.number);
+    }
+  });
+  return parents;
+}
 function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
   const resource = buildResource(
     serviceName,
@@ -104369,13 +104390,17 @@ function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
     }
   };
   spans.push(buildSpan(jobInput, resource));
-  for (const step of job.steps ?? []) {
+  const steps = job.steps ?? [];
+  const groupOf = parallelGroupParents(steps, jobStart, jobEnd);
+  const stepById = new Map(steps.map((st) => [st.number, st]));
+  for (const step of steps) {
+    const group = stepById.get(groupOf.get(step.number) ?? -1);
     const stepConclusion = step.conclusion ?? "success";
     const stepInput = {
       name: step.name,
       traceId,
       spanId: stepSpanId(job.id, step.name),
-      parentSpanId: jSpanId,
+      parentSpanId: group ? stepSpanId(job.id, group.name) : jSpanId,
       startMs: parseTime(step.started_at, jobStart),
       endMs: parseTime(step.completed_at, jobEnd),
       conclusion: stepConclusion,
@@ -104407,7 +104432,7 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, serviceName, 
       spanId: rootId,
       startMs: rootStart,
       endMs: rootEnd,
-      conclusion: ranJobs.some((j) => j.conclusion && j.conclusion !== "success") ? "failure" : "success",
+      conclusion: ranJobs.some((j) => j.conclusion && !PASSING_CONCLUSIONS.has(j.conclusion)) ? "failure" : "success",
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: "github-actions",
         "github.run_id": String(runId),

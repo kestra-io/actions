@@ -119,7 +119,7 @@ async function run(): Promise<void> {
   })
 
   const baseline = await resolveBaseline(summary, baseBranch, component, temp)
-  const markdown = buildComment(summary, baseline)
+  const markdown = buildComment(summary, baseline, baseBranch)
   await fs.writeFile(markdownFile, markdown)
   core.info(markdown)
 
@@ -188,7 +188,7 @@ function mergeFileCoverage(a: FileCoverage, b: FileCoverage): FileCoverage {
 async function resolveBaseline(summary: CoverageSummary, baseBranch: string, component: string, temp: string): Promise<CoverageSummary | undefined> {
   const token = core.getInput('github-token')
   if (!token) {
-    core.info('No github-token supplied; skipping the develop baseline comparison.')
+    core.info(`No github-token supplied; skipping the ${baseBranch} baseline comparison.`)
     return undefined
   }
   if (github.context.ref === `refs/heads/${baseBranch}`) return undefined

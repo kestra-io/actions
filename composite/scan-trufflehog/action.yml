@@ -40,6 +40,11 @@ inputs:
     required: false
     default: ''
 
+  exclude-path:
+    description: 'Newline separated globs to skip, e.g. src/content/**'
+    required: false
+    default: ''
+
   ignore-examples:
     description: >-
       Drop unverified findings inside plugin documentation, which shows placeholder credentials on purpose:
@@ -102,11 +107,15 @@ runs:
         PR_BASE: ${{ github.event.pull_request.base.sha }}
         PR_HEAD: ${{ github.event.pull_request.head.sha }}
         ACTION_PATH: ${{ github.action_path }}
+        EXCLUDE_PATH: ${{ inputs.exclude-path }}
       run: |
         set -euo pipefail
         trufflehog=~/.cache/security-tools/trufflehog/trufflehog
         report="${RUNNER_TEMP}/trufflehog.ndjson"
-        flags=(--json --no-update --no-color --results="${RESULTS}" --exclude-paths="${ACTION_PATH}/trufflehog-exclude.txt")
+        excludes="${RUNNER_TEMP}/trufflehog-exclude.txt"
+        cp "${ACTION_PATH}/trufflehog-exclude.txt" "${excludes}"
+        "${ACTION_PATH}/globs-to-regex.sh" "${EXCLUDE_PATH}" >> "${excludes}"
+        flags=(--json --no-update --no-color --results="${RESULTS}" --exclude-paths="${excludes}")
         if [ "${EVENT}" = "pull_request" ]; then
           "${trufflehog}" git "file://${PWD}" --since-commit "${PR_BASE}" --branch "${PR_HEAD}" "${flags[@]}" > "${report}.git"
           mapfile -t changed < <(git diff --name-only --diff-filter=d "${PR_BASE}...${PR_HEAD}")

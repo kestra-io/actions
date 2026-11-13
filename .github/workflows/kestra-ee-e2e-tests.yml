@@ -4,18 +4,25 @@ on:
   workflow_call:
     secrets:
       GOOGLE_SERVICE_ACCOUNT:
-        required: true
+        description: "DEPRECATED, unused (SEC-2311: Gradle reads Artifact Registry as ci-reader through WIF). Kept so callers still passing it do not fail."
+        required: false
       APPLICATION_SECRETS:
         description: "applications-secrets.yml with license infos for EE Kestra, encoded as base64"
         required: true
       GCP_SERVICE_ACCOUNT:
-        description: "GCP service account JSON for the Maven proxy (routes Gradle reads off Maven Central). Optional; when absent the proxy step is a no-op."
+        description: "DEPRECATED, unused (SEC-2311: the Maven proxy authenticates as ci-reader through WIF). Kept so callers still passing it do not fail."
         required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
         required: false
       OTLP_HEADERS:
         description: 'OTLP headers for OpenTelemetry export'
+        required: false
+      GH_BOT_APP_ID:
+        description: 'GitHub App Client ID, used for the OSS ref lookups (github.token without it)'
+        required: false
+      GH_BOT_PRIVATE_KEY:
+        description: 'GitHub App private key, used for the OSS ref lookups'
         required: false
     inputs:
       noInputYet:
@@ -45,8 +52,6 @@ jobs:
   check:
     timeout-minutes: 30
     runs-on: kestra-private-4cpu-8gb
-    env:
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
     steps:
       # Run first, before checkout, so setup time is captured by the trace/host metrics.
       - name: Setup - OpenTelemetry
@@ -75,6 +80,9 @@ jobs:
 
       - name: Checkout - OSS
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+        with:
+          gh-app-id: ${{ secrets.GH_BOT_APP_ID }}
+          gh-app-private-key: ${{ secrets.GH_BOT_PRIVATE_KEY }}
 
       # Java only exists to build the product from source, so it's skipped
       # when a prebuilt executable artifact is provided.
@@ -88,15 +96,25 @@ jobs:
       - name: Setup - Maven proxy
         if: ${{ inputs.exe-artifact == '' }}
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+
+      # SEC-2311: ADC as ci-reader. The action writes a WIF credential config (external_account) and
+      # exports GOOGLE_APPLICATION_CREDENTIALS, so Gradle's Artifact Registry plugin authenticates
+      # through the standard ADC chain, refreshing the token as needed. No continue-on-error: a failed
+      # exchange must fail the job, not fall back to the runner's metadata-server identity.
+      - name: GCP - Auth with ci-reader (Workload Identity Federation)
+        id: auth-gcp-ci-reader
+        if: ${{ inputs.exe-artifact == '' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ci-reader@kestra-dev.iam.gserviceaccount.com
 
       - name: Cache - OSS Node Modules
         id: cache-oss-node-modules
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: kestra/ui/node_modules
-          key: modules-oss-${{ hashFiles('kestra/ui/package-lock.json') }}
+          key: modules-oss-${{ hashFiles('kestra/ui/package-lock.json', 'kestra/ui/patches/**') }}
 
       - name: Cache - EE Node Modules
         id: cache-ee-node-modules
@@ -166,11 +184,12 @@ jobs:
           APPLICATION_SECRETS: ${{ secrets.APPLICATION_SECRETS }}
           NODE_OPTIONS: "--max-old-space-size=4096"
           E2E_USE_PREBUILT_EXE: ${{ inputs.exe-artifact != '' }}
+          OTEL_TRACES_EXPORTER: none # keep buildx/buildkit spans out of the trace
         run: |
+          # docker compose exports its own traces whenever an OTEL endpoint is set; keep them out
+          unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
           E2E_DATA_DIR=$([ -d ./e2e/data ] && echo ./e2e/data || echo ./ui-ee/tests/e2e/data)
           echo $APPLICATION_SECRETS | base64 -d > "$E2E_DATA_DIR/application-secrets.yml"
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           sh build-and-start-e2e-tests.sh
 
       - name: Upload Playwright Report as Github artifact

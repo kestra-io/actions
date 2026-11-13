@@ -141,6 +141,8 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          # setup-unit.sh runs docker compose, which exports its own traces whenever an OTEL endpoint is set
+          unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
           if [ -f .github/setup-unit.sh ]; then
             ./.github/setup-unit.sh
           fi

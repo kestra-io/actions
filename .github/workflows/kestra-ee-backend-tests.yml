@@ -10,7 +10,7 @@ on:
         description: "The Slack webhook url."
         required: true
       GOOGLE_SERVICE_ACCOUNT:
-        description: "The Google Service Account."
+        description: "DEPRECATED old unit test dedicated SA"
         required: false
       GCP_SERVICE_ACCOUNT:
         description: "The GCP service account used to authenticate to the maven-remote Artifact Registry proxy."
@@ -20,6 +20,12 @@ on:
         required: false
       OTLP_HEADERS:
         description: 'OTLP headers for OpenTelemetry export'
+        required: false
+      GH_BOT_APP_ID:
+        description: 'GitHub App Client ID, used for the OSS ref lookups (github.token without it)'
+        required: false
+      GH_BOT_PRIVATE_KEY:
+        description: 'GitHub App private key, used for the OSS ref lookups'
         required: false
     inputs:
       java-version:
@@ -52,9 +58,16 @@ jobs:
     name: Check
     runs-on: ${{ inputs.legacy-runner && 'kestra-private-large' || 'kestra-private-16cpu-16gb' }}
     timeout-minutes: 90
+    # Job-level permissions replace the workflow-level block entirely, so repeat it here.
+    # id-token: write mints the GitHub OIDC token for the ci-reader WIF exchange (SEC-2311).
+    permissions:
+      contents: write
+      checks: write
+      actions: read
+      pull-requests: write
+      id-token: write
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       # to save corepack from itself
       COREPACK_INTEGRITY_KEYS: 0
       NODE_OPTIONS: "--max-old-space-size=4096" # required by kestra 1.0.X using vite and not rolldown-vite
@@ -79,6 +92,9 @@ jobs:
 
       - name: Checkout - OSS
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+        with:
+          gh-app-id: ${{ secrets.GH_BOT_APP_ID }}
+          gh-app-private-key: ${{ secrets.GH_BOT_PRIVATE_KEY }}
 
       - name: setup build
         uses: kestra-io/actions/composite/setup-build@main
@@ -88,8 +104,17 @@ jobs:
 
       - name: Setup - Maven proxy
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+
+      # SEC-2311: ADC as ci-reader. The action writes a WIF credential config (external_account) and
+      # exports GOOGLE_APPLICATION_CREDENTIALS, so Gradle's Artifact Registry plugin authenticates
+      # through the standard ADC chain, refreshing the token as needed. No continue-on-error: a failed
+      # exchange must fail the job, not fall back to the runner's metadata-server identity.
+      - name: GCP - Auth with ci-reader (Workload Identity Federation)
+        id: auth-gcp-ci-reader
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ci-reader@kestra-dev.iam.gserviceaccount.com
 
       - name: Move working directory structure
         run: |
@@ -120,7 +145,10 @@ jobs:
       - name: Setup - Start docker compose
         id: compose
         background: true
-        run: docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
+        run: |
+          # docker compose exports its own traces whenever an OTEL endpoint is set; keep them out
+          unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+          docker compose -f docker-compose-ci.yml up -d --wait --wait-timeout 120
 
       # Gradle: javadoc and check run as two separate steps.
       #
@@ -137,8 +165,6 @@ jobs:
       - name: Gradle - javadoc
         timeout-minutes: 15
         run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi
@@ -150,8 +176,6 @@ jobs:
 
       - name: Gradle - check
         run: |
-          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > $(pwd)/.gcp-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/.gcp-service-account.json
           if [[ -n "${{ inputs.java-options }}" ]]; then
             export _JAVA_OPTIONS="${{ inputs.java-options }}"
           fi

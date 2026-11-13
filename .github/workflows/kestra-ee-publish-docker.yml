@@ -3,8 +3,10 @@ name: Create Docker images on Release
 on:
   workflow_call:
     secrets:
+      # Deprecated (SEC-2311): only forwarded to build-artifacts, which reads through WIF. Kept
+      # so callers that still pass it do not fail.
       GCP_SERVICE_ACCOUNT:
-        required: true
+        required: false
       GOOGLE_SERVICE_ACCOUNT:
         required: true
       DOCKERHUB_USERNAME:
@@ -204,13 +206,16 @@ jobs:
           - name: Docker init
             uses: kestra-io/actions/composite/setup-docker@main
 
-          # Google Auth
-          - name: GCP - Auth with github service account
+          # SEC-2311: release-publisher through WIF, no key fallback. Its token downloads the EE
+          # and OSS plugins and pushes to docker / docker-private. The caller must grant
+          # `id-token: write`.
+          - name: GCP - Auth with release-publisher (Workload Identity Federation)
             id: glogin
             uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
             with:
               token_format: 'access_token'
-              credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+              workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+              service_account: release-publisher@kestra-dev.iam.gserviceaccount.com
 
           # Plugins — new path (use-kestra-base-images: true)
           - name: Install kestractl
@@ -325,6 +330,8 @@ jobs:
       - name: Docker - Build and push
         id: docker-build-push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          OTEL_TRACES_EXPORTER: none # keep buildx/buildkit spans out of the trace
         with:
           context: kestra-ee/.
           push: ${{ inputs.dry-run == false }}

@@ -1,5 +1,5 @@
 name: OTel Instrument
-description: Per-job OpenTelemetry setup — trace context, agents, host/cgroup metrics, Gradle/JUnit tracing
+description: Per-job OpenTelemetry setup — trace context, agents, host/cgroup metrics, Gradle/JUnit/Vitest tracing
 
 runs:
   using: node24
@@ -74,6 +74,15 @@ inputs:
       and JUnit test spans "<service-name> - JUnit" (each also tagged with a telemetry.source attribute), distinct
       from the GitHub Actions layer's service.name, so a trace backend can tell the three layers apart even
       though they all share one trace.
+    required: false
+    default: 'false'
+
+  vitest-tracing-enabled:
+    description: >
+      Expose a Vitest reporter (path in OTEL_VITEST_REPORTER) emitting a span per run, test file and test,
+      with service.name "<service-name> - Vitest". Add it to a step with `--reporter=$OTEL_VITEST_REPORTER`.
+      Spans nest under the step named by the step's OTEL_STEP_NAME env var, else under TRACEPARENT.
+      They are exported over OTLP/gRPC by this action's post hook.
     required: false
     default: 'false'
 

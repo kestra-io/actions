@@ -4,12 +4,12 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { authHeaders, bulkUrl, chunk, dataStreamName, sendBulk, toNdjson, validateDataStream } from '../../../shared/elastic-core/src/bulk.js'
 import { componentOf, parseComponents } from './component.js'
-import { datasetOf, toDocument, type DocumentContext, type FindingType } from './documents.js'
+import { datasetOf, imageShortName, parseImageRef, scanSummary, toDocument, type DocumentContext, type FindingType } from './documents.js'
 import { githubMetadata } from '../../../shared/elastic-core/src/github.js'
 import { parseBoolean, parseList, parsePairs } from '../../../shared/elastic-core/src/inputs.js'
 import type { Finding } from './finding.js'
 import { flatten, type SarifLog } from './sarif.js'
-import { flattenTrivy, isTrivyReport } from './trivy.js'
+import { flattenTrivy, imageDigest, isTrivyReport, unfixedOsCount, type TrivyReport } from './trivy.js'
 import { flattenTrufflehog, isTrufflehogLine, parseTrufflehog } from './trufflehog.js'
 
 /**
@@ -18,7 +18,13 @@ import { flattenTrufflehog, isTrufflehogLine, parseTrufflehog } from './truffleh
  * preferring where it exists, because SARIF drops its advisory, publication and per-vendor CVSS
  * fields.
  */
-async function readReport(file: string): Promise<Finding[]> {
+interface Report {
+  readonly findings: Finding[]
+  /** The native report, when it was one: an image scan adds a summary document built from it. */
+  readonly trivy?: TrivyReport
+}
+
+async function readReport(file: string, image: boolean): Promise<Report> {
   const content = await fs.readFile(file, 'utf8')
   try {
     let parsed: unknown
@@ -26,14 +32,22 @@ async function readReport(file: string): Promise<Finding[]> {
       parsed = JSON.parse(content)
     } catch {
       // Not one JSON document: TruffleHog writes one object per line, and an empty file is a clean scan.
-      return flattenTrufflehog(parseTrufflehog(content))
+      return { findings: flattenTrufflehog(parseTrufflehog(content)) }
     }
     // A report with a single finding is one line, so it parses as one JSON document too.
-    if (isTrufflehogLine(parsed)) return flattenTrufflehog([parsed])
-    return isTrivyReport(parsed) ? flattenTrivy(parsed) : flatten(parsed as SarifLog)
+    if (isTrufflehogLine(parsed)) return { findings: flattenTrufflehog([parsed]) }
+    if (isTrivyReport(parsed)) {
+      // An image carries the distribution's whole unfixed backlog; only what has a fix is actionable.
+      if (image) {
+        const dropped = unfixedOsCount(parsed)
+        if (dropped > 0) core.info(`${file}: ${dropped} OS package vulnerabilit${dropped === 1 ? 'y' : 'ies'} without a fix left out`)
+      }
+      return { findings: flattenTrivy(parsed, { dropUnfixedOs: image }), trivy: parsed }
+    }
+    return { findings: flatten(parsed as SarifLog) }
   } catch (error) {
     core.warning(`Could not read ${file} as SARIF or a Trivy report: ${(error as Error).message}`)
-    return []
+    return { findings: [] }
   }
 }
 
@@ -72,17 +86,31 @@ async function run(): Promise<void> {
   }
   core.info(`SARIF files: ${files.map(file => path.relative(process.cwd(), file)).join(', ')}`)
 
+  const imageRef = core.getInput('image-ref').trim()
+  const reports = await Promise.all(files.map(file => readReport(file, imageRef !== '')))
+  // The digest comes from the report, the name and tag from the input: Trivy's ArtifactName is what was
+  // asked for too, but the input is authoritative when a registry mirror rewrote it.
+  const image = imageRef ? parseImageRef(imageRef, reports.map(report => report.trivy && imageDigest(report.trivy)).find(Boolean)) : undefined
+  if (image && type !== 'vulnerabilities') {
+    core.setFailed('image-ref only applies to type vulnerabilities')
+    return
+  }
+  const metadata = parsePairs(core.getInput('metadata'))
+  // Every finding of an image belongs to the `image` component unless the caller says otherwise.
+  if (image && !metadata.component) metadata.component = 'image'
   const context: DocumentContext = {
     dataset,
     namespace,
     type,
+    image,
     github: githubMetadata(process.env),
     scanTime: new Date().toISOString(),
     tags: parseList(core.getInput('tags')),
-    metadata: parsePairs(core.getInput('metadata'))
+    metadata
   }
+  if (image) core.info(`Image scan: ${image.name}:${image.tag}${image.digest ? ` (${image.digest})` : ''}, service ${metadata['service.name'] ?? imageShortName(image)}`)
 
-  const findings = (await Promise.all(files.map(readReport))).flat()
+  const findings = reports.flatMap(report => report.findings)
   const components = parseComponents(core.getInput('components'))
   const componentsPath = core.getInput('components-path')
   const workspace = process.env.GITHUB_WORKSPACE ?? ''
@@ -104,11 +132,21 @@ async function run(): Promise<void> {
     byStream.set(stream, documents)
   }
 
+  // The summary is what proves a clean image scan happened: one per Trivy report, findings or not.
+  if (image) {
+    for (const report of reports) {
+      if (!report.trivy) continue
+      const summary = scanSummary(context, 'Trivy', report.trivy.Trivy?.Version ?? '', report.findings.length)
+      const stream = dataStreamName(String((summary.data_stream as Record<string, unknown>).dataset), namespace)
+      byStream.set(stream, [...(byStream.get(stream) ?? []), summary])
+    }
+  }
+
   const size = Math.max(1, Number(core.getInput('batch-size') || '500'))
   const batches = [...byStream].flatMap(([stream, documents]) =>
     chunk(documents, size).map(batch => ({ stream, batch }))
   )
-  const documentCount = findings.length
+  const documentCount = [...byStream.values()].reduce((count, documents) => count + documents.length, 0)
   await fs.writeFile(ndjsonFile, batches.map(({ stream, batch }) => toNdjson(batch, stream)).join(''))
 
   for (const [stream, documents] of byStream) {

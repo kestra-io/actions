@@ -1,7 +1,7 @@
 # otel-instrument
 
 Per-job OpenTelemetry setup for a GitHub Actions job: trace context, host/cgroup
-metrics, and optional Java/Node agent + Gradle/JUnit tracing.
+metrics, and optional Java/Node agent + Gradle/JUnit/Vitest tracing.
 
 Run this in **every job** you want telemetry for. It sets up the root span
 context and starts a background host-metrics collector on the `main` hook,
@@ -37,9 +37,12 @@ On **`main`** it:
    returns without waiting for it — see "Run this first" below.
 5. Optionally installs a Gradle init script emitting a span per Gradle task
    and per JUnit test, nested under the step span.
+6. Optionally exposes a Vitest reporter emitting a span per run, test file and
+   test (see "Vitest tracing" below).
 
-On **`post`** it stops the collector/poller, flushing their metrics. It
-exports no spans — see `otel-export-trace`'s README for why.
+On **`post`** it exports the Vitest spans recorded during the job, then stops
+the collector/poller, flushing their metrics. It exports no GitHub Actions
+spans — see `otel-export-trace`'s README for why.
 
 ## Usage
 
@@ -104,6 +107,7 @@ jobs:
 | `host-metrics-enabled` | `true` | Run the background host-metrics collector |
 | `cgroup-metrics-enabled` | `true` | Run a background poller emitting this job's own `container.cpu.*`/`container.memory.*` **cgroup v2** metrics, including CPU throttling. Unlike the host-metrics `cpu`/`memory` scrapers above, which read `/proc` and report the whole **node** on Kubernetes runners, these reflect the cgroup limit actually enforced on this job. CPU is a cumulative counter — cores used is `rate(container.cpu.time)`, utilization is that divided by `container.cpu.limit`. Logs and skips where there is no cgroup v2 (macOS/Windows). Only takes effect when `host-metrics-enabled` is also true |
 | `gradle-tracing-enabled` | `false` | Install a Gradle init script emitting a span per task and per JUnit test, nested under the step span (gRPC). Daemon-side, so no conflict with the app's own OpenTelemetry — this is how you get **per-test drill-down**. Task spans use `service.name=<service-name> - Gradle`, test spans `<service-name> - JUnit`, both tagged `telemetry.source` |
+| `vitest-tracing-enabled` | `false` | Expose a Vitest reporter in `OTEL_VITEST_REPORTER` emitting a span per run, test file and test, with `service.name=<service-name> - Vitest` and `telemetry.source=vitest`. See "Vitest tracing" below |
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
 | `collector-version` | `0.114.0` | `otelcol-contrib` version |
 | `java-agent-version` | `latest` | `opentelemetry-javaagent` version |
@@ -146,3 +150,37 @@ after changing `src/` or the shared modules under `../../shared/otel-core`.
 > default — if you need the build spans to nest under the step span, add a
 > Gradle init script that starts the build root span as a child of
 > `TRACEPARENT` (`gradle-tracing-enabled` does exactly this).
+
+## Vitest tracing
+
+Vitest has no env hook to load a reporter, so add it on the command line. Set
+`OTEL_STEP_NAME` to the step's own name to nest the spans under that step:
+
+```yaml
+- name: Unit tests
+  env:
+    OTEL_STEP_NAME: Unit tests
+  run: npm run test:unit -- ${OTEL_VITEST_REPORTER:+--reporter=$OTEL_VITEST_REPORTER}
+```
+
+A `--reporter` flag replaces the `reporters` set in `vitest.config`, so when the
+config already lists some (e.g. `junit`), add it there instead:
+
+```ts
+reporters: ["default", "junit", ...(process.env.OTEL_VITEST_REPORTER ? [process.env.OTEL_VITEST_REPORTER] : [])],
+```
+
+The reporter only uses node builtins (Vitest loads it through Vite's module
+runner): it writes span records under `$RUNNER_TEMP`, and the action's `post`
+exports them over gRPC at the end of the job.
+
+## Nesting a tool's spans under a specific step
+
+`TRACEPARENT` points at the job span (or `parent-step-name`). `OTEL_TRACE_ID` and
+`OTEL_JOB_ID` are also exported so a tool can derive its step's span id
+(`sha256("<job id>-<step name>-s")[16:32]`), as the Vitest reporter does.
+
+`docker`, `docker compose` and `buildx` also export their own traces whenever an OTLP
+endpoint is set, and those spans land unparented. Keep them out per step:
+`unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (compose) and
+`OTEL_TRACES_EXPORTER: none` (buildx / `docker/build-push-action`).

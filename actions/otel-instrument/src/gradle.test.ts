@@ -81,3 +81,34 @@ test('installGradleInitScript embeds the resolved (reusable) workflow name as a 
     fs.rmSync(gradleUserHome, { recursive: true, force: true })
   }
 })
+
+test('installGradleInitScript parents JUnit test spans under their Gradle Test task span', () => {
+  const gradleUserHome = fs.mkdtempSync(path.join(os.tmpdir(), 'otel-collect-gradle-'))
+  const prev = process.env.GRADLE_USER_HOME
+  process.env.GRADLE_USER_HOME = gradleUserHome
+  try {
+    const script = fs.readFileSync(installGradleInitScript('svc'), 'utf8')
+    assert.match(script, /taskSpans\.put\(task\.path, span\)/)
+    assert.match(script, /taskSpans\.get\(testTask\.path\)/)
+    assert.match(script, /setParent\(testParent\)/)
+  } finally {
+    if (prev === undefined) delete process.env.GRADLE_USER_HOME
+    else process.env.GRADLE_USER_HOME = prev
+    fs.rmSync(gradleUserHome, { recursive: true, force: true })
+  }
+})
+
+test('installGradleInitScript tags each JUnit test with the Gradle test executor (forked JVM) that ran it', () => {
+  const gradleUserHome = fs.mkdtempSync(path.join(os.tmpdir(), 'otel-collect-gradle-'))
+  const prev = process.env.GRADLE_USER_HOME
+  process.env.GRADLE_USER_HOME = gradleUserHome
+  try {
+    const script = fs.readFileSync(installGradleInitScript('svc'), 'utf8')
+    assert.match(script, /startsWith\("Gradle Test Executor"\)/)
+    assert.match(script, /setAttribute\("test\.worker", String\.valueOf\(worker\.name\)\)/)
+  } finally {
+    if (prev === undefined) delete process.env.GRADLE_USER_HOME
+    else process.env.GRADLE_USER_HOME = prev
+    fs.rmSync(gradleUserHome, { recursive: true, force: true })
+  }
+})

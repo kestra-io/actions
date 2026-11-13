@@ -3,10 +3,41 @@ import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from '../..
 import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from '../../../shared/otel-core/src/otlp.js'
 import { runnerEnvironmentOf, type WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
+// Matches statusOf in otlp.ts: check-run style jobs (coverage, trivy, opengrep) end `neutral`.
+const PASSING_CONCLUSIONS = new Set(['success', 'neutral', 'skipped'])
+
 const parseTime = (iso: string | null | undefined, fallback: number): number => {
   if (!iso) return fallback
   const ms = Date.parse(iso)
   return Number.isNaN(ms) ? fallback : ms
+}
+
+const PARALLEL_GROUP_STEP = 'Parallel group'
+const PARALLEL_TOLERANCE_MS = 2000
+
+/**
+ * GitHub reports `parallel:` steps as flat siblings plus a synthetic "Parallel group"
+ * step numbered after them and spanning all of them. Map each member step number to the
+ * group's step number so members can nest under it. Members are the steps right before
+ * the group that start within the group's window (timestamps have second resolution).
+ */
+function parallelGroupParents(steps: NonNullable<WorkflowJob['steps']>, jobStart: number, jobEnd: number): Map<number, number> {
+  const parents = new Map<number, number>()
+  const sorted = [...steps].sort((a, b) => a.number - b.number)
+  sorted.forEach((group, i) => {
+    if (group.name !== PARALLEL_GROUP_STEP) return
+    const gStart = parseTime(group.started_at, jobStart)
+    const gEnd = parseTime(group.completed_at, jobEnd)
+    for (let j = i - 1; j >= 0; j--) {
+      const m = sorted[j]
+      if (m.name === PARALLEL_GROUP_STEP || parents.has(m.number)) break
+      const mStart = parseTime(m.started_at, jobStart)
+      const mEnd = parseTime(m.completed_at, jobEnd)
+      if (mStart < gStart - PARALLEL_TOLERANCE_MS || mEnd > gEnd + PARALLEL_TOLERANCE_MS) break
+      parents.set(m.number, group.number)
+    }
+  })
+  return parents
 }
 
 /** Build the job span + one step span per step for a single job. */
@@ -66,7 +97,12 @@ export function buildJobSpans(
   }
   spans.push(buildSpan(jobInput, resource))
 
-  for (const step of job.steps ?? []) {
+  const steps = job.steps ?? []
+  const groupOf = parallelGroupParents(steps, jobStart, jobEnd)
+  const stepById = new Map(steps.map((st) => [st.number, st]))
+
+  for (const step of steps) {
+    const group = stepById.get(groupOf.get(step.number) ?? -1)
     // Same fake-as-success reasoning as jobConclusion above: the step running this
     // very export is still in_progress and has no conclusion of its own yet.
     const stepConclusion = step.conclusion ?? 'success'
@@ -74,7 +110,7 @@ export function buildJobSpans(
       name: step.name,
       traceId,
       spanId: stepSpanId(job.id, step.name),
-      parentSpanId: jSpanId,
+      parentSpanId: group ? stepSpanId(job.id, group.name) : jSpanId,
       startMs: parseTime(step.started_at, jobStart),
       endMs: parseTime(step.completed_at, jobEnd),
       conclusion: stepConclusion,
@@ -125,7 +161,7 @@ export function buildWorkflowTrace(
       spanId: rootId,
       startMs: rootStart,
       endMs: rootEnd,
-      conclusion: ranJobs.some((j) => j.conclusion && j.conclusion !== 'success') ? 'failure' : 'success',
+      conclusion: ranJobs.some((j) => j.conclusion && !PASSING_CONCLUSIONS.has(j.conclusion)) ? 'failure' : 'success',
       attributes: {
         [TELEMETRY_SOURCE_ATTR]: 'github-actions',
         'github.run_id': String(runId),

@@ -3,13 +3,21 @@ name: Publish - Maven
 on:
   workflow_call:
     secrets:
+      # Deprecated (SEC-2311): no longer used, publishing authenticates through WIF. Kept so
+      # callers that still pass it do not fail.
       GCP_SERVICE_ACCOUNT:
-        required: true
+        required: false
       OTLP_ENDPOINT:
         description: 'OTLP endpoint for OpenTelemetry export'
         required: false
       OTLP_HEADERS:
         description: 'OTLP headers for OpenTelemetry export'
+        required: false
+      GH_BOT_APP_ID:
+        description: 'GitHub App Client ID, used for the OSS ref lookups (github.token without it)'
+        required: false
+      GH_BOT_PRIVATE_KEY:
+        description: 'GitHub App private key, used for the OSS ref lookups'
         required: false
     inputs:
       java-version:
@@ -49,6 +57,9 @@ jobs:
 
       - name: Checkout - OSS
         uses: kestra-io/actions/composite/kestra-ee/kestra-ee-checkout@main
+        with:
+          gh-app-id: ${{ secrets.GH_BOT_APP_ID }}
+          gh-app-private-key: ${{ secrets.GH_BOT_PRIVATE_KEY }}
 
       - name: setup init
         uses: kestra-io/actions/composite/setup-build@main
@@ -57,17 +68,19 @@ jobs:
           node-enabled: 'true'
           java-version: ${{ inputs.java-version }}
 
+      # Reads through ci-reader (WIF). The caller must grant `id-token: write`.
       - name: Setup - Maven proxy
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
-        with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # Google Auth
-      - name: GCP - Auth with github service account
+      # SEC-2311: publish as release-publisher through WIF, no key fallback. The action writes an
+      # external_account credentials file and exports GOOGLE_APPLICATION_CREDENTIALS, which the
+      # artifactregistry Gradle plugin (DefaultCredentialProvider) reads for `gradle publish`.
+      - name: GCP - Auth with release-publisher (Workload Identity Federation)
         id: auth
         uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
         with:
-          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+          workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+          service_account: release-publisher@kestra-dev.iam.gserviceaccount.com
 
       # OSS npm ci and EE npm install target separate directories/lockfiles and are otherwise
       # independent, but this runner's memory limit (kestra-private-4cpu-4gb, currently 3.5Gi)

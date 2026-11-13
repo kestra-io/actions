@@ -228,11 +228,19 @@ jobs:
       # touch plugins at all; Download Kestra plugins further down needs both Auth and kestractl,
       # so it stays after this block rather than joining it).
       - parallel:
-          - name: Authenticate to Google Cloud
+          # SEC-2311: read-only ci-reader through Workload Identity Federation (needs
+          # `id-token: write` from the caller). On failure, the key fallback below takes over.
+          - name: Authenticate to Google Cloud (ci-reader, WIF)
+            id: gcp-wif
             if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
+            continue-on-error: true
             uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
             with:
-              credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+              token_format: access_token
+              workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+              service_account: ci-reader@kestra-dev.iam.gserviceaccount.com
+              export_environment_variables: false
+              create_credentials_file: false
 
           - name: Install kestractl
             if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
@@ -256,8 +264,20 @@ jobs:
               username: ${{ secrets.DOCKERHUB_USERNAME }}
               password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
+      - name: Authenticate to Google Cloud (key fallback)
+        id: gcp-key
+        if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' && steps.gcp-wif.outputs.access_token == '' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          export_environment_variables: false
+          create_credentials_file: false
+
       - name: Download Kestra plugins
         if: ${{ inputs.use-kestra-base-images && matrix.image.name != '-slim' }}
+        env:
+          MAVEN_TOKEN: ${{ steps.gcp-wif.outputs.access_token || steps.gcp-key.outputs.access_token }}
         run: |
           if [[ "${{ inputs.plugin-version }}" == *"-SNAPSHOT" ]]; then
             MAVEN_REPOSITORY="https://central.sonatype.com/repository/maven-snapshots/"
@@ -267,7 +287,7 @@ jobs:
           kestractl plugins download ${{ github.ref_name }} \
             --maven-repository "$MAVEN_REPOSITORY" \
             --maven-username oauth2accesstoken \
-            --maven-password "$(gcloud auth print-access-token)" \
+            --maven-password "$MAVEN_TOKEN" \
             --plugins-dir ./plugins \
             --plugins "${{ matrix.image.plugins }}" \
             --concurrency 50
@@ -279,6 +299,8 @@ jobs:
       # Docker Build and push
       - name: Push to Docker Hub
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          OTEL_TRACES_EXPORTER: none # keep buildx/buildkit spans out of the trace
         with:
           context: .
           push: ${{ inputs.dry-run == false }}

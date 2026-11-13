@@ -38,6 +38,7 @@ jobs:
           otlp-endpoint: ${{ secrets.OTLP_ENDPOINT }}
           otlp-headers: "${{ secrets.OTLP_HEADERS }}"
           host-metrics-enabled: 'true'
+          vitest-tracing-enabled: 'true'
           service-name: "Github Actions - ${{ github.repository }} - ${{ github.workflow }}"
 
       - name: Checkout
@@ -54,7 +55,7 @@ jobs:
         with:
           path: |
             ui/node_modules
-          key: modules-${{ hashFiles('ui/package-lock.json') }}
+          key: modules-${{ hashFiles('ui/package-lock.json', 'ui/patches/**') }}
 
       - name: Cache Playwright Binaries
         id: cache-playwright
@@ -113,7 +114,9 @@ jobs:
 
           - name: Run front-end unit tests
             working-directory: ui
-            run: npm run test:unit -- --coverage
+            env:
+              OTEL_STEP_NAME: Run front-end unit tests
+            run: npm run test:unit -- --coverage ${OTEL_VITEST_REPORTER:+--reporter=$OTEL_VITEST_REPORTER}
 
           - name: Npm - check types
             working-directory: ui
@@ -176,7 +179,9 @@ jobs:
 
       - name: Run storybook component tests
         working-directory: ui
-        run: npm run test:storybook
+        env:
+          OTEL_STEP_NAME: Run storybook component tests
+        run: npm run test:storybook -- ${OTEL_VITEST_REPORTER:+--reporter=$OTEL_VITEST_REPORTER}
 
       - name: Report - Frontend tests
         if: ${{ !cancelled() }}
