@@ -1,6 +1,6 @@
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
 import { jobSpanId, rootSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
-import { buildResource, buildSpan, TELEMETRY_SOURCE_ATTR, type SpanInput } from '../../../shared/otel-core/src/otlp.js'
+import { buildResource, buildSpan, DATASET_GITHUB_ACTIONS, TELEMETRY_SOURCE_ATTR, type SpanInput } from '../../../shared/otel-core/src/otlp.js'
 import { runnerEnvironmentOf, type WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
 // Matches statusOf in otlp.ts: check-run style jobs (coverage, trivy, opengrep) end `neutral`.
@@ -59,7 +59,8 @@ export function buildJobSpans(
     job.id,
     job.runner_name ?? undefined,
     runnerEnvironmentOf(job),
-    job.workflow_name ?? undefined
+    job.workflow_name ?? undefined,
+    DATASET_GITHUB_ACTIONS
   )
   const spans: ReadableSpan[] = []
   // started_at is null for a job GitHub cancelled while still queued (e.g. via
@@ -168,7 +169,7 @@ export function buildWorkflowTrace(
         'github.run_attempt': String(runAttempt)
       }
     },
-    buildResource(serviceName)
+    buildResource(serviceName, undefined, undefined, undefined, undefined, DATASET_GITHUB_ACTIONS)
   )
 
   const spans: ReadableSpan[] = [root]

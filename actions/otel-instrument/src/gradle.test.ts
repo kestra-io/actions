@@ -13,8 +13,8 @@ test('installGradleInitScript derives distinct " - Gradle" / " - JUnit" service 
     const scriptPath = installGradleInitScript('github-actions-org/repo')
     const script = fs.readFileSync(scriptPath, 'utf8')
 
-    assert.match(script, /makeTracerProvider\("github-actions-org\/repo - Gradle"\)/)
-    assert.match(script, /makeTracerProvider\("github-actions-org\/repo - JUnit"\)/)
+    assert.match(script, /makeTracerProvider\("github-actions-org\/repo - Gradle", "gradle"\)/)
+    assert.match(script, /makeTracerProvider\("github-actions-org\/repo - JUnit", "junit"\)/)
     assert.match(script, /setAttribute\("telemetry\.source", "gradle"\)/)
     assert.match(script, /setAttribute\("telemetry\.source", "junit"\)/)
     // one exporter/provider per layer, both flushed and shut down

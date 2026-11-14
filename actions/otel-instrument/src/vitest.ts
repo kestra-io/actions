@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as core from '@actions/core'
-import { buildResource, buildSpan, exportSpans, parseHeaders } from '../../../shared/otel-core/src/otlp.js'
+import { buildResource, buildSpan, DATASET_VITEST, exportSpans, parseHeaders } from '../../../shared/otel-core/src/otlp.js'
 import { VITEST_SPANS_DIR_ENV, type VitestSpanFile } from './vitest-reporter.js'
 
 export const VITEST_REPORTER_ENV = 'OTEL_VITEST_REPORTER'
@@ -35,7 +35,7 @@ export async function exportVitestSpans(
   dir: string = spansDir()
 ): Promise<number> {
   if (!fs.existsSync(dir)) return 0
-  const resource = buildResource(`${serviceName} - Vitest`, jobId, undefined, undefined, workflowName)
+  const resource = buildResource(`${serviceName} - Vitest`, jobId, undefined, undefined, workflowName, DATASET_VITEST)
   const spans = fs
     .readdirSync(dir)
     .filter((f) => f.endsWith('.json'))

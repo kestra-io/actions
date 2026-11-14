@@ -75616,7 +75616,8 @@ function parseHeaders(raw) {
   }
   return headers;
 }
-const NAMESPACE = "github-actions";
+const NAMESPACE = "gha";
+const DATASET_GITHUB_ACTIONS = "github_actions";
 const TELEMETRY_SOURCE_ATTR = "telemetry.source";
 function msToHr(ms) {
   const seconds = Math.trunc(ms / 1e3);
@@ -75629,11 +75630,12 @@ function serviceInstanceId(jobId) {
   if (!runId) return process.env.RUNNER_NAME ?? "github-actions";
   return jobId === void 0 ? `Workflow ${runId} - Attempt ${attempt}` : `Workflow ${runId} - Job ${jobId} - Attempt ${attempt}`;
 }
-function buildResource(serviceName, jobId, hostName, runnerEnvironment, workflowName) {
+function buildResource(serviceName, jobId, hostName, runnerEnvironment, workflowName, dataset) {
   return resourceFromAttributes({
     "service.name": serviceName,
     "service.namespace": NAMESPACE,
     "data_stream.namespace": NAMESPACE,
+    ...{ "data_stream.dataset": dataset } ,
     "service.instance.id": serviceInstanceId(jobId),
     // Matches the host.name the collector.ts hostmetrics pipeline reports for this
     // same runner (an explicit override there too, since RUNNER_NAME is unique per
@@ -104267,7 +104269,8 @@ function parseJobLog(text, job, traceId, serviceName) {
     job.id,
     job.runner_name ?? void 0,
     runnerEnvironmentOf(job),
-    job.workflow_name ?? void 0
+    job.workflow_name ?? void 0,
+    DATASET_GITHUB_ACTIONS
   );
   const jobSpan = jobSpanId(job.id);
   const steps = (job.steps ?? []).filter((s) => s.started_at && s.completed_at).map((s) => ({
@@ -104367,7 +104370,8 @@ function buildJobSpans(job, traceId, parentSpanId, serviceName, nowMs) {
     job.id,
     job.runner_name ?? void 0,
     runnerEnvironmentOf(job),
-    job.workflow_name ?? void 0
+    job.workflow_name ?? void 0,
+    DATASET_GITHUB_ACTIONS
   );
   const spans = [];
   const jobEnd = parseTime(job.completed_at, nowMs);
@@ -104439,7 +104443,7 @@ function buildWorkflowTrace(jobs, runId, runAttempt, workflowName, serviceName, 
         "github.run_attempt": String(runAttempt)
       }
     },
-    buildResource(serviceName)
+    buildResource(serviceName, void 0, void 0, void 0, void 0, DATASET_GITHUB_ACTIONS)
   );
   const spans = [root];
   for (const job of ranJobs) {

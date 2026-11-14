@@ -3,7 +3,7 @@ import type { GitHub } from '@actions/github/lib/utils'
 import { SeverityNumber } from '@opentelemetry/api-logs'
 import type { ReadableLogRecord } from '@opentelemetry/sdk-logs'
 import { jobSpanId, stepSpanId, traceId as makeTraceId } from '../../../shared/otel-core/src/ids.js'
-import { buildLogRecord, buildResource, type LogInput } from '../../../shared/otel-core/src/otlp.js'
+import { buildLogRecord, buildResource, DATASET_GITHUB_ACTIONS, type LogInput } from '../../../shared/otel-core/src/otlp.js'
 import { runnerEnvironmentOf, type WorkflowJob } from '../../../shared/otel-core/src/resolve-job.js'
 
 type Octokit = InstanceType<typeof GitHub>
@@ -71,7 +71,8 @@ export function parseJobLog(
     job.id,
     job.runner_name ?? undefined,
     runnerEnvironmentOf(job),
-    job.workflow_name ?? undefined
+    job.workflow_name ?? undefined,
+    DATASET_GITHUB_ACTIONS
   )
   const jobSpan = jobSpanId(job.id)
   const steps: StepWindow[] = (job.steps ?? [])

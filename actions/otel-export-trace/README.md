@@ -84,7 +84,7 @@ workflow — not inside any one of the composed reusable workflows themselves.
 | `otlp-endpoint` | — (required) | OTLP **gRPC** endpoint (e.g. `https://<id>.ingest.<region>.elastic-cloud.com`; `https://` → TLS on :443) |
 | `otlp-headers` | `''` | Comma-separated `k=v` headers, e.g. `Authorization=ApiKey <key>` (marked secret) |
 | `logs-enabled` | `false` | Download each job's GitHub Actions logs and export them as OTLP log records correlated to the job/step spans (same trace id) |
-| `service-name` | `''` | `service.name` resource attribute for the GitHub Actions layer (all signals also carry `service.namespace=github-actions`) |
+| `service-name` | `''` | `service.name` resource attribute for the GitHub Actions layer (all signals also carry `service.namespace=gha` and `data_stream.namespace=gha`) |
 
 ## Outputs
 
