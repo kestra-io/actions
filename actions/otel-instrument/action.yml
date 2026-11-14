@@ -97,7 +97,7 @@ inputs:
   collector-version:
     description: The otelcol-contrib version to download
     required: false
-    default: '0.114.0'
+    default: '0.165.0'
 
   java-agent-version:
     description: The opentelemetry-javaagent version to download (or "latest")

@@ -2,6 +2,7 @@ import { spawn } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as core from '@actions/core'
+import { DATASET_CGROUP } from '../../../shared/otel-core/src/otlp.js'
 
 /**
  * `hostmetrics` (collector.ts) reads /proc/stat, which is not cgroup-aware: on a
@@ -184,11 +185,21 @@ interface OtlpMetric {
 export interface OtlpMetricsPayload {
   resourceMetrics: Array<{
     resource: { attributes: unknown[] }
-    scopeMetrics: Array<{ scope: { name: string; version: string }; metrics: OtlpMetric[] }>
+    scopeMetrics: Array<{
+      scope: { name: string; version: string; attributes: Array<{ key: string; value: { stringValue: string } }> }
+      metrics: OtlpMetric[]
+    }>
   }>
 }
 
-const SCOPE = { name: 'kestra-io/actions/otel-instrument/cgroup', version: '1.0.0' }
+// The managed endpoint takes a metric's dataset from a data point or scope attribute (a resource attribute is ignored
+// for metrics) and otherwise from the scope name, which would put these in `generic`. A scope attribute is constant, so
+// unlike a data point attribute it is not an extra time series dimension.
+const SCOPE = {
+  name: 'kestra-io/actions/otel-instrument/cgroup',
+  version: '1.0.0',
+  attributes: [{ key: 'data_stream.dataset', value: { stringValue: DATASET_CGROUP } }]
+}
 // OTLP proto AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE.
 const CUMULATIVE = 2
 
