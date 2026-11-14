@@ -134,3 +134,9 @@ test('chunkLogs never produces an empty batch, even for an oversized single reco
 test('chunkLogs returns no batches for an empty input', () => {
   assert.deepEqual(chunkLogs([], 1000), [])
 })
+
+test('buildResource names the dataset only when asked to', () => {
+  assert.equal(buildResource('svc').attributes['data_stream.dataset'], undefined)
+  assert.equal(buildResource('svc', 1, undefined, undefined, undefined, 'gradle').attributes['data_stream.dataset'], 'gradle')
+  assert.equal(buildResource('svc').attributes['data_stream.namespace'], 'gha')
+})

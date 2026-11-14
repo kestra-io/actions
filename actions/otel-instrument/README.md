@@ -30,7 +30,7 @@ On **`main`** it:
    auto-instrumentation** and auto-injects them via `JAVA_TOOL_OPTIONS` /
    `NODE_OPTIONS`.
 4. Optionally starts a background **`otelcol-contrib`** collector capturing
-   host metrics (cpu / memory / network / disk io / load / paging), plus a
+   host metrics (cpu / memory / network / disk io / load / processes, every 60 s, the same scrape as the Kubernetes nodes), plus a
    cgroup v2 poller for this job's own container CPU/memory limits. The
    collector binary (tens of MB, never cache-hit on ephemeral runners) is
    downloaded and started by a detached launcher process, so this step
@@ -109,9 +109,22 @@ jobs:
 | `gradle-tracing-enabled` | `false` | Install a Gradle init script emitting a span per task and per JUnit test, nested under the step span (gRPC). Daemon-side, so no conflict with the app's own OpenTelemetry — this is how you get **per-test drill-down**. Task spans use `service.name=<service-name> - Gradle`, test spans `<service-name> - JUnit`, both tagged `telemetry.source` |
 | `vitest-tracing-enabled` | `false` | Expose a Vitest reporter in `OTEL_VITEST_REPORTER` emitting a span per run, test file and test, with `service.name=<service-name> - Vitest` and `telemetry.source=vitest`. See "Vitest tracing" below |
 | `parent-step-name` | `''` | Build step name; build spans nest under it (else the job span) |
-| `collector-version` | `0.114.0` | `otelcol-contrib` version |
+| `collector-version` | `0.165.0` | `otelcol-contrib` version |
 | `java-agent-version` | `latest` | `opentelemetry-javaagent` version |
-| `service-name` | `''` | `service.name` resource attribute for the GitHub Actions layer (all signals also carry `service.namespace=github-actions`). Gradle/JUnit spans (see `gradle-tracing-enabled`) derive their own ` - Gradle`/` - JUnit` suffixed service names from this |
+| `service-name` | `''` | `service.name` resource attribute for the GitHub Actions layer (all signals also carry `service.namespace=gha` and `data_stream.namespace=gha`). Gradle/JUnit spans (see `gradle-tracing-enabled`) derive their own ` - Gradle`/` - JUnit` suffixed service names from this |
+
+## Data streams
+
+Everything lands in namespace `gha`, one dataset per layer:
+
+| Signal | Dataset |
+|---|---|
+| host metrics | `hostmetricsreceiver` (from the scraper's scope name) |
+| job cgroup metrics | `cgroupmetricsreceiver` (a scope attribute: the endpoint ignores a resource attribute for metrics) |
+| Gradle task spans | `gradle` |
+| JUnit test spans | `junit` |
+| Vitest spans | `vitest` |
+| workflow / job / step spans and logs (`otel-export-trace`) | `github_actions` |
 
 ## Outputs
 

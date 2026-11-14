@@ -29,9 +29,21 @@ export function parseHeaders(raw: string): Record<string, string> {
  *  - `data_stream.namespace` — Elastic's data-stream routing field. Elastic ingests
  *    OTLP into data streams named `<type>-<dataset>.otel-<namespace>`; without this
  *    attribute the namespace falls back to `default`. It is NOT derived from
- *    `service.namespace`, so both must be set to land in a `github-actions` namespace.
+ *    `service.namespace`, so both must be set to land in the `gha` namespace, the closed
+ *    namespace value of the Serverless ingestion contract for GitHub Actions runners.
  */
-export const NAMESPACE = 'github-actions'
+export const NAMESPACE = 'gha'
+
+/**
+ * The dataset of each layer, as `data_stream.dataset`. The managed endpoint reads it off the
+ * resource for traces and logs; for metrics it only honours a data point or scope attribute
+ * (see cgroup.ts), otherwise the dataset comes from the instrumentation scope name.
+ */
+export const DATASET_GITHUB_ACTIONS = 'github_actions'
+export const DATASET_GRADLE = 'gradle'
+export const DATASET_JUNIT = 'junit'
+export const DATASET_VITEST = 'vitest'
+export const DATASET_CGROUP = 'cgroupmetricsreceiver'
 
 /**
  * Span attribute marking which layer produced a span. All layers share one trace
@@ -93,12 +105,14 @@ export function buildResource(
   jobId?: number | string,
   hostName?: string,
   runnerEnvironment?: string,
-  workflowName?: string
+  workflowName?: string,
+  dataset?: string
 ): Resource {
   return resourceFromAttributes({
     'service.name': serviceName,
     'service.namespace': NAMESPACE,
     'data_stream.namespace': NAMESPACE,
+    ...(dataset ? { 'data_stream.dataset': dataset } : {}),
     'service.instance.id': serviceInstanceId(jobId),
     // Matches the host.name the collector.ts hostmetrics pipeline reports for this
     // same runner (an explicit override there too, since RUNNER_NAME is unique per

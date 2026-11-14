@@ -104,12 +104,13 @@ def addHeaders = { builder ->
   builder
 }
 
-def makeResource = { name ->
+def makeResource = { name, dataset ->
   Resource.getDefault().merge(
     Resource.create(Attributes.builder()
       .put("service.name", name)
-      .put("service.namespace", "github-actions")
-      .put("data_stream.namespace", "github-actions")
+      .put("service.namespace", "gha")
+      .put("data_stream.namespace", "gha")
+      .put("data_stream.dataset", dataset)
       .put("service.instance.id", instanceId)
       .put("vcs.repository.name", repositoryName)
       .put("host.name", hostName)
@@ -123,11 +124,11 @@ def makeResource = { name ->
       .build()))
 }
 
-def makeTracerProvider = { name ->
+def makeTracerProvider = { name, dataset ->
   def exporter = addHeaders(OtlpGrpcSpanExporter.builder().setEndpoint(endpoint)).build()
   SdkTracerProvider.builder()
     .addSpanProcessor(BatchSpanProcessor.builder(exporter).setScheduleDelay(2, TimeUnit.SECONDS).build())
-    .setResource(makeResource(name))
+    .setResource(makeResource(name, dataset))
     .build()
 }
 
@@ -135,8 +136,8 @@ def makeTracerProvider = { name ->
 // distinct instrumentation scope names below) from each other and from the
 // GitHub Actions layer, so a trace backend can tell the three apart even though
 // every span here nests under one trace.
-def gradleTracerProvider = makeTracerProvider("${gradleServiceName}")
-def junitTracerProvider = makeTracerProvider("${junitServiceName}")
+def gradleTracerProvider = makeTracerProvider("${gradleServiceName}", "gradle")
+def junitTracerProvider = makeTracerProvider("${junitServiceName}", "junit")
 def gradleTracer = gradleTracerProvider.get("kestra-otel-instrument-gradle")
 def junitTracer = junitTracerProvider.get("kestra-otel-instrument-junit")
 
