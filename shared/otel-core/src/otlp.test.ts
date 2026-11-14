@@ -8,6 +8,12 @@ function fakeRecord(bodyLen: number): ReadableLogRecord {
   return { body: 'x'.repeat(bodyLen), attributes: {} } as unknown as ReadableLogRecord
 }
 
+test('grpcTarget rejects endpoints without a host', () => {
+  for (const bad of ['https:', 'https:/', 'https://', ':443', '']) {
+    assert.throws(() => grpcTarget(bad), /Invalid OTLP endpoint/)
+  }
+})
+
 test('grpcTarget strips scheme and signal path, defaults TLS port', () => {
   assert.deepEqual(grpcTarget('https://otlp.example.com/v1/traces'), { target: 'otlp.example.com:443', secure: true })
   assert.deepEqual(grpcTarget('https://otlp.example.com'), { target: 'otlp.example.com:443', secure: true })

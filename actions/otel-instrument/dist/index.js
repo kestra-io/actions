@@ -80697,8 +80697,11 @@ function buildSpan(input, resource) {
   return span;
 }
 function grpcTarget(endpoint) {
-  const secure = !endpoint.startsWith("http://");
-  let host = endpoint.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const secure = !endpoint.trim().startsWith("http://");
+  let host = endpoint.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!host || /^https?:?$/.test(host) || host.startsWith(":")) {
+    throw new Error(`Invalid OTLP endpoint "${endpoint.trim()}": expected host[:port] or http(s)://host[:port]`);
+  }
   if (!/:\d+$/.test(host)) {
     host = `${host}:${secure ? 443 : 4317}`;
   }

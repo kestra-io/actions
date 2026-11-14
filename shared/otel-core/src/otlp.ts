@@ -195,8 +195,11 @@ export function buildSpan(input: SpanInput, resource: Resource): ReadableSpan {
  * ensure a port (443 for TLS, 4317 for plaintext). Returns {target, secure}.
  */
 export function grpcTarget(endpoint: string): { target: string; secure: boolean } {
-  const secure = !endpoint.startsWith('http://')
-  let host = endpoint.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  const secure = !endpoint.trim().startsWith('http://')
+  let host = endpoint.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  if (!host || /^https?:?$/.test(host) || host.startsWith(':')) {
+    throw new Error(`Invalid OTLP endpoint "${endpoint.trim()}": expected host[:port] or http(s)://host[:port]`)
+  }
   if (!/:\d+$/.test(host)) {
     host = `${host}:${secure ? 443 : 4317}`
   }
