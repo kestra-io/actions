@@ -132,3 +132,8 @@ test('buildMetricsPayload emits disk io as monotonic cumulative counters when th
   assert.equal(metrics.find((m) => m.name === 'container.io.write.operations')?.sum?.dataPoints[0].asDouble, 1)
   assert.equal(metrics.find((m) => m.name === 'container.io.read.bytes')?.sum?.isMonotonic, true)
 })
+
+test('the cgroup metrics carry their dataset as a scope attribute, the only level the managed endpoint reads for metrics', () => {
+  const scope = buildMetricsPayload(snapshot(), 0n).resourceMetrics[0].scopeMetrics[0].scope
+  assert.deepEqual(scope.attributes, [{ key: 'data_stream.dataset', value: { stringValue: 'cgroupmetricsreceiver' } }])
+})

@@ -45,7 +45,7 @@ async function ensureCollector(version: string): Promise<string> {
   return path.join(dir, binName)
 }
 
-function buildConfig(
+export function buildConfig(
   endpoint: string,
   headers: Record<string, string>,
   serviceName: string,
@@ -58,20 +58,49 @@ function buildConfig(
     .join('\n')
   const { target, secure } = grpcTarget(endpoint)
 
-  return `receivers:
-  hostmetrics:
-    # Short-lived jobs (a few seconds) still get a scrape before being SIGTERM'd
-    # thanks to initial_delay (default 1s), which is independent of
-    # collection_interval — the first scrape lands ~1s in whatever this is set
-    # to — so this value only trades document volume against resolution. 1s
-    # cost ~843k documents for a single 32-minute 16-core job (128 cpu data
-    # points *per second*, before the other scrapers); 30s is still enough
-    # resolution for any CI dashboard while cutting that volume by ~30x.
-    collection_interval: 30s
-    scrapers:
-      cpu:
+  // Same scrape as the Serverless node collector (helm/otel-ingestion/templates/node/collector.yaml), so a runner and a
+  // Kubernetes node are read with the same dashboards. The filters and the extra scrapers are Linux-only: processes,
+  // conntrack and the device / mount / interface names do not exist on the macOS and Windows runners.
+  const linux = process.platform === 'linux'
+  const scrapers = linux
+    ? `      cpu:
         metrics:
-          # Optional metrics Elastic's Hosts UI needs; off by default.
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.logical.count:
+            enabled: true
+          # utilization already carries every state
+          system.cpu.time:
+            enabled: false
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      load: {}
+      processes: {}
+      disk:
+        include:
+          match_type: regexp
+          devices: ["^(sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+)$"]
+      filesystem:
+        # overlay and tmpfs are one mount per container and per volume
+        include_fs_types:
+          match_type: strict
+          fs_types: [ext4, xfs]
+        exclude_mount_points:
+          match_type: regexp
+          mount_points: ["^/var/lib/(docker|containerd|kubelet)/.*"]
+      network:
+        include:
+          match_type: regexp
+          interfaces: ["^(eth|ens|enp|eno)[0-9a-z]*$"]
+        metrics:
+          system.network.conntrack.count:
+            enabled: true
+          system.network.conntrack.max:
+            enabled: true`
+    : `      cpu:
+        metrics:
           system.cpu.utilization:
             enabled: true
           system.cpu.logical.count:
@@ -80,11 +109,20 @@ function buildConfig(
         metrics:
           system.memory.utilization:
             enabled: true
-      load:
-      disk:
-      filesystem:
-      network:
-      paging:
+      load: {}
+      disk: {}
+      filesystem: {}
+      network: {}
+      paging: {}`
+
+  return `receivers:
+  host_metrics:
+    # 60 s, as on the nodes. Short-lived jobs (a few seconds) still get a scrape before being SIGTERM'd
+    # thanks to initial_delay (default 1s), which is independent of collection_interval, so this value
+    # only trades document volume against resolution.
+    collection_interval: 60s
+    scrapers:
+${scrapers}
   otlp:
     # Receives container.cpu.*/container.memory.*/container.io.* pushed by cgroup.ts's poller
     # process — hostmetrics above can't see the pod's cgroup, only the node's.
@@ -93,7 +131,7 @@ function buildConfig(
         endpoint: 127.0.0.1:${CGROUP_METRICS_PORT}
 
 processors:
-  resourcedetection:
+  resource_detection:
     # Cover both runner flavours: gcp (self-hosted GCP) and azure (GitHub-hosted).
     # Each probes its cloud metadata endpoint and fails fast (non-fatal) when it
     # isn't that cloud; system fills the rest. The non-matching detector is harmless.
@@ -129,6 +167,44 @@ processors:
           enabled: true
         os.description:
           enabled: true
+        host.arch:
+          enabled: true
+        host.cpu.cache.l2.size:
+          enabled: true
+        host.cpu.family:
+          enabled: true
+        host.cpu.model.id:
+          enabled: true
+        host.cpu.model.name:
+          enabled: true
+        host.cpu.stepping:
+          enabled: true
+        host.cpu.vendor.id:
+          enabled: true
+  # What the Kibana host pages read, under the names they read, as the node collector sets them.
+  resource/cloud:
+    attributes:
+      - key: cloud.instance.id
+        from_attribute: host.id
+        action: insert
+      - key: cloud.instance.name
+        from_attribute: host.name
+        action: insert
+      - key: cloud.machine.type
+        from_attribute: host.type
+        action: insert
+      - key: cloud.project.id
+        from_attribute: cloud.account.id
+        action: insert
+${linux ? `      - key: os.type
+        value: linux
+        action: upsert
+      - key: os.release.raw
+        value: \${file:/etc/os-release}
+        action: upsert
+      - key: host.os.kernel
+        value: \${file:/proc/sys/kernel/osrelease}
+        action: upsert` : ''}
   resource:
     attributes:
       # GitHub-hosted runners can report a non-unique OS-level hostname (Azure IMDS
@@ -189,10 +265,30 @@ processors:
       - key: github.runner_environment
         value: \${env:RUNNER_ENVIRONMENT}
         action: upsert
-  batch:
+${linux ? `  transform/host_os:
+    error_mode: ignore
+    metric_statements:
+      - context: resource
+        statements:
+          - 'set(attributes["os.name"], ExtractPatterns(attributes["os.release.raw"], "(?m)^NAME=\\"?(?P<v>[^\\"\\n]+)")["v"])'
+          - 'set(attributes["os.description"], ExtractPatterns(attributes["os.release.raw"], "(?m)^PRETTY_NAME=\\"?(?P<v>[^\\"\\n]+)")["v"])'
+          - 'set(attributes["os.version"], ExtractPatterns(attributes["os.release.raw"], "(?m)^VERSION_ID=\\"?(?P<v>[^\\"\\n]+)")["v"])'
+          - 'set(attributes["host.os.kernel"], Trim(attributes["host.os.kernel"], "\\n"))'
+          - delete_key(attributes, "os.release.raw")
+  # One CPU series per core and state is most of a runner's volume and nothing reads a single core: the mean of the
+  # cores, per state, is the runner's utilization.
+  metrics_transform/host_cpu:
+    transforms:
+      - include: system.cpu.utilization
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [state]
+            aggregation_type: mean
+` : ''}  batch:
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: ${JSON.stringify(target)}
     tls:
       insecure: ${secure ? 'false' : 'true'}
@@ -201,9 +297,9 @@ ${headerLines ? `    headers:\n${headerLines}` : ''}
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics, otlp]
-      processors: [resourcedetection, resource, batch]
-      exporters: [otlp]
+      receivers: [host_metrics, otlp]
+      processors: [resource_detection, resource/cloud, resource${linux ? ', transform/host_os, metrics_transform/host_cpu' : ''}, batch]
+      exporters: [otlp_grpc]
 `
 }
 
