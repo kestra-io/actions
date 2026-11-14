@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.x'
 
@@ -131,7 +131,7 @@ jobs:
           # nofilter: the dead tokens it finds sit on lines no PR touches (kestra-io/kestra#18777).
           - name: Npm - lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
-            uses: reviewdog/action-stylelint@141932ac62d4ea66e15b79de824ff44d0def0b0b # v1.33.0
+            uses: reviewdog/action-stylelint@ad3b833fc478b08f547a2d3cecc5d414a4db1b94 # v1.34.0
             with:
               github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
               workdir: ui
@@ -154,7 +154,7 @@ jobs:
           # on 2026-09-14. Keep it where it reports, skip it where it cannot.
           - name: Npm - lint (eslint)
             if: ${{ github.event_name == 'pull_request' }}
-            uses: reviewdog/action-eslint@b6303df522851d0e9abaea654da0222037d97e75 # v1.36.0
+            uses: reviewdog/action-eslint@6dad10dc50476699ad1ddbbb19bf55d36f311a39 # v1.37.0
             with:
               github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
               reporter: github-pr-review
