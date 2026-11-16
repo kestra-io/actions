@@ -101,6 +101,18 @@ jobs:
             echo "stylelint is not installed here, so the token rule has nothing to run."
           fi
 
+      # Feeds the eslint step: warnings only annotate on these files. Fetched ahead of the parallel
+      # group because oxlint-action fetches the base too. A failure here just annotates every warning.
+      - name: Lint - list the files this PR touches
+        if: ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        working-directory: ui
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "+refs/heads/$BASE_REF:refs/remotes/origin/lint-base"
+          git -c core.quotePath=false diff --name-only --diff-filter=ACMR --relative origin/lint-base HEAD > "$RUNNER_TEMP/lint-changed-files.txt"
+
       # oxlint/eslint are `uses:` steps inside a `parallel:` block, which is undocumented as of
       # writing (every public example uses bare `run:` steps) — verify this combination on a
       # scratch dispatch before relying on it; fall back to sequential if it misbehaves.
@@ -127,18 +139,15 @@ jobs:
             # --if-present: release branches pin this workflow at @main and predate the script.
             run: npm run check:ts-any --if-present
 
-          # fail_level matches oxlint and eslint below, which also fail on error.
-          # nofilter: the dead tokens it finds sit on lines no PR touches (kestra-io/kestra#18777).
+          # Fails on error, like oxlint and eslint below. Reports the whole tree: the dead tokens
+          # it finds sit on lines no PR touches (kestra-io/kestra#18777).
           - name: Npm - lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
-            uses: reviewdog/action-stylelint@141932ac62d4ea66e15b79de824ff44d0def0b0b # v1.33.0
+            uses: kestra-io/actions/composite/lint-annotations@main
             with:
-              github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-              workdir: ui
-              stylelint_input: "{src,packages,tests}/**/*.{vue,scss,css}"
-              reporter: github-pr-review
-              filter_mode: nofilter
-              fail_level: error
+              linter: stylelint
+              working-directory: ui
+              stylelint-input: "{src,packages,tests}/**/*.{vue,scss,css}"
 
           - name: Npm - lint (oxlint)
             uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
@@ -146,21 +155,15 @@ jobs:
               working-directory: ui
               all-files: true
 
-          # reporter: github-pr-review only has somewhere to post on a pull_request run. On a
-          # push or dispatch build reviewdog prints "this is not PullRequest build" and drops every
-          # finding, so the only thing the step can still do there is fail the job when its own
-          # installer hiccups ("unable to find 'v0.21.1'" -> "reviewdog: command not found" -> exit
-          # 127), which is exactly what turned the frontend job red on releases/v2.0.x in both repos
-          # on 2026-09-14. Keep it where it reports, skip it where it cannot.
+          # Still PR-only: push and dispatch builds never gated on lint under reviewdog either.
+          # Errors fail the step; warnings such as comma-dangle only annotate.
           - name: Npm - lint (eslint)
             if: ${{ github.event_name == 'pull_request' }}
-            uses: reviewdog/action-eslint@b6303df522851d0e9abaea654da0222037d97e75 # v1.36.0
+            uses: kestra-io/actions/composite/lint-annotations@main
             with:
-              github_token: ${{ secrets.GITHUB_AUTH_TOKEN }}
-              reporter: github-pr-review
-              workdir: ui
-              # The token rule moved here from stylelint; warnings such as comma-dangle still only comment.
-              fail_level: error
+              linter: eslint
+              working-directory: ui
+              changed-files: ${{ runner.temp }}/lint-changed-files.txt
 
       # Coverage
       - name: Coverage - Report
