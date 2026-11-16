@@ -192,7 +192,7 @@ jobs:
           # it finds sit on lines no PR touches (kestra-io/kestra-ee#10820).
           - name: Npm - Lint (stylelint)
             if: ${{ github.event_name == 'pull_request' && steps.stylelint-available.outputs.run == 'true' }}
-            uses: kestra-io/actions/composite/lint-annotations@ci/lint-native-annotations
+            uses: kestra-io/actions/composite/lint-annotations@main
             with:
               linter: stylelint
               working-directory: kestra-ee/ui-ee
@@ -208,7 +208,7 @@ jobs:
           # Errors fail the step; warnings such as comma-dangle only annotate.
           - name: Npm - Lint (eslint)
             if: ${{ github.event_name == 'pull_request' }}
-            uses: kestra-io/actions/composite/lint-annotations@ci/lint-native-annotations
+            uses: kestra-io/actions/composite/lint-annotations@main
             with:
               linter: eslint
               working-directory: kestra-ee/ui-ee
