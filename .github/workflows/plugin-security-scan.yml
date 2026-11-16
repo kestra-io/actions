@@ -14,18 +14,15 @@ on:
       OTLP_HEADERS:
         required: false
       GCP_SERVICE_ACCOUNT:
+        description: "DEPRECATED (SEC-2311), no longer read: GCP access goes through Workload Identity Federation (ci-reader)"
         required: false
 
 concurrency:
   group: plugin-security-scan-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  actions: read
-  checks: write
-  pull-requests: write
-  packages: read
+# No permissions block on purpose (SEC-2311): security-scan.yml takes the caller's permissions as they are, so a
+# caller granting id-token: write gets the ci-reader Workload Identity Federation steps there. See its comment.
 
 jobs:
   scan:
