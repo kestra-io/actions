@@ -140,22 +140,8 @@ jobs:
             echo "stylelint is not installed here, so the token rule has nothing to run."
           fi
 
-      # oxlint-action runs `git fetch origin <base>` at the workspace root, which holds two checkouts
-      # but no repo. Give it one whose origin is the local EE clone until the action scopes that fetch.
-      # base.ref rather than github.base_ref: the action reads the former, and in a stacked PR the two differ.
-      - name: Oxlint - Root git repo for the action's base fetch
-        if: ${{ github.event_name == 'pull_request' }}
-        shell: bash
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: |
-          git -C kestra-ee branch -f "$BASE_REF" HEAD
-          rm -rf .git
-          git init -q .
-          git remote add origin "file://$GITHUB_WORKSPACE/kestra-ee"
-
-      # Feeds the eslint step: warnings only annotate on these files. Runs against the EE clone,
-      # not the root repo above. A failure here just annotates every warning.
+      # Feeds the eslint and oxlint steps: warnings only annotate on these files. Listed ahead of
+      # the parallel group that reads it. A failure here just annotates every warning.
       - name: Lint - list the files this PR touches
         if: ${{ github.event_name == 'pull_request' }}
         continue-on-error: true
@@ -198,11 +184,13 @@ jobs:
               working-directory: kestra-ee/ui-ee
               stylelint-input: "{src,tests}/**/*.{vue,scss,css}"
 
+          # Runs the project's pinned oxlint over the whole directory, on every event.
           - name: Npm - Lint (oxlint)
-            uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
+            uses: kestra-io/actions/composite/lint-annotations@main
             with:
+              linter: oxlint
               working-directory: kestra-ee/ui-ee
-              all-files: true
+              changed-files: ${{ runner.temp }}/lint-changed-files.txt
 
           # Still PR-only: push and dispatch builds never gated on lint under reviewdog either.
           # Errors fail the step; warnings such as comma-dangle only annotate.
