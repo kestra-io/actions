@@ -1,0 +1,57 @@
+name: "Lint annotations"
+description: >-
+  Run eslint or stylelint from the project's own node_modules and report the
+  findings as inline annotations through a problem matcher. Nothing to
+  install, no token and no REST call, so it works on fork PRs and cannot be
+  rate limited. Fails on errors only, warnings annotate without failing.
+
+inputs:
+  linter:
+    description: "Which linter to run: 'eslint' or 'stylelint'."
+    required: true
+  working-directory:
+    description: "Directory holding package.json and the lint config."
+    required: false
+    default: "ui"
+  stylelint-input:
+    description: "Glob handed to stylelint. Every finding is reported, whatever the PR touches."
+    required: false
+    default: "{src,packages,tests}/**/*.{vue,scss,css}"
+  changed-files:
+    description: >-
+      File listing the paths this PR touches, one per line, relative to
+      working-directory. eslint warnings only annotate on those files, so the
+      cap of 10 warning annotations per step is not spent on old ones. Errors
+      annotate everywhere. Missing file or empty input: every warning annotates.
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Register the problem matcher"
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: echo "::add-matcher::$ACTION_PATH/matcher.json"
+
+    - name: "eslint"
+      if: ${{ inputs.linter == 'eslint' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CHANGED_FILES: ${{ inputs.changed-files }}
+      run: |
+        status=0
+        npx eslint . -f json -o "$RUNNER_TEMP/eslint-report.json" || status=$?
+        node "$ACTION_PATH/eslint-compact.mjs" "$RUNNER_TEMP/eslint-report.json"
+        exit "$status"
+
+    - name: "stylelint"
+      if: ${{ inputs.linter == 'stylelint' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        STYLELINT_INPUT: ${{ inputs.stylelint-input }}
+      run: npx stylelint "$STYLELINT_INPUT" -f compact
