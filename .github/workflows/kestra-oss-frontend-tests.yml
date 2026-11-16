@@ -101,8 +101,8 @@ jobs:
             echo "stylelint is not installed here, so the token rule has nothing to run."
           fi
 
-      # Feeds the eslint step: warnings only annotate on these files. Fetched ahead of the parallel
-      # group because oxlint-action fetches the base too. A failure here just annotates every warning.
+      # Feeds the eslint and oxlint steps: warnings only annotate on these files. Listed ahead of
+      # the parallel group that reads it. A failure here just annotates every warning.
       - name: Lint - list the files this PR touches
         if: ${{ github.event_name == 'pull_request' }}
         continue-on-error: true
@@ -149,11 +149,13 @@ jobs:
               working-directory: ui
               stylelint-input: "{src,packages,tests}/**/*.{vue,scss,css}"
 
+          # Runs the project's pinned oxlint over the whole directory, on every event.
           - name: Npm - lint (oxlint)
-            uses: oxc-project/oxlint-action@b78c21302e4bc637e83927135c35a6684de1053e # v3.1.0
+            uses: kestra-io/actions/composite/lint-annotations@main
             with:
+              linter: oxlint
               working-directory: ui
-              all-files: true
+              changed-files: ${{ runner.temp }}/lint-changed-files.txt
 
           # Still PR-only: push and dispatch builds never gated on lint under reviewdog either.
           # Errors fail the step; warnings such as comma-dangle only annotate.

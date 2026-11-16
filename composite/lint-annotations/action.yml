@@ -1,13 +1,14 @@
 name: "Lint annotations"
 description: >-
-  Run eslint or stylelint from the project's own node_modules and report the
-  findings as inline annotations through a problem matcher. Nothing to
-  install, no token and no REST call, so it works on fork PRs and cannot be
-  rate limited. Fails on errors only, warnings annotate without failing.
+  Run eslint, oxlint or stylelint from the project's own node_modules and
+  report the findings as inline annotations through a problem matcher.
+  Nothing to install, no token and no REST call, so it works on fork PRs and
+  cannot be rate limited. Fails on errors only, warnings annotate without
+  failing.
 
 inputs:
   linter:
-    description: "Which linter to run: 'eslint' or 'stylelint'."
+    description: "Which linter to run: 'eslint', 'oxlint' or 'stylelint'."
     required: true
   working-directory:
     description: "Directory holding package.json and the lint config."
@@ -17,12 +18,17 @@ inputs:
     description: "Glob handed to stylelint. Every finding is reported, whatever the PR touches."
     required: false
     default: "{src,packages,tests}/**/*.{vue,scss,css}"
+  oxlint-input:
+    description: "Paths handed to oxlint, separated by spaces. Empty lints the whole working directory."
+    required: false
+    default: ""
   changed-files:
     description: >-
       File listing the paths this PR touches, one per line, relative to
-      working-directory. eslint warnings only annotate on those files, so the
-      cap of 10 warning annotations per step is not spent on old ones. Errors
-      annotate everywhere. Missing file or empty input: every warning annotates.
+      working-directory. eslint and oxlint warnings only annotate on those
+      files, so the cap of 10 warning annotations per step is not spent on old
+      ones. Errors annotate everywhere. Missing file or empty input: every
+      warning annotates.
     required: false
     default: ""
 
@@ -45,7 +51,23 @@ runs:
       run: |
         status=0
         npx eslint . -f json -o "$RUNNER_TEMP/eslint-report.json" || status=$?
-        node "$ACTION_PATH/eslint-compact.mjs" "$RUNNER_TEMP/eslint-report.json"
+        node "$ACTION_PATH/compact.mjs" eslint "$RUNNER_TEMP/eslint-report.json"
+        exit "$status"
+
+    # Paths are split on spaces on purpose, so several directories can be passed.
+    - name: "oxlint"
+      if: ${{ inputs.linter == 'oxlint' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CHANGED_FILES: ${{ inputs.changed-files }}
+        OXLINT_INPUT: ${{ inputs.oxlint-input }}
+      run: |
+        status=0
+        # shellcheck disable=SC2086
+        npx --yes oxlint -f json $OXLINT_INPUT > "$RUNNER_TEMP/oxlint-report.json" || status=$?
+        node "$ACTION_PATH/compact.mjs" oxlint "$RUNNER_TEMP/oxlint-report.json"
         exit "$status"
 
     - name: "stylelint"
