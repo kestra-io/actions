@@ -7,7 +7,8 @@
 # Trivy matches an id against the license name it found, exactly. It maps the names it recognizes to
 # SPDX, but a name read from an SBOM as free text stays as written, so those are listed as they appear.
 # An entry takes no purls: Trivy only matches those for vulnerabilities, a license is matched on its
-# name and file path, so a single package cannot be excepted here.
+# name and file path, so a single package cannot be excepted here. A Maven package that lists a
+# permissive license next to a restrictive one (a choice, e.g. amqp-client) is cleared by the action itself.
 #
 # A repository with no .trivy/.trivyignore.yaml of its own falls back to *this* file, which the
 # action reads from its own checkout. Copy it to change anything: it replaces this one, it does not

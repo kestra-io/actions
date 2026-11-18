@@ -97,6 +97,19 @@ runs:
         format: 'json'
         output: ${{ github.workspace }}/trivy-result.json
 
+    # Several licenses on a Maven package are alternatives to choose from, so a restrictive one
+    # (e.g. the GPL-2.0 of com.rabbitmq:amqp-client) is not a violation when a permissive one is offered too.
+    - name: Trivy - Drop licenses of packages that also offer a permissive one
+      if: ${{ inputs.scan-type == 'sbom' && steps.trivy.outcome == 'success' }}
+      shell: bash
+      run: |
+        report="${{ github.workspace }}/trivy-result.json"
+        jq '.Results[]? |= (if .Licenses then
+              .Licenses |= (map(select(.Severity == "LOW") | .PkgName) as $permissive
+                | map(select(.Severity == "LOW" or ((.PkgName // "") as $p | $permissive | index($p) | not))))
+            else . end)' "${report}" > "${RUNNER_TEMP}/trivy-result-filtered.json"
+        mv "${RUNNER_TEMP}/trivy-result-filtered.json" "${report}"
+
     # The scan above already did the work; `convert` re-renders that report rather than scanning a
     # second time. Only the `sarif-file` output needs it, as report-sarif below reads the JSON.
     # trivy-action installs the binary via setup-trivy, so it is on PATH here.
