@@ -218,6 +218,7 @@ jobs:
 
       # Publish
       - name: Publish - Java
+        id: publish-java
         uses: kestra-io/actions/composite/publish-java@main
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && startsWith(github.repository, 'kestra-io/') && steps.publish-guard.outputs.should-publish == 'true' }}
         with:
@@ -279,6 +280,8 @@ jobs:
           channel: "C09FE0QCN2E"
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           suffix: ${{ inputs.kestra-version }}
+          # Ludovic Dehon: only he can ask Sonatype to raise the quota
+          extra-text: ${{ steps.publish-java.outputs.limit-reached == 'true' && '<@U01JA8ZTC07> Maven Central monthly release size limit reached, nothing was published. Needs a Sonatype quota increase, then re-run.' || '' }}
 
       # Allure report permissions
       - name: Allure report permissions

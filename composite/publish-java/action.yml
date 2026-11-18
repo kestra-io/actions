@@ -40,6 +40,11 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  limit-reached:
+    description: "'true' when Maven Central rejected the release because the namespace hit its monthly release size limit"
+    value: ${{ steps.central.outputs.limit-reached }}
+
 runs:
   using: composite
   steps:
@@ -97,6 +102,7 @@ runs:
         done
 
     - name: Publish - Release package to Maven Central
+      id: central
       if: ${{ inputs.is-private == 'false' }}
       env:
         ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ inputs.sonatype-user || fromJson(inputs.secrets).SONATYPE_USER }}
@@ -145,6 +151,7 @@ runs:
               echo
               echo "Re-run this workflow once Sonatype raises the limit or the usage resets."
             } >> "$GITHUB_STEP_SUMMARY"
+            echo "limit-reached=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
