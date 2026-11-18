@@ -226,7 +226,13 @@ jobs:
             env:
               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             run: |
-              curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash
+              if ! curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash; then
+                # The installer only prints the HTTP status: replay its API call to log the rate-limit headers and body.
+                echo "::group::GitHub API response for kestractl releases"
+                curl -sS -D - -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/kestra-io/kestractl/releases?per_page=1" | head -c 4000 || true
+                echo; echo "::endgroup::"
+                exit 1
+              fi
               echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       # Vars
