@@ -40,6 +40,11 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  limit-reached:
+    description: "'true' when Maven Central rejected the release because the namespace hit its monthly release size limit"
+    value: ${{ steps.central.outputs.limit-reached }}
+
 runs:
   using: composite
   steps:
@@ -97,6 +102,7 @@ runs:
         done
 
     - name: Publish - Release package to Maven Central
+      id: central
       if: ${{ inputs.is-private == 'false' }}
       env:
         ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ inputs.sonatype-user || fromJson(inputs.secrets).SONATYPE_USER }}
@@ -127,6 +133,26 @@ runs:
           if grep -q "Component with package url.*already exists" /tmp/publish.log; then
             echo "::warning::Already published to Maven Central; skipping."
             exit 0
+          fi
+
+          # Sonatype rejects the whole deployment once the namespace passes its monthly release
+          # size limit. Retrying cannot help: the limit only lifts when Sonatype raises it or
+          # on the 1st of the next month. Fail now with an explicit message instead of
+          # leaving a bare Gradle failure to be diagnosed from the log.
+          if grep -q "monthly release size limit" /tmp/publish.log; then
+            limit_msg=$(grep -m1 "monthly release size limit" /tmp/publish.log | sed -E 's/^.*Publishing blocked/Publishing blocked/')
+            echo "::error title=Maven Central publishing limit reached::${limit_msg} Not retrying. Ask Sonatype to raise the limit (central-support@sonatype.com), then re-run this workflow."
+            {
+              echo "### Maven Central publishing limit reached"
+              echo
+              echo "Nothing was published for \`${GITHUB_REPOSITORY}\` at \`${GITHUB_REF_NAME}\`. Retrying cannot help."
+              echo
+              echo "> ${limit_msg}"
+              echo
+              echo "Re-run this workflow once Sonatype raises the limit or the usage resets."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "limit-reached=true" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
           # A 5xx on the Portal's status poll fails the build with the deployment still
