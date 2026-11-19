@@ -1,5 +1,5 @@
 name: Generate Translations
-description: "Generates translations for the EE UI with Gemini on Vertex AI. Authenticates with a service account key passed as `gcp-credentials`."
+description: "Generates translations for the EE UI with Gemini on Vertex AI. Authenticates as translator through Workload Identity Federation (the caller job grants `id-token: write`), or with a deprecated key passed as `gcp-credentials`."
 
 inputs:
   github-token:
@@ -10,9 +10,17 @@ inputs:
     required: false
     default: false
   gcp-credentials:
-    description: 'Service account key JSON (with roles/aiplatform.user), normally the GCP_SERVICE_ACCOUNT secret. When empty the authentication step is skipped and the generator uses whatever Application Default Credentials the job already has.'
+    description: 'Deprecated (SEC-2311): service account key JSON. When set, it is used instead of Workload Identity Federation, for callers (release branches) not migrated yet.'
     required: false
     default: ''
+  workload-identity-provider:
+    description: 'GCP Workload Identity Federation provider, used when gcp-credentials is empty.'
+    required: false
+    default: 'projects/956000344026/locations/global/workloadIdentityPools/github/providers/github'
+  service-account:
+    description: 'Service account impersonated through Workload Identity Federation (Vertex AI model calls only).'
+    required: false
+    default: 'translator@kestra-dev.iam.gserviceaccount.com'
   gcp-project:
     description: 'GCP project that Vertex AI calls are billed to (GOOGLE_CLOUD_PROJECT)'
     required: false
@@ -131,7 +139,14 @@ runs:
     # The former `only_pr` input is gone: it selected keys by diffing against the PR's merge-base,
     # which the fingerprints now answer directly and without git. It never took effect anyway —
     # it was read from `github.event.inputs`, which is empty on `pull_request`.
-    - name: Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud (translator, Workload Identity Federation)
+      if: inputs.gcp-credentials == ''
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+      with:
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        service_account: ${{ inputs.service-account }}
+
+    - name: Authenticate to Google Cloud (deprecated key)
       if: inputs.gcp-credentials != ''
       uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
       with:
