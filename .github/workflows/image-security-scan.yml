@@ -20,9 +20,9 @@ name: Image security scan
 #   image × tag and only the tags its sweep rescans can ever be marked fixed.
 #
 # Registry access: ghcr.io images log in with GITHUB_TOKEN (packages: read; public images), and
-# *-docker.pkg.dev ones (Artifact Registry hosts are <region>-docker.pkg.dev, kestra-ee) authenticate with the GCP_SERVICE_ACCOUNT
-# org secret (google-github-actions/auth → oauth2accesstoken login), which a workflow_call caller
-# must pass (`secrets: inherit`, or GCP_SERVICE_ACCOUNT in its explicit list).
+# *-docker.pkg.dev ones (Artifact Registry hosts are <region>-docker.pkg.dev, kestra-ee) authenticate as the read-only
+# ci-reader service account through Workload Identity Federation (SEC-2311, google-github-actions/auth →
+# oauth2accesstoken login): a workflow_call caller must grant `id-token: write`.
 #
 # The tower scopes image findings on container.image.name + tag + resource.sub_type, never on
 # github.refName, so the caller's github.* context doesn't matter.
@@ -91,7 +91,7 @@ on:
         description: "Elastic ingest headers of the security project"
         required: false
       GCP_SERVICE_ACCOUNT:
-        description: "GCP service account JSON, to pull *-docker.pkg.dev images (kestra-ee on Artifact Registry)"
+        description: "DEPRECATED (SEC-2311), no longer read: *-docker.pkg.dev images are pulled as ci-reader through Workload Identity Federation"
         required: false
 
 concurrency:
@@ -152,6 +152,12 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    # Job-level permissions replace the workflow-level block entirely, so repeat it here.
+    # id-token: write mints the GitHub OIDC token for the ci-reader WIF exchange (SEC-2311).
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     steps:
       # Same ref as above, so a branch of this repo tests its own composite and report-sarif (the
       # composite runs actions/report-sarif from its own checkout).
@@ -170,14 +176,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Artifact Registry (kestra-ee): same auth + login pair as kestra-ee-publish-docker.yml.
-      - name: GCP - Auth with github service account
+      # Artifact Registry (kestra-ee, docker-private): read-only ci-reader through Workload Identity Federation, no key.
+      - name: GCP - Auth with ci-reader (Workload Identity Federation)
         id: glogin
         if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           token_format: access_token
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ci-reader@kestra-dev.iam.gserviceaccount.com
 
       - name: Docker - Login to Artifact Registry
         if: ${{ endsWith(matrix.registry, 'docker.pkg.dev') }}

@@ -66,17 +66,17 @@ on:
         description: "Ingest headers of the security project"
         required: false
       GCP_SERVICE_ACCOUNT:
+        description: "DEPRECATED (SEC-2311), no longer read: GCP access goes through Workload Identity Federation (ci-reader)"
         required: false
       GOOGLE_SERVICE_ACCOUNT:
-        description: "Base64 service account the kestra-ee Gradle build reads its private Maven repository with"
+        description: "DEPRECATED (SEC-2311), no longer read: the Gradle build reads Artifact Registry as ci-reader through Workload Identity Federation"
         required: false
 
-permissions:
-  contents: read
-  actions: read
-  checks: write
-  pull-requests: write
-  packages: read
+# No permissions block on purpose (SEC-2311): a called workflow can only lower the caller's GITHUB_TOKEN permissions,
+# and every caller grants contents: read, actions: read, checks: write, pull-requests: write and packages: read.
+# Requesting id-token: write here would fail every caller that doesn't grant it yet, so this workflow takes the
+# caller's permissions as they are: a caller adding id-token: write gets the ci-reader steps below, the others scan
+# without GCP.
 
 env:
   OTLP_ENDPOINT: ${{ secrets.OTLP_ENDPOINT }}
@@ -129,16 +129,39 @@ jobs:
           java-enabled: true
           java-version: ${{ inputs.java-version }}
 
-      # Route Gradle Maven reads through the GCP maven-remote caching proxy (avoids Maven Central 429s)
+      # ACTIONS_ID_TOKEN_REQUEST_URL is only set when the caller grants id-token: write (see permissions above).
+      - name: GCP - Check OIDC availability
+        id: oidc
+        if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
+        shell: bash
+        run: |
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Security scan::no id-token: write granted by the caller, the Gradle build runs without GCP (SEC-2311)"
+          fi
+
+      # Route Gradle Maven reads through the GCP maven-remote caching proxy (avoids Maven Central 429s). The composite
+      # authenticates as ci-reader through Workload Identity Federation when the job can mint an OIDC token, and is a
+      # no-op otherwise.
       - name: Setup - Maven proxy
         if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
         uses: kestra-io/actions/composite/kestra-ee/setup-maven-proxy@main
+
+      # SEC-2311: ci-reader (read-only Artifact Registry) through Workload Identity Federation, no key, as Application
+      # Default Credentials for the Gradle build (kestra-ee reads its private Maven repository with them). Only on the
+      # SBOM runs: the scanners below never need GCP.
+      - name: GCP - Auth with ci-reader (Workload Identity Federation)
+        id: gcp
+        if: ${{ steps.oidc.outputs.available == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/956000344026/locations/global/workloadIdentityPools/github/providers/github
+          service_account: ci-reader@kestra-dev.iam.gserviceaccount.com
 
       # CycloneDX SBOM of the runtime classpath, written by io.kestra.gradle.repository-conventions.
       # continue-on-error so a repository on an older version, without the task, doesn't fail the build.
-      # The service account goes to RUNNER_TEMP, never the workspace TruffleHog scans.
       - name: Trivy - Generate CycloneDX
         id: sbom
         if: ${{ env.SBOM_ENABLED == 'true' && hashFiles('gradlew') != '' }}
@@ -146,14 +169,16 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-        run: |
-          if [ -n "${GOOGLE_SERVICE_ACCOUNT}" ]; then
-            trap 'rm -f "${RUNNER_TEMP}/gcp-service-account.json"' EXIT
-            echo "${GOOGLE_SERVICE_ACCOUNT}" | base64 -d > "${RUNNER_TEMP}/gcp-service-account.json"
-            export GOOGLE_APPLICATION_CREDENTIALS="${RUNNER_TEMP}/gcp-service-account.json"
-          fi
-          ./gradlew cyclonedxBom --console=plain
+        run: ./gradlew cyclonedxBom --console=plain
+
+      # The auth step writes its credentials file (it carries the job's OIDC request token) into the workspace, which
+      # TruffleHog and OpenGrep scan below: remove it as soon as Gradle is done.
+      - name: GCP - Remove credentials file
+        if: ${{ always() && steps.gcp.outputs.credentials_file_path != '' }}
+        shell: bash
+        env:
+          CREDENTIALS_FILE: ${{ steps.gcp.outputs.credentials_file_path }}
+        run: rm -f "${CREDENTIALS_FILE}"
 
       - name: Trivy - Scan Java dependencies
         id: trivy
