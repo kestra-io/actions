@@ -90,8 +90,23 @@ runs:
           cp -R "$dir"/. "$DEST"/
         done < <(find . .. -maxdepth 6 -type d -name allure-results -not -path '*/.git/*' -not -path '*/node_modules/*' 2>/dev/null)
 
-        gcloud storage cp -r gs://internal-kestra-host/${{ github.repository }}/allure/java/history build/allure-results/
-        docker run --rm -v $PWD:/work tobix/allure-cli generate /work/build/allure-results/ -o /work/build/reports/allure --clean
+        # Allure 3 keeps its history in a single JSONL file, kept outside the published report prefix because the rsync below deletes anything else under it.
+        HISTORY_URI=gs://internal-kestra-host/${{ github.repository }}/allure/history.jsonl
+        gcloud storage cp "$HISTORY_URI" build/allure-history.jsonl || true
+
+        cat > build/allurerc.mjs <<EOF
+        export default {
+          output: "$PWD/build/reports/allure",
+          historyPath: "$PWD/build/allure-history.jsonl",
+        };
+        EOF
+
+        rm -rf build/reports/allure
+        npx --yes allure@3.16.1 generate build/allure-results --config build/allurerc.mjs
+
+        if [ -f build/allure-history.jsonl ]; then
+          gcloud storage cp build/allure-history.jsonl "$HISTORY_URI"
+        fi
 
         if [ -d build/reports/allure/ ]; then
           gsutil -m rsync -d -r  build/reports/allure/ gs://internal-kestra-host/${{ format('{0}/{1}', github.repository, 'allure/java') }}
