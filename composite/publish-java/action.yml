@@ -104,11 +104,21 @@ runs:
           exit 1
         fi
         # The Kestra repository only takes releases, and Central's snapshot repository has no release
-        # limit: a snapshot run (not a release tag) always publishes to Central alone.
-        if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
-          echo "Not a release tag: publishing the snapshot to Maven Central only."
-          central=true
-          kestra=false
+        # limit: a SNAPSHOT version always publishes to Central alone. Gradle is only asked for the version
+        # when the Kestra repository is requested, so the default path runs nothing more than before.
+        if [ "$kestra" = true ]; then
+          version="$(./gradlew properties -q --no-daemon --console=plain 2>/dev/null | sed -n 's/^version: //p' | head -1)"
+          if [ -z "$version" ]; then
+            echo "::error::Could not read the project version from Gradle, needed to tell a release from a snapshot."
+            exit 1
+          fi
+          if [[ "$version" == *-SNAPSHOT ]]; then
+            echo "Snapshot version ${version}: publishing to Maven Central only."
+            central=true
+            kestra=false
+          else
+            echo "Release version ${version}."
+          fi
         fi
         echo "central=${central}" >> "$GITHUB_OUTPUT"
         echo "kestra=${kestra}" >> "$GITHUB_OUTPUT"
