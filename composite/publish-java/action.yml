@@ -40,6 +40,26 @@ inputs:
     required: false
     default: ''
 
+  maven-repositories:
+    description: >-
+      Public repositories a non-private release goes to, comma-separated: `central` (Maven Central),
+      `kestra` (Kestra's own public Maven repository), or both. Ignored when is-private is true.
+    required: false
+    default: 'central'
+
+  kestra-repository-url:
+    description: "Kestra's public Maven repository, used when maven-repositories lists `kestra`."
+    required: false
+    # POC: the sandbox repository, until the production one exists.
+    default: 'https://europe-west1-maven.pkg.dev/kestra-sandbox/kestra-plugins-public'
+
+  gcp-service-account:
+    description: >-
+      GCP service account key JSON with write access to kestra-repository-url. Takes precedence over
+      secrets.GCP_SERVICE_ACCOUNT. Only read when maven-repositories lists `kestra`.
+    required: false
+    default: ''
+
 outputs:
   limit-reached:
     description: "'true' when Maven Central rejected the release because the namespace hit its monthly release size limit"
@@ -57,6 +77,51 @@ runs:
         echo "Removing test certificate directory..."
         sudo rm -rf certs
         echo "---------------------------"
+
+    # Which public repositories a non-private release goes to. Unknown names fail here, so a typo cannot
+    # silently skip a repository.
+    - name: Publish - Resolve target repositories
+      id: targets
+      if: ${{ inputs.is-private == 'false' }}
+      shell: bash
+      env:
+        MAVEN_REPOSITORIES: ${{ inputs.maven-repositories }}
+      run: |
+        central=false
+        kestra=false
+        IFS=',' read -ra names <<< "${MAVEN_REPOSITORIES}"
+        for name in "${names[@]}"; do
+          name="$(echo "$name" | xargs)"
+          case "$name" in
+            central) central=true ;;
+            kestra) kestra=true ;;
+            "") ;;
+            *) echo "::error::Unknown maven-repositories entry '${name}': use central, kestra, or both."; exit 1 ;;
+          esac
+        done
+        if [ "$central" = false ] && [ "$kestra" = false ]; then
+          echo "::error::maven-repositories is empty: use central, kestra, or both."
+          exit 1
+        fi
+        # The Kestra repository only takes releases, and Central's snapshot repository has no release
+        # limit: a SNAPSHOT version always publishes to Central alone. Gradle is only asked for the version
+        # when the Kestra repository is requested, so the default path runs nothing more than before.
+        if [ "$kestra" = true ]; then
+          version="$(./gradlew properties -q --no-daemon --console=plain 2>/dev/null | sed -n 's/^version: //p' | head -1)"
+          if [ -z "$version" ]; then
+            echo "::error::Could not read the project version from Gradle, needed to tell a release from a snapshot."
+            exit 1
+          fi
+          if [[ "$version" == *-SNAPSHOT ]]; then
+            echo "Snapshot version ${version}: publishing to Maven Central only."
+            central=true
+            kestra=false
+          else
+            echo "Release version ${version}."
+          fi
+        fi
+        echo "central=${central}" >> "$GITHUB_OUTPUT"
+        echo "kestra=${kestra}" >> "$GITHUB_OUTPUT"
 
     # Publish
     - name: Publish - Release package with Gradle
@@ -101,9 +166,87 @@ runs:
           exit "$exit_code"
         done
 
+    - name: GCP - Token for the Kestra repository
+      id: kestra-auth
+      if: ${{ steps.targets.outputs.kestra == 'true' }}
+      uses: 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' # v3.0.0
+      with:
+        credentials_json: ${{ inputs.gcp-service-account || fromJson(inputs.secrets).GCP_SERVICE_ACCOUNT }}
+        token_format: 'access_token'
+        # Leave the job's own ADC (GOOGLE_APPLICATION_CREDENTIALS) untouched.
+        export_environment_variables: false
+        create_credentials_file: false
+
+    # Published before Central, so a Central rejection (e.g. the monthly size limit) does not keep the
+    # release from the Kestra repository. The repository is added by an init script, so plugin builds
+    # need no change: it applies to any project using maven-publish (vanniktech included).
+    - name: Publish - Release package to the Kestra repository
+      if: ${{ steps.targets.outputs.kestra == 'true' }}
+      env:
+        KESTRA_MAVEN_URL: ${{ inputs.kestra-repository-url }}
+        KESTRA_MAVEN_TOKEN: ${{ steps.kestra-auth.outputs.access_token }}
+        SONATYPE_GPG_KEYID: ${{ inputs.sonatype-gpg-keyid || fromJson(inputs.secrets).SONATYPE_GPG_KEYID }}
+        SONATYPE_GPG_PASSWORD: ${{ inputs.sonatype-gpg-password || fromJson(inputs.secrets).SONATYPE_GPG_PASSWORD }}
+        SONATYPE_GPG_FILE: ${{ inputs.sonatype-gpg-file || fromJson(inputs.secrets).SONATYPE_GPG_FILE }}
+        GRADLE_OPTS: >-
+          -Dorg.gradle.internal.http.connectionTimeout=120000
+          -Dorg.gradle.internal.http.socketTimeout=120000
+          -Dorg.gradle.internal.repository.max.retries=8
+          -Dorg.gradle.internal.repository.initial.backoff=1000
+      shell: bash
+      run: |
+        # Plugins sign every publication (signAllPublications): the signatures go to this repository too.
+        if [ -z "${SONATYPE_GPG_FILE}" ]; then
+          echo "::error::No GPG key to sign the release. Pass sonatype-gpg-* inputs, or a 'secrets' JSON carrying SONATYPE_GPG_KEYID/SONATYPE_GPG_PASSWORD/SONATYPE_GPG_FILE."
+          exit 1
+        fi
+        mkdir -p ~/.gradle
+        echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+        echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+        echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+        echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+
+        init_script="${RUNNER_TEMP}/kestra-maven-repository.gradle"
+        cat > "$init_script" <<'GRADLE'
+        allprojects {
+            plugins.withId('maven-publish') {
+                extensions.configure(org.gradle.api.publish.PublishingExtension) { publishing ->
+                    publishing.repositories.maven {
+                        name = 'kestraPublic'
+                        url = uri(System.getenv('KESTRA_MAVEN_URL'))
+                        credentials {
+                            username = 'oauth2accesstoken'
+                            password = System.getenv('KESTRA_MAVEN_TOKEN')
+                        }
+                    }
+                }
+            }
+        }
+        GRADLE
+
+        max_attempts=4
+        for attempt in $(seq 1 "$max_attempts"); do
+          set +e
+          ./gradlew publishAllPublicationsToKestraPublicRepository --init-script "$init_script" \
+            --no-daemon --no-parallel --max-workers=1 --stacktrace 2>&1 | tee /tmp/publish-kestra.log
+          exit_code=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$exit_code" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$attempt" -lt "$max_attempts" ] && grep -qE "Received status code (429|5[0-9]{2})" /tmp/publish-kestra.log; then
+            backoff=$(( (2 ** attempt) * 15 + RANDOM % 15 ))
+            echo "::warning::Publish to the Kestra repository failed with a transient status code, retrying in ${backoff}s (attempt ${attempt}/${max_attempts})."
+            sleep "$backoff"
+            continue
+          fi
+          exit "$exit_code"
+        done
+
     - name: Publish - Release package to Maven Central
       id: central
-      if: ${{ inputs.is-private == 'false' }}
+      if: ${{ inputs.is-private == 'false' && steps.targets.outputs.central == 'true' }}
       env:
         ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ inputs.sonatype-user || fromJson(inputs.secrets).SONATYPE_USER }}
         ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ inputs.sonatype-password || fromJson(inputs.secrets).SONATYPE_PASSWORD }}

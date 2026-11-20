@@ -37,6 +37,13 @@ on:
         required: false
         type: string
         default: ''
+      maven-repositories:
+        description: >-
+          Public repositories a release goes to, comma-separated: `central` (Maven Central), `kestra`
+          (Kestra's own public Maven repository), or both. Snapshots only ever go to Central.
+        required: false
+        type: string
+        default: 'central'
 
 permissions:
   contents: write
@@ -224,6 +231,7 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
           is-private: ${{ inputs.sonatype-publish == false }}
+          maven-repositories: ${{ inputs.maven-repositories }}
 
       # Upload JAR for PR
       - name: Publish - Jar artifacts for PR only
