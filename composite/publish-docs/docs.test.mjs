@@ -79,3 +79,22 @@ test('toNotionMarkdown renders tables full width', () => {
     assert.equal(widths.length, 2);
     assert.equal(widths[0] + widths[1], 700);
 });
+
+test('buildTree takes README.md as the folder page, index.md first when both exist', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'docs-'));
+
+    mkdirSync(join(dir, 'a'));
+    mkdirSync(join(dir, 'b'));
+    writeFileSync(join(dir, 'a', 'README.md'), '# Alpha\n');
+    writeFileSync(join(dir, 'b', 'README.md'), 'readme');
+    writeFileSync(join(dir, 'b', 'index.md'), '# Beta\n');
+
+    const [a, b] = buildTree(dir, 'Repo').children;
+
+    assert.equal(a.title, 'Alpha');
+    assert.equal(a.file.relative, 'a/README.md');
+    assert.equal(a.children.length, 0);
+    assert.equal(b.title, 'Beta');
+    assert.equal(b.file.relative, 'b/index.md');
+    assert.deepEqual(b.children.map((c) => c.file.relative), ['b/README.md']);
+});

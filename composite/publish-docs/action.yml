@@ -10,7 +10,7 @@ inputs:
     required: false
     default: '3e436907f7b58003a1d4dd48f5a98881'
   path:
-    description: 'Start folder inside the repository, its index.md is the root page and each subfolder is a subpage'
+    description: 'Start folder inside the repository, its index.md or README.md is the root page and each subfolder is a subpage'
     required: false
     default: 'docs'
   name:

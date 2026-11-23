@@ -25,7 +25,12 @@ const titleOf = (name, front, body) => field(front, 'title')
     || body.match(/^#\s+(.+)$/m)?.[1].trim()
     || humanize(name);
 
-const isIndex = (name) => name.toLowerCase() === 'index.md';
+const INDEX_NAMES = ['index.md', 'readme.md'];
+
+// index.md wins over README.md when a folder has both, the other one stays a regular subpage
+const indexOf = (directory, files) => INDEX_NAMES
+    .map((wanted) => files.find((name) => name.toLowerCase() === wanted))
+    .find(Boolean);
 
 const entries = (directory) => readdirSync(directory, {withFileTypes: true})
     .filter((entry) => entry.isDirectory() || entry.name.endsWith('.md'))
@@ -36,15 +41,17 @@ const entries = (directory) => readdirSync(directory, {withFileTypes: true})
 // a folder is the page of its index.md, every other markdown file and subfolder is a subpage
 export const buildTree = (directory, name = null, folder = '') => {
     const children = [];
+    const list = entries(directory);
+    const indexName = indexOf(directory, list.filter((entry) => !entry.isDirectory()).map((entry) => entry.name));
     let index = null;
 
-    for (const entry of entries(directory)) {
+    for (const entry of list) {
         const path = join(directory, entry.name);
         const relative = folder ? `${folder}/${entry.name}` : entry.name;
 
         if (entry.isDirectory()) {
             children.push(buildTree(path, null, relative));
-        } else if (isIndex(entry.name)) {
+        } else if (entry.name === indexName) {
             index = {path, relative};
         } else {
             const {front, body} = parse(path);
@@ -62,7 +69,7 @@ export const buildTree = (directory, name = null, folder = '') => {
     if (index) {
         const {front, body} = parse(index.path);
 
-        return {...container, title: titleOf(folder.split('/').pop() || 'index.md', front, body)};
+        return {...container, title: titleOf(folder.split('/').pop() || indexName, front, body)};
     }
 
     return {...container, title: humanize(folder.split('/').pop())};
