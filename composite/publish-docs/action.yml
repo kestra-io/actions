@@ -1,21 +1,26 @@
 name: 'Publish docs'
-description: 'Publish the repository docs folder as Notion pages'
+description: 'Sync the repository docs folder to read-only Notion pages, with images, backlinks and removed pages deleted'
 
 inputs:
   notion-token:
     description: 'Notion integration token, with access to the parent page'
     required: true
   notion-parent-page-id:
-    description: 'Page the per-repository pages live under'
-    required: true
+    description: 'Page the per-repository pages live under, defaults to the "Docs from GitHub" page'
+    required: false
+    default: '3e436907f7b58003a1d4dd48f5a98881'
   path:
-    description: 'Docs folder inside the repository'
+    description: 'Start folder inside the repository, its index.md is the root page and each subfolder is a subpage'
     required: false
     default: 'docs'
   name:
     description: 'Page title for this repository, defaults to the repository name'
     required: false
     default: ''
+  ref:
+    description: 'Git ref the GitHub backlinks point to'
+    required: false
+    default: ${{ github.ref_name }}
 
 runs:
   using: composite
@@ -30,6 +35,7 @@ runs:
       env:
         DOCS_PATH: ${{ inputs.path }}
         DOCS_NAME: ${{ inputs.name }}
+        DOCS_REF: ${{ inputs.ref }}
         NOTION_TOKEN: ${{ inputs.notion-token }}
         NOTION_PARENT_PAGE_ID: ${{ inputs.notion-parent-page-id }}
       run: |
@@ -40,6 +46,7 @@ runs:
           exit 0
         fi
 
+        export DOCS_PATH="${DOCS_PATH#./}"
         export DOCS_NAME="${DOCS_NAME:-${GITHUB_REPOSITORY##*/}}"
         export DOCS_DIR="$(mktemp -d)"
 
