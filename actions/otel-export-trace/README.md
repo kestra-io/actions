@@ -102,3 +102,9 @@ npm run build     # bundles src/ (and the shared otel-core modules it imports) i
 
 `dist/index.js` is committed and is what GitHub executes — always rebuild
 after changing `src/` or the shared modules under `../../shared/otel-core`.
+
+## Internal links
+
+On a pull request of a `kestra-io/` repository, the action then adds an **Internal** section to the pull request comment, with the links to the tests and
+the trace of the run in the internal app (`/redirects/gha/<repository>/<run id>/tests` and `/traces`). The export itself is the
+[`otel-export-trace-run`](../otel-export-trace-run) action. The token needs `pull-requests: write`.

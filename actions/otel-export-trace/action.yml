@@ -1,13 +1,35 @@
 name: OTel Export Trace
-description: Reconstruct and export the whole workflow -> job -> step trace, once, for a complete GitHub Actions run
+description: Reconstruct and export the whole workflow -> job -> step trace, once, for a complete GitHub Actions run, then link the internal pages of the run in the pull request
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - name: OpenTelemetry - Export trace
+      id: export
+      uses: kestra-io/actions/actions/otel-export-trace-run@main
+      with:
+        github-token: ${{ inputs.github-token }}
+        otlp-endpoint: ${{ inputs.otlp-endpoint }}
+        otlp-headers: ${{ inputs.otlp-headers }}
+        logs-enabled: ${{ inputs.logs-enabled }}
+        service-name: ${{ inputs.service-name }}
+
+    # The trace is in Elastic once exported: the links go to the redirects of the internal app
+    - name: OpenTelemetry - Comment pull request with internal links
+      if: ${{ github.event_name == 'pull_request' && startsWith(github.repository, 'kestra-io/') }}
+      continue-on-error: true
+      uses: kestra-io/actions/actions/comment-update@main
+      with:
+        check-run: 'false'
+        github-token: ${{ inputs.github-token }}
+        title: "🔭 Internal"
+        template: |
+          - [Tests](http://internal.dev.kestra.io/redirects/gha/${{ github.event.repository.name }}/${{ github.run_id }}/tests?attempt=${{ github.run_attempt }})
+          - [Traces](http://internal.dev.kestra.io/redirects/gha/${{ github.event.repository.name }}/${{ github.run_id }}/traces?attempt=${{ github.run_attempt }})
 
 inputs:
   github-token:
-    description: The github token used to query the workflow's jobs and steps
+    description: The github token used to query the workflow's jobs and steps, and to comment the pull request
     required: true
 
   otlp-endpoint:
@@ -35,3 +57,4 @@ inputs:
 outputs:
   trace-id:
     description: The deterministic trace id for this workflow run
+    value: ${{ steps.export.outputs.trace-id }}
