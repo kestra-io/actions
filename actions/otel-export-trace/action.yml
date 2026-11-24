@@ -24,8 +24,8 @@ runs:
         github-token: ${{ inputs.github-token }}
         title: "🔭 Internal"
         template: |
-          - [Tests](http://internal.dev.kestra.io/redirects/gha/${{ github.event.repository.name }}/${{ github.run_id }}/tests?attempt=${{ github.run_attempt }})
-          - [Traces](http://internal.dev.kestra.io/redirects/gha/${{ github.event.repository.name }}/${{ github.run_id }}/traces?attempt=${{ github.run_attempt }})
+          - [Tests](https://internal.kestra.io/redirects/gha/${{ github.event.repository.name }}/${{ github.run_id }}/tests?attempt=${{ github.run_attempt }})
+          - [Traces](https://internal.kestra.io/redirects/gha/${{ github.event.repository.name }}/${{ github.run_id }}/traces?attempt=${{ github.run_attempt }})
 
 inputs:
   github-token:
