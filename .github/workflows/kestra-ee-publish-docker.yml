@@ -218,22 +218,9 @@ jobs:
               service_account: release-publisher@kestra-dev.iam.gserviceaccount.com
 
           # Plugins — new path (use-kestra-base-images: true)
-          - name: Install kestractl
+          - name: Setup kestractl
             if: ${{ inputs.use-kestra-base-images && matrix.image.tag != '-slim' }}
-            # GITHUB_TOKEN: the install script resolves the release through the GitHub REST API,
-            # which is rate-limited per IP for anonymous callers. Runners share egress IPs, so
-            # without a token this step fails with HTTP 403.
-            env:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            run: |
-              if ! curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash; then
-                # The installer only prints the HTTP status: replay its API call to log the rate-limit headers and body.
-                echo "::group::GitHub API response for kestractl releases"
-                curl -sS -D - -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/kestra-io/kestractl/releases?per_page=1" | head -c 4000 || true
-                echo; echo "::endgroup::"
-                exit 1
-              fi
-              echo "$HOME/.local/bin" >> $GITHUB_PATH
+            uses: kestra-io/actions/composite/setup-kestractl@main
 
       # Vars
       - name: Plugins - Set List

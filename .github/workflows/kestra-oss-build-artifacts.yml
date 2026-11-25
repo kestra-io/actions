@@ -59,29 +59,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Has no dependency on anything else in this job (a bare curl|bash installer, not even on
+      # Has no dependency on anything else in this job (a bare installer, not even on
       # the checkout above) — start it now so it overlaps with Setup - Build / npm / Gradle below
       # instead of blocking right before it's needed. Waited on further down, just before the
       # first actual kestractl invocation.
-      - name: Schema bundle - Install kestractl
+      - name: Schema bundle - Setup kestractl
         id: kestractl
         background: true
         if: ${{ inputs.embed-plugins-schema-bundle }}
-        shell: bash
-        # GITHUB_TOKEN: the install script resolves the release through the GitHub REST API,
-        # which is rate-limited per IP for anonymous callers. Runners share egress IPs, so
-        # without a token this step fails with HTTP 403.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if ! curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash; then
-            # The installer only prints the HTTP status: replay its API call to log the rate-limit headers and body.
-            echo "::group::GitHub API response for kestractl releases"
-            curl -sS -D - -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/kestra-io/kestractl/releases?per_page=1" | head -c 4000 || true
-            echo; echo "::endgroup::"
-            exit 1
-          fi
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        uses: kestra-io/actions/composite/setup-kestractl@main
 
       # Setup build
       - uses: kestra-io/actions/composite/setup-build@main
@@ -153,7 +139,7 @@ jobs:
       # Unconditional: `wait:` doesn't accept `if:` (GitHub rejects the combination as an
       # unrecognized step shape). The background step above already carries the condition —
       # waiting on it when it was skipped is a no-op.
-      - name: Schema bundle - Wait for kestractl install
+      - name: Schema bundle - Wait for kestractl setup
         wait: [kestractl]
 
       - name: Schema bundle - Download the plugin catalog

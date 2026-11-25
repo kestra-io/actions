@@ -1,0 +1,64 @@
+name: Setup kestractl
+description: Install kestractl and cache the binary between runs.
+
+inputs:
+  version:
+    description: >
+      kestractl version passed to the install script: `latest` (the installer's default
+      release line), a major (`3`) or an exact release (`3.0.1`). Non-exact versions are
+      cached per day so new releases are picked up within 24h.
+    default: latest
+    required: false
+  github-token:
+    description: >
+      Token for the GitHub REST API calls of the install script. Anonymous calls are
+      rate-limited per IP and fail with HTTP 403 on shared runners.
+    default: ${{ github.token }}
+    required: false
+
+outputs:
+  cache-hit:
+    description: Whether the kestractl binary was restored from the cache.
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: kestractl - Compute cache key
+      id: key
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        if [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          echo "key=kestractl-${RUNNER_OS}-${RUNNER_ARCH}-${VERSION}" >> "$GITHUB_OUTPUT"
+        else
+          echo "key=kestractl-${RUNNER_OS}-${RUNNER_ARCH}-${VERSION}-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: kestractl - Restore cache
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.kestractl/bin
+        key: ${{ steps.key.outputs.key }}
+
+    - name: kestractl - Install
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        export INSTALL_DIR="$HOME/.kestractl/bin"
+        if ! curl -fsSL https://raw.githubusercontent.com/kestra-io/kestractl/main/install-scripts/install.sh | bash; then
+          # The installer only prints the HTTP status: replay its API call to log the rate-limit headers and body.
+          echo "::group::GitHub API response for kestractl releases"
+          curl -sS -D - -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/kestra-io/kestractl/releases?per_page=5" | head -c 4000 || true
+          echo; echo "::endgroup::"
+          exit 1
+        fi
+
+    - name: kestractl - Add to PATH
+      shell: bash
+      run: echo "$HOME/.kestractl/bin" >> "$GITHUB_PATH"
